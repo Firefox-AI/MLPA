@@ -33,3 +33,6 @@ jobs:
 
       - name: Run unit tests
         run: uv run pytest src/tests/unit -v
+
+      - name: Run integration tests
+        run: uv run pytest src/tests/integration -v

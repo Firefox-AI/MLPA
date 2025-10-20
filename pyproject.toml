@@ -42,7 +42,12 @@ dependencies = [
 ]
 
 [dependency-groups]
-test = ["pytest==8.4.2", "pytest-httpx==0.35.0", "pytest-mock==3.15.1"]
+test = [
+    "pytest==8.4.2",
+    "pytest-httpx==0.35.0",
+    "pytest-mock==3.15.1",
+    "pytest-asyncio==1.2.0",
+]
 lint = ["pre_commit==4.3.0", "ruff==0.14.0"]
 
 

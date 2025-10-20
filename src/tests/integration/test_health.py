@@ -1,13 +1,13 @@
 from proxy.core.config import env
 
 
-def test_health_liveness(mocked_client, httpx_mock):
-	liveness_response = mocked_client.get("/health/liveness")
+def test_health_liveness(mocked_client_integration, httpx_mock):
+	liveness_response = mocked_client_integration.get("/health/liveness")
 	assert liveness_response.status_code == 200
 	assert liveness_response.json() == {"status": "alive"}
 
 
-def test_health_readiness(mocked_client, httpx_mock):
+def test_health_readiness(mocked_client_integration, httpx_mock):
 	httpx_mock.add_response(
 		method="GET",
 		url=f"{env.LITELLM_API_BASE}/health/readiness",
@@ -36,14 +36,14 @@ def test_health_readiness(mocked_client, httpx_mock):
 		},
 	)
 
-	readiness_response = mocked_client.get("/health/readiness")
+	readiness_response = mocked_client_integration.get("/health/readiness")
 	assert readiness_response.status_code == 200
 	assert readiness_response.json().get("status") == "connected"
 	assert readiness_response.json().get("pg_server_dbs") is not None
 	assert readiness_response.json().get("litellm") is not None
 
 
-def test_metrics_endpoint(mocked_client):
-	response = mocked_client.get("/metrics")
+def test_metrics_endpoint(mocked_client_integration):
+	response = mocked_client_integration.get("/metrics")
 	assert response.status_code == 200
 	assert "requests_total" in response.text

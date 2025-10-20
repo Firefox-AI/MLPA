@@ -1,10 +1,10 @@
 import base64
 
-from consts import SUCCESSFUL_CHAT_RESPONSE, TEST_KEY_ID
+from tests.consts import SUCCESSFUL_CHAT_RESPONSE, TEST_KEY_ID
 
 
-def test_get_challenge(mocked_client):
-	response = mocked_client.get(
+def test_get_challenge(mocked_client_integration):
+	response = mocked_client_integration.get(
 		"/verify/challenge",
 		params={
 			"key_id": TEST_KEY_ID,
@@ -14,8 +14,8 @@ def test_get_challenge(mocked_client):
 	assert len(response.json().get("challenge")) > 0
 
 
-def test_invalid_methods(mocked_client):
-	response = mocked_client.post(
+def test_invalid_methods(mocked_client_integration):
+	response = mocked_client_integration.post(
 		"/verify/challenge",
 		params={
 			"key_id": TEST_KEY_ID,
@@ -23,7 +23,7 @@ def test_invalid_methods(mocked_client):
 	)
 	assert response.status_code == 405
 
-	response = mocked_client.put(
+	response = mocked_client_integration.put(
 		"/verify/challenge",
 		json={
 			"key_id": TEST_KEY_ID,
@@ -31,7 +31,7 @@ def test_invalid_methods(mocked_client):
 	)
 	assert response.status_code == 405
 
-	response = mocked_client.delete(
+	response = mocked_client_integration.delete(
 		"/verify/challenge",
 		params={
 			"key_id": TEST_KEY_ID,
@@ -39,20 +39,20 @@ def test_invalid_methods(mocked_client):
 	)
 	assert response.status_code == 405
 
-	response = mocked_client.get(
+	response = mocked_client_integration.get(
 		"/verify/attest",
 	)
 	assert response.status_code == 405
 
-	response = mocked_client.put(
+	response = mocked_client_integration.put(
 		"/verify/attest",
 		json={"key_id": TEST_KEY_ID},
 	)
 	assert response.status_code == 405
 
 
-def test_invalid_challenge(mocked_client):
-	response = mocked_client.post(
+def test_invalid_challenge(mocked_client_integration):
+	response = mocked_client_integration.post(
 		"/verify/attest",
 		json={
 			"key_id": TEST_KEY_ID,
@@ -63,15 +63,15 @@ def test_invalid_challenge(mocked_client):
 	assert response.json() == {"detail": "Invalid or expired challenge"}
 
 
-def test_successful_request_with_mocked_app_attest_auth(mocked_client):
-	challenge_response = mocked_client.get(
+def test_successful_request_with_mocked_app_attest_auth(mocked_client_integration):
+	challenge_response = mocked_client_integration.get(
 		"/verify/challenge", params={"key_id": TEST_KEY_ID}
 	)
 
 	challenge = challenge_response.json().get("challenge")
 	challenge_b64 = base64.b64encode(challenge.encode()).decode()
 
-	response = mocked_client.post(
+	response = mocked_client_integration.post(
 		"/v1/chat/completions",
 		json={
 			"key_id": TEST_KEY_ID,

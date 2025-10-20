@@ -1,8 +1,7 @@
 from datetime import datetime
 
-from consts import SUCCESSFUL_CHAT_RESPONSE, TEST_FXA_TOKEN, TEST_USER_ID
-
 from proxy.core.classes import AuthorizedChatRequest, ChatRequest
+from tests.consts import SUCCESSFUL_CHAT_RESPONSE, TEST_FXA_TOKEN, TEST_USER_ID
 
 
 async def mock_app_attest_auth(request):

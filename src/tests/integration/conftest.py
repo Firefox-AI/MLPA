@@ -1,6 +1,8 @@
 import pytest
 from fastapi.testclient import TestClient
-from mocks import (
+
+from proxy import run as main_app
+from tests.mocks import (
 	MockAppAttestPGService,
 	MockFxAService,
 	MockLiteLLMPGService,
@@ -9,11 +11,9 @@ from mocks import (
 	mock_verify_assert,
 )
 
-from proxy import run as main_app
-
 
 @pytest.fixture
-def mocked_client(mocker):
+def mocked_client_integration(mocker):
 	"""
 	This fixture mocks the database services and provides a TestClient.
 	"""

@@ -9,6 +9,7 @@ from fastapi.responses import StreamingResponse
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
 from .core.classes import AssertionRequest, AuthorizedChatRequest, ChatRequest
+from .core.completions import get_completion, stream_completion
 from .core.config import env
 from .core.pg_services.services import app_attest_pg, litellm_pg
 from .core.prometheus_metrics import metrics
@@ -16,7 +17,7 @@ from .core.routers.appattest import app_attest_auth, appattest_router
 from .core.routers.fxa import fxa_auth, fxa_router
 from .core.routers.health import health_router
 from .core.routers.user import user_router
-from .core.utils import get_completion, get_or_create_user, stream_completion
+from .core.utils import get_or_create_user
 
 tags_metadata = [
 	{"name": "Health", "description": "Health check endpoints."},
