@@ -3,13 +3,11 @@ FROM python:3.12-slim
 
 # Set the working directory
 WORKDIR /app
+COPY . .
 
 # Install dependencies
 RUN pip install --no-cache-dir uv
 RUN uv pip install --system --editable .
-
-# Copy the rest of the application code
-COPY . .
 
 # Install the package in editable mode to make the `mlpa` executable available
 RUN pip install --no-cache-dir -e .
