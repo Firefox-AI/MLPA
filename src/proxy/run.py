@@ -1,3 +1,4 @@
+import asyncio
 import time
 from contextlib import asynccontextmanager
 from typing import Annotated, Optional
@@ -143,6 +144,46 @@ async def chat_completion(
 		)
 	else:
 		return await get_completion(authorized_chat_request)
+
+
+@app.post(
+	"/v1/chat/mock_completions",
+	tags=["LiteLLM"],
+	description="This endpoints mocks calling LiteLLM. Authorize first using App Attest or FxA. Either pass the x-fxa-authorization header or include the `{key_id, challenge, and assertion_obj}` in the request body for app attest authorization. `payload` is always required and contains the prompt.",
+)
+async def chat_completion(
+	authorized_chat_request: Annotated[
+		Optional[AuthorizedChatRequest], Depends(authorize)
+	],
+):
+	user_id = authorized_chat_request.user
+	if not user_id:
+		raise HTTPException(
+			status_code=400,
+			detail={"error": "User not found from authorization response."},
+		)
+	user, _ = await get_or_create_user(user_id)
+	if user.get("blocked"):
+		raise HTTPException(status_code=403, detail={"error": "User is blocked."})
+
+	# sleep for 1 second
+	await asyncio.sleep(1)
+	if authorized_chat_request.stream:
+
+		async def mock_stream():
+			yield 'data: {"choices": [{"delta": {"content": "mock token 1"}}]}\n\n'
+			await asyncio.sleep(0.1)
+			yield 'data: {"choices": [{"delta": {"content": "mock token 2"}}]}\n\n'
+			await asyncio.sleep(0.1)
+			yield "data: [DONE]\n\n"
+
+		return StreamingResponse(mock_stream(), media_type="text/event-stream")
+	else:
+		return {
+			"choices": [{"message": {"content": "mock completion response"}}],
+			"usage": {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15},
+			"model": "mock-gpt",
+		}
 
 
 def main():
