@@ -11,7 +11,7 @@ from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from .core.classes import AssertionRequest, AuthorizedChatRequest, ChatRequest
 from .core.completions import get_completion, stream_completion
 from .core.config import env
-from .core.pg_services.services import app_attest_pg, litellm_pg
+from .core.pg_services.services import app_attest_pg, gateway_pg
 from .core.prometheus_metrics import metrics
 from .core.routers.appattest import app_attest_auth, appattest_router
 from .core.routers.fxa import fxa_auth, fxa_router
@@ -26,7 +26,7 @@ tags_metadata = [
 		"name": "App Attest",
 		"description": "Endpoints for verifying App Attest payloads.",
 	},
-	{"name": "LiteLLM", "description": "Endpoints for interacting with LiteLLM."},
+	{"name": "Gateway", "description": "Endpoints for interacting with any-llm-gateway."},
 ]
 
 
@@ -61,10 +61,10 @@ async def authorize(
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-	await litellm_pg.connect()
+	await gateway_pg.connect()
 	await app_attest_pg.connect()
 	yield
-	await litellm_pg.disconnect()
+	await gateway_pg.disconnect()
 	await app_attest_pg.disconnect()
 
 
@@ -72,7 +72,7 @@ sentry_sdk.init(dsn=env.SENTRY_DSN, send_default_pii=True)
 
 app = FastAPI(
 	title="MLPA",
-	description="A proxy to verify App Attest/FxA payloads and proxy requests through LiteLLM.",
+	description="A proxy to verify App Attest/FxA payloads and proxy requests through any-llm-gateway.",
 	version="1.0.0",
 	docs_url="/api/docs",
 	openapi_tags=tags_metadata,
@@ -118,7 +118,7 @@ app.include_router(user_router, prefix="/user")
 
 @app.post(
 	"/v1/chat/completions",
-	tags=["LiteLLM"],
+	tags=["Gateway"],
 	description="Authorize first using App Attest or FxA. Either pass the x-fxa-authorization header or include the `{key_id, challenge, and assertion_obj}` in the request body for app attest authorization. `payload` is always required and contains the prompt.",
 )
 async def chat_completion(

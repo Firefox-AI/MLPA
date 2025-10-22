@@ -1,0 +1,49 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: anyllm_postgres
+    restart: always
+    environment:
+      POSTGRES_USER: gateway
+      POSTGRES_PASSWORD: gateway
+      POSTGRES_DB: gateway
+    ports:
+      - "5432:5432"
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U gateway -d gateway"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - gateway-network
+
+  any-llm-gateway:
+    build:
+      context: ../any-llm-gateway
+      dockerfile: Dockerfile
+    container_name: any_llm_gateway
+    platform: linux/amd64
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./gateway_config.yaml:/app/config.yaml
+      - ./service_account.json:/app/service_account.json
+    environment:
+      - DATABASE_URL=postgresql://gateway:gateway@postgres:5432/gateway
+      - GATEWAY_MASTER_KEY=${MASTER_KEY}
+    restart: unless-stopped
+    networks:
+      - gateway-network
+
+volumes:
+  pg_data:
+
+networks:
+  gateway-network:
+    name: mlpa-network
+    driver: bridge

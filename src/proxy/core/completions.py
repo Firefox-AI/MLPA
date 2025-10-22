@@ -5,13 +5,13 @@ import tiktoken
 from fastapi import HTTPException
 
 from .classes import AuthorizedChatRequest
-from .config import LITELLM_COMPLETIONS_URL, LITELLM_HEADERS
+from .config import GATEWAY_COMPLETIONS_URL, GATEWAY_HEADERS
 from .prometheus_metrics import PrometheusResult, metrics
 
 
 async def stream_completion(authorized_chat_request: AuthorizedChatRequest):
 	"""
-	Proxies a streaming request to LiteLLM.
+	Proxies a streaming request to any-llm-gateway.
 	Yields response chunks as they are received and logs metrics.
 	"""
 	start_time = time.time()
@@ -31,8 +31,8 @@ async def stream_completion(authorized_chat_request: AuthorizedChatRequest):
 		async with httpx.AsyncClient() as client:
 			async with client.stream(
 				"POST",
-				LITELLM_COMPLETIONS_URL,
-				headers=LITELLM_HEADERS,
+				GATEWAY_COMPLETIONS_URL,
+				headers=GATEWAY_HEADERS,
 				json=body,
 				timeout=30,
 			) as response:
@@ -66,7 +66,7 @@ async def stream_completion(authorized_chat_request: AuthorizedChatRequest):
 		)
 		return
 	except Exception as e:
-		print(f"Failed to proxy request to {LITELLM_COMPLETIONS_URL}: {e}")
+		print(f"Failed to proxy request to {GATEWAY_COMPLETIONS_URL}: {e}")
 		return
 	finally:
 		metrics.chat_completion_latency.labels(result=result).observe(
@@ -76,7 +76,7 @@ async def stream_completion(authorized_chat_request: AuthorizedChatRequest):
 
 async def get_completion(authorized_chat_request: AuthorizedChatRequest):
 	"""
-	Proxies a non-streaming request to LiteLLM.
+	Proxies a non-streaming request to any-llm-gateway.
 	"""
 	start_time = time.time()
 	body = {
@@ -92,7 +92,7 @@ async def get_completion(authorized_chat_request: AuthorizedChatRequest):
 	try:
 		async with httpx.AsyncClient() as client:
 			response = await client.post(
-				LITELLM_COMPLETIONS_URL, headers=LITELLM_HEADERS, json=body, timeout=10
+				GATEWAY_COMPLETIONS_URL, headers=GATEWAY_HEADERS, json=body, timeout=10
 			)
 			response.raise_for_status()
 			data = response.json()
@@ -109,7 +109,7 @@ async def get_completion(authorized_chat_request: AuthorizedChatRequest):
 		raise HTTPException(
 			status_code=500,
 			detail={
-				"error": f"Failed to proxy request to {LITELLM_COMPLETIONS_URL}: {e}"
+				"error": f"Failed to proxy request to {GATEWAY_COMPLETIONS_URL}: {e}"
 			},
 		)
 	finally:

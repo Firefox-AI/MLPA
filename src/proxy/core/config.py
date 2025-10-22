@@ -7,13 +7,13 @@ class Env(BaseSettings):
 	METRICS_LOG_FILE: str = "metrics.jsonl"
 
 	# PostgreSQL url (no /database)
-	PG_DB_URL: str = "postgresql://litellm:litellm@localhost:5432"
+	PG_DB_URL: str = "postgresql://gateway:gateway@localhost:5432"
 
-	# LiteLLM
+	# any-llm-gateway
 	MASTER_KEY: str = "sk-default"
 	OPENAI_API_KEY: str = "sk-add-your-key"
-	LITELLM_API_BASE: str = "http://localhost:4000"
-	LITELLM_DB_NAME: str = "litellm"
+	GATEWAY_API_BASE: str = "http://localhost:8000"
+	GATEWAY_DB_NAME: str = "gateway"
 	CHALLENGE_EXPIRY_SECONDS: int = 300  # 5 minutes
 	PORT: int | None = 8080
 
@@ -40,9 +40,10 @@ class Env(BaseSettings):
 
 env = Env()
 
-LITELLM_READINESS_URL = f"{env.LITELLM_API_BASE}/health/readiness"
-LITELLM_COMPLETIONS_URL = f"{env.LITELLM_API_BASE}/v1/chat/completions"
-LITELLM_HEADERS = {
+GATEWAY_READINESS_URL = f"{env.GATEWAY_API_BASE}/health/readiness"
+GATEWAY_COMPLETIONS_URL = f"{env.GATEWAY_API_BASE}/v1/chat/completions"
+GATEWAY_USERS_URL = f"{env.GATEWAY_API_BASE}/v1/users"
+GATEWAY_HEADERS = {
 	"Content-Type": "application/json",
-	"X-LiteLLM-Key": f"Bearer {env.MASTER_KEY}",
+	"X-AnyLLM-Key": f"Bearer {env.MASTER_KEY}",
 }

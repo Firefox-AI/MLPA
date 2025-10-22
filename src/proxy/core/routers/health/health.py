@@ -1,8 +1,8 @@
 import httpx
 from fastapi import APIRouter
 
-from ...config import LITELLM_HEADERS, LITELLM_READINESS_URL
-from ...pg_services.services import app_attest_pg, litellm_pg
+from ...config import GATEWAY_HEADERS, GATEWAY_READINESS_URL
+from ...pg_services.services import app_attest_pg, gateway_pg
 
 router = APIRouter()
 
@@ -14,21 +14,20 @@ async def liveness_probe():
 
 @router.get("/readiness", tags=["Health"])
 async def readiness_probe():
-	# todo add check to PG and LiteLLM status here
-	pg_status = litellm_pg.check_status()
+	pg_status = gateway_pg.check_status()
 	app_attest_pg_status = app_attest_pg.check_status()
-	litellm_status = {}
+	gateway_status = {}
 	async with httpx.AsyncClient() as client:
 		response = await client.get(
-			LITELLM_READINESS_URL, headers=LITELLM_HEADERS, timeout=3
+			GATEWAY_READINESS_URL, headers=GATEWAY_HEADERS, timeout=3
 		)
 		data = response.json()
-		litellm_status = data
+		gateway_status = data
 	return {
 		"status": "connected",
 		"pg_server_dbs": {
 			"postgres": "connected" if pg_status else "offline",
 			"app_attest": "connected" if app_attest_pg_status else "offline",
 		},
-		"litellm": litellm_status,
+		"any_llm_gateway": gateway_status,
 	}

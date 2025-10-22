@@ -12,11 +12,11 @@ async def mock_verify_assert(key_id, assertion_obj, payload: ChatRequest):
 	return {"status": "success"}
 
 
-async def mock_get_or_create_user(mock_litellm_pg, user_id: str):
-	user = await mock_litellm_pg.get_user(user_id)
+async def mock_get_or_create_user(mock_gateway_pg, user_id: str):
+	user = await mock_gateway_pg.get_user(user_id)
 	if not user:
-		await mock_litellm_pg.store_user(user_id, {"data": "testdata"})
-		user = await mock_litellm_pg.get_user(user_id)
+		await mock_gateway_pg.store_user(user_id, {"data": "testdata"})
+		user = await mock_gateway_pg.get_user(user_id)
 		return user, True
 	return [{"user_id": user_id, "data": "testdata"}, False]
 
@@ -68,10 +68,10 @@ class MockAppAttestPGService:
 		del self.keys[key_id]
 
 
-class MockLiteLLMPGService:
+class MockGatewayPGService:
 	def __init__(self):
 		self.db_name = "test"
-		self.db_url = "test_litellm"
+		self.db_url = "test_gateway"
 		self.connected = True
 		self.users = {}
 

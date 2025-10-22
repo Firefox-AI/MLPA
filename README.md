@@ -1,6 +1,6 @@
 # Mozilla LLM Proxy Auth (MLPA)
 
-A proxy to verify App Attest/FxA payloads and proxy requests through LiteLLM to enact budgets and per user management.
+A proxy to verify App Attest/FxA payloads and proxy requests through any-llm-gateway to enact budgets and per user management.
 
 ## Setup
 
@@ -12,9 +12,15 @@ This creates a virtual environment in `.venv/`, installs dependencies, and insta
 
 ## Running MLPA locally with Docker
 
-### Run LiteLLM
+### Run with Docker Compose
 
-`docker compose -f litellm_docker_compose.yaml up -d`
+The docker-compose configuration includes both any-llm-gateway and MLPA:
+
+**Note: you need to have the any-llm-gateway repo cloned in the same parent dir as mlpa**
+
+```bash
+docker compose -f anyllm_docker_compose.yaml up -d --build
+```
 
 ### Run MLPA
 
@@ -30,14 +36,14 @@ pip install --no-cache-dir -e .
 mlpa
 ```
 
-## Config (see [LiteLLM Documentation](https://docs.litellm.ai/docs/simple_proxy_old_doc) for more config options)
+## Config
 
 `.env` (see `config.py` for all configuration variables)
 
 ```
 MASTER_KEY="sk-1234..."
-LITELLM_API_BASE="http://mlpa:4000"
-DATABASE_URL=postgresql://... # required for direct user editing in SQL
+GATEWAY_API_BASE="http://any-llm-gateway:8000"
+DATABASE_URL=postgresql://gateway:gateway@postgres:5432
 CHALLENGE_EXPIRY_SECONDS=300
 PORT=8080
 
@@ -47,12 +53,14 @@ APP_DEVELOPMENT_TEAM="12BC943KDC"
 CLIENT_ID="..."
 CLIENT_SECRET="..."
 
-MODEL_NAME=""
+MODEL_NAME="vertexai:model-name"  # Use provider:model format
 TEMPERATURE=0.1
 TOP_P=0.01
 ```
 
-### Also See `litellm_config.yaml` for litellm config
+### Gateway Configuration
+
+See `gateway_config.yaml` for any-llm-gateway configuration.
 
 Service account configured to hit VertexAI: `service_account.json` should be in directory root
 

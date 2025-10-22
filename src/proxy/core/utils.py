@@ -3,11 +3,11 @@ import base64
 import httpx
 from fastapi import HTTPException
 
-from .config import LITELLM_HEADERS, env
+from .config import GATEWAY_HEADERS, GATEWAY_USERS_URL
 
 
 async def get_or_create_user(user_id: str):
-	"""Returns user info from LiteLLM, creating the user if they don't exist.
+	"""Returns user info from any-llm-gateway, creating the user if they don't exist.
 	Args:
 		user_id (str): The user ID to look up or create.
 	Returns:
@@ -16,27 +16,28 @@ async def get_or_create_user(user_id: str):
 
 	async with httpx.AsyncClient() as client:
 		try:
-			params = {"end_user_id": user_id}
 			response = await client.get(
-				f"{env.LITELLM_API_BASE}/customer/info",
-				params=params,
-				headers=LITELLM_HEADERS,
+				f"{GATEWAY_USERS_URL}/{user_id}",
+				headers=GATEWAY_HEADERS,
 			)
-			user = response.json()
-			if not user.get("user_id"):
-				# add budget details or budget_id if necessary
-				await client.post(
-					f"{env.LITELLM_API_BASE}/customer/new",
+			if response.status_code == 200:
+				return [response.json(), False]
+
+			if response.status_code == 404:
+				create_response = await client.post(
+					GATEWAY_USERS_URL,
 					json={"user_id": user_id},
-					headers=LITELLM_HEADERS,
+					headers=GATEWAY_HEADERS,
 				)
-				response = await client.get(
-					f"{env.LITELLM_API_BASE}/customer/info",
-					params=params,
-					headers=LITELLM_HEADERS,
-				)
-				return [response.json(), True]
-			return [user, False]
+				create_response.raise_for_status()
+				return [create_response.json(), True]
+			response.raise_for_status()
+			return [response.json(), False]
+		except httpx.HTTPStatusError as e:
+			raise HTTPException(
+				status_code=e.response.status_code,
+				detail={"error": f"Error fetching user info: {e}"}
+			)
 		except Exception as e:
 			raise HTTPException(
 				status_code=500, detail={"error": f"Error fetching user info: {e}"}
