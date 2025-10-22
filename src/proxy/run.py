@@ -151,7 +151,7 @@ async def chat_completion(
 	tags=["LiteLLM"],
 	description="This endpoints mocks calling LiteLLM. Authorize first using App Attest or FxA. Either pass the x-fxa-authorization header or include the `{key_id, challenge, and assertion_obj}` in the request body for app attest authorization. `payload` is always required and contains the prompt.",
 )
-async def chat_completion(
+async def mock_chat_completion(
 	authorized_chat_request: Annotated[
 		Optional[AuthorizedChatRequest], Depends(authorize)
 	],
