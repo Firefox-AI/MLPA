@@ -12,14 +12,12 @@ This creates a virtual environment in `.venv/`, installs dependencies, and insta
 
 ## Running MLPA locally with Docker
 
-### Run with Docker Compose
+### Run Any-LLM-Gateway
 
-The docker-compose configuration includes both any-llm-gateway and MLPA:
-
-**Note: you need to have the any-llm-gateway repo cloned in the same parent dir as mlpa**
-
+The any-llm-gateway image requires authentication to pull: see [github docs](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry#authenticating-with-a-personal-access-token-classic) for help with creating a PAT and authenticating docker to the registry.
 ```bash
-docker compose -f anyllm_docker_compose.yaml up -d --build
+echo $GITHUB_PAT | docker login ghcr.io -u USERNAME --password-stdin # The command to authenticate docker with ghcr
+docker compose -f anyllm_docker_compose.yaml up -d
 ```
 
 ### Run MLPA

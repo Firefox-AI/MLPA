@@ -20,9 +20,7 @@ services:
       - gateway-network
 
   any-llm-gateway:
-    build:
-      context: ../any-llm-gateway
-      dockerfile: Dockerfile
+    image: ghcr.io/mozilla-ai/any-llm-gateway:main
     container_name: any_llm_gateway
     platform: linux/amd64
     depends_on:
