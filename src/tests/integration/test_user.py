@@ -19,8 +19,8 @@ def test_user_info_wrong_params(mocked_client_integration):
 def test_user_info_endpoint_for_missing_user(mocked_client_integration, httpx_mock):
 	httpx_mock.add_response(
 		method="GET",
-		url=f"{env.LITELLM_API_BASE}/customer/info?end_user_id={TEST_USER_ID}",
-		status_code=200,
+		url=f"{env.GATEWAY_API_BASE}/v1/users/{TEST_USER_ID}",
+		status_code=404,
 		json={"detail": "User not found"},
 	)
 
@@ -28,14 +28,14 @@ def test_user_info_endpoint_for_missing_user(mocked_client_integration, httpx_mo
 		f"/user/{TEST_USER_ID}",
 		headers={"x-fxa-authorization": "Bearer " + TEST_FXA_TOKEN},
 	)
+	assert response.status_code == 404
 	assert response.json() == {"detail": "User not found"}
-	assert response.status_code == 200  # litellm returns 200 even if user not found
 
 
 def test_user_info_endpoint_for_existing_user(mocked_client_integration, httpx_mock):
 	httpx_mock.add_response(
 		method="GET",
-		url=f"{env.LITELLM_API_BASE}/customer/info?end_user_id={TEST_USER_ID}",
+		url=f"{env.GATEWAY_API_BASE}/v1/users/{TEST_USER_ID}",
 		status_code=200,
 		json={
 			"user_id": TEST_USER_ID,

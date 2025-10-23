@@ -9,3 +9,4 @@ service_account.json
 # Since we are running it as a library, better not to commit the lock file
 uv.lock
 .secrets
+openapi.json

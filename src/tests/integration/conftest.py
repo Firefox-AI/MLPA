@@ -5,7 +5,7 @@ from proxy import run as main_app
 from tests.mocks import (
 	MockAppAttestPGService,
 	MockFxAService,
-	MockLiteLLMPGService,
+	MockGatewayPGService,
 	mock_get_completion,
 	mock_get_or_create_user,
 	mock_verify_assert,
@@ -18,7 +18,7 @@ def mocked_client_integration(mocker):
 	This fixture mocks the database services and provides a TestClient.
 	"""
 	mock_app_attest_pg = MockAppAttestPGService()
-	mock_litellm_pg = MockLiteLLMPGService()
+	mock_gateway_pg = MockGatewayPGService()
 	mock_fxa_client = MockFxAService(
 		"test-client-id", "test-client-secret", "https://test-fxa.com"
 	)
@@ -31,8 +31,8 @@ def mocked_client_integration(mocker):
 	mocker.patch(
 		"proxy.core.routers.appattest.appattest.app_attest_pg", mock_app_attest_pg
 	)
-	mocker.patch("proxy.run.litellm_pg", mock_litellm_pg)
-	mocker.patch("proxy.core.routers.health.health.litellm_pg", mock_litellm_pg)
+	mocker.patch("proxy.run.gateway_pg", mock_gateway_pg)
+	mocker.patch("proxy.core.routers.health.health.gateway_pg", mock_gateway_pg)
 
 	mocker.patch("proxy.core.routers.fxa.fxa.client", mock_fxa_client)
 
@@ -44,7 +44,7 @@ def mocked_client_integration(mocker):
 	mocker.patch(
 		"proxy.run.get_or_create_user",
 		lambda *args, **kwargs: mock_get_or_create_user(
-			mock_litellm_pg, *args, **kwargs
+			mock_gateway_pg, *args, **kwargs
 		),
 	)
 	mocker.patch(

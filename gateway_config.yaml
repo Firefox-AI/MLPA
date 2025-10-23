@@ -1,0 +1,14 @@
+database_url: "${DATABASE_URL}"
+
+host: "0.0.0.0"
+port: 8000
+
+# Master key for protecting key management endpoints (set via environment variable)
+master_key: "${GATEWAY_MASTER_KEY}"
+
+providers:
+  # Vertex AI configuration (for Google Cloud)
+  vertexai:
+    credentials: "/app/service_account.json"  # Path to service account JSON file
+    project: "fx-gen-ai-sandbox"              # GCP project ID
+    location: "us-south1"                     # GCP region

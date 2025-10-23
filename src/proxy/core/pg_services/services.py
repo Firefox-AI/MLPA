@@ -1,5 +1,5 @@
 from .app_attest_pg_service import AppAttestPGService
-from .litellm_pg_service import LiteLLMPGService
+from .gateway_pg_service import GatewayPGService
 
-litellm_pg = LiteLLMPGService()
+gateway_pg = GatewayPGService()
 app_attest_pg = AppAttestPGService()

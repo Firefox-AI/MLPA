@@ -25,16 +25,16 @@ Ensure all tests pass: `pytest -v`
 
 ## Local Build for QA and manual testing
 
-1. Use `litellm_docker_compose.yaml` to start LiteLLM and Postgres locally:
+1. Use `anyllm_docker_compose.yaml` to start Any-LLM-Gateway and Postgres locally:
 
   ```bash
-  docker compose -f litellm_docker_compose.yaml up -d
+  docker compose -f anyllm_docker_compose.yaml up -d
   ```
 
 or if you are using legacy docker-compose:
 
   ```bash
-  docker-compose -f litellm_docker_compose.yaml up -d
+  docker-compose -f anyllm_docker_compose.yaml up -d
   ```
 
 2. Create a second database that is needed for authentication
@@ -43,7 +43,7 @@ or if you are using legacy docker-compose:
   bash scripts/create-app-attest-database.sh
   ```
 
-LiteLLM will be accessible at `localhost:4000` and `localhost:4000/ui`.
+Any-LLM-Gateway will be accessible at `localhost:4000` and `localhost:4000/ui`.
 
 3. Run MLPA with
 
@@ -54,7 +54,7 @@ LiteLLM will be accessible at `localhost:4000` and `localhost:4000/ui`.
 4. Stop the service with
 
 ```bash
-docker compose -f litellm_docker_compose.yaml down
+docker compose -f anyllm_docker_compose.yaml down
 ```
 
 ### Useful CURLs for QA
@@ -79,7 +79,7 @@ curl --location 'http://0.0.0.0:8080/health/readiness' \
   curl --location 'http://0.0.0.0:8080/v1/chat/completions' \
   --header 'Content-Type: application/json' \
   --header 'x-fxa-authorization: Bearer {YOUR_MOZILLA_FXA_TOKEN}' \
-  --header 'X-LiteLLM-Key: Bearer {MASTER_KEY}' \
+  --header 'X-AnyLLM-Key: Bearer {MASTER_KEY}' \
   --data '{
    "model": "openai/gpt-4o",
     "messages": [{
@@ -89,7 +89,7 @@ curl --location 'http://0.0.0.0:8080/health/readiness' \
   }'
   ```
 
-1. LiteLLM liveness:
+1. Any-LLM-Gateway liveness:
 
 ```bash
 curl --location 'http://localhost:4000/health/liveness' \
@@ -101,16 +101,16 @@ curl --location 'http://localhost:4000/health/liveness' \
 ```bash
 curl --location 'http://localhost:4000/models' \
 --header 'Content-Type: application/json' \
---header 'X-LiteLLM-Key: Bearer {MASTER_KEY}' \
+--header 'X-AnyLLM-Key: Bearer {MASTER_KEY}' \
 --data ''
 ```
 
-1. Completion directly from LiteLLM:
+1. Completion directly from Any-LLM-Gateway:
 
 ```bash
 curl --location 'http://localhost:4000/v1/chat/completions' \
 --header 'Content-Type: application/json' \
---header 'X-LiteLLM-Key: Bearer {MASTER_KEY}' \
+--header 'X-AnyLLM-Key: Bearer {MASTER_KEY}' \
 --data '{
     "model": "openai/gpt-4o",
     "messages": [
