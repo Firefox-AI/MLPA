@@ -2,9 +2,9 @@ from typing import Annotated
 
 from fastapi import Header, HTTPException
 
-from .core.classes import AssertionRequest, AuthorizedChatRequest, ChatRequest
-from .core.routers.appattest import app_attest_auth
-from .core.routers.fxa import fxa_auth
+from ..classes import AssertionRequest, AuthorizedChatRequest, ChatRequest
+from ..routers.appattest import app_attest_auth
+from ..routers.fxa import fxa_auth
 
 
 async def authorize_request(
