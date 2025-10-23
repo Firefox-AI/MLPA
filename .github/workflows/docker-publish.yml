@@ -7,7 +7,7 @@ on:
 
 env:
   COMPOSE_FILE: ./mlpa_docker_compose.yaml
-  GAR_REPOSITORY: mlpa
+  GAR_REPOSITORY: llm-proxy-prod
   SERVICE_NAME: mlpa
   IMAGE_NAME: mlpa
 
