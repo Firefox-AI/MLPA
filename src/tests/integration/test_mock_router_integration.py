@@ -48,7 +48,6 @@ class TestMockRouterIntegration:
 		assert response.status_code == 200
 		assert response.headers["content-type"].startswith("text/event-stream")
 
-		# Check streaming content
 		content = response.text
 		assert 'data: {"choices":[{"delta":{"content":"mock token 1"}}]}\n\n' in content
 		assert 'data: {"choices":[{"delta":{"content":"mock token 2"}}]}\n\n' in content
@@ -82,9 +81,7 @@ class TestMockRouterIntegration:
 
 	def test_mock_chat_completions_no_auth_success(self, mocked_client_integration):
 		"""Test successful request to /mock/chat/completions_no_auth endpoint."""
-		# Mock the JWT verification to return valid user data
 		with patch("proxy.core.routers.mock.mock.fxa_client") as mock_fxa_client:
-			# Mock JWKS response
 			mock_jwks_response = {
 				"keys": [
 					{
@@ -97,12 +94,10 @@ class TestMockRouterIntegration:
 				]
 			}
 
-			# Mock the API client get method
 			mock_api_client = MagicMock()
 			mock_api_client.get.return_value = mock_jwks_response
 			mock_fxa_client.apiclient = mock_api_client
 
-			# Mock successful JWT verification
 			mock_fxa_client._verify_jwt_token.return_value = {
 				"user": TEST_USER_ID,
 				"client_id": "test-client-id",
@@ -134,9 +129,7 @@ class TestMockRouterIntegration:
 
 	def test_mock_chat_completions_no_auth_streaming(self, mocked_client_integration):
 		"""Test streaming request to /mock/chat/completions_no_auth endpoint."""
-		# Mock the JWT verification to return valid user data
 		with patch("proxy.core.routers.mock.mock.fxa_client") as mock_fxa_client:
-			# Mock JWKS response
 			mock_jwks_response = {
 				"keys": [
 					{
@@ -149,12 +142,10 @@ class TestMockRouterIntegration:
 				]
 			}
 
-			# Mock the API client get method
 			mock_api_client = MagicMock()
 			mock_api_client.get.return_value = mock_jwks_response
 			mock_fxa_client.apiclient = mock_api_client
 
-			# Mock successful JWT verification
 			mock_fxa_client._verify_jwt_token.return_value = {
 				"user": TEST_USER_ID,
 				"client_id": "test-client-id",
@@ -174,7 +165,6 @@ class TestMockRouterIntegration:
 		assert response.status_code == 200
 		assert response.headers["content-type"].startswith("text/event-stream")
 
-		# Check streaming content
 		content = response.text
 		assert 'data: {"choices":[{"delta":{"content":"mock token 1"}}]}\n\n' in content
 		assert 'data: {"choices":[{"delta":{"content":"mock token 2"}}]}\n\n' in content
@@ -192,17 +182,13 @@ class TestMockRouterIntegration:
 			},
 		)
 
-		assert (
-			response.status_code == 422
-		)  # FastAPI validation error for missing required header
+		assert response.status_code == 422
 
 	def test_mock_chat_completions_no_auth_invalid_token(
 		self, mocked_client_integration
 	):
 		"""Test /mock/chat/completions_no_auth endpoint with invalid JWT token."""
-		# Mock the JWT verification to fail
 		with patch("proxy.core.routers.mock.mock.fxa_client") as mock_fxa_client:
-			# Mock JWKS response
 			mock_jwks_response = {
 				"keys": [
 					{
@@ -215,12 +201,10 @@ class TestMockRouterIntegration:
 				]
 			}
 
-			# Mock the API client get method
 			mock_api_client = MagicMock()
 			mock_api_client.get.return_value = mock_jwks_response
 			mock_fxa_client.apiclient = mock_api_client
 
-			# Mock JWT verification failure
 			import jwt
 
 			mock_fxa_client._verify_jwt_token.side_effect = (
@@ -246,9 +230,7 @@ class TestMockRouterIntegration:
 		self, mocked_client_integration
 	):
 		"""Test /mock/chat/completions_no_auth endpoint with invalid token signature."""
-		# Mock the JWT verification to fail with invalid signature
 		with patch("proxy.core.routers.mock.mock.fxa_client") as mock_fxa_client:
-			# Mock JWKS response
 			mock_jwks_response = {
 				"keys": [
 					{
@@ -261,12 +243,10 @@ class TestMockRouterIntegration:
 				]
 			}
 
-			# Mock the API client get method
 			mock_api_client = MagicMock()
 			mock_api_client.get.return_value = mock_jwks_response
 			mock_fxa_client.apiclient = mock_api_client
 
-			# Mock JWT verification failure with invalid signature
 			import jwt
 
 			mock_fxa_client._verify_jwt_token.side_effect = (
@@ -289,9 +269,7 @@ class TestMockRouterIntegration:
 		self, mocked_client_integration
 	):
 		"""Test /mock/chat/completions_no_auth endpoint when JWT token doesn't contain user."""
-		# Mock the JWT verification to return token without user
 		with patch("proxy.core.routers.mock.mock.fxa_client") as mock_fxa_client:
-			# Mock JWKS response
 			mock_jwks_response = {
 				"keys": [
 					{
@@ -304,16 +282,13 @@ class TestMockRouterIntegration:
 				]
 			}
 
-			# Mock the API client get method
 			mock_api_client = MagicMock()
 			mock_api_client.get.return_value = mock_jwks_response
 			mock_fxa_client.apiclient = mock_api_client
 
-			# Mock JWT verification returning token without user
 			mock_fxa_client._verify_jwt_token.return_value = {
 				"client_id": "test-client-id",
 				"scope": ["profile"],
-				# Missing "user" field
 			}
 
 			response = mocked_client_integration.post(
@@ -332,9 +307,7 @@ class TestMockRouterIntegration:
 		self, mocked_client_integration
 	):
 		"""Test /mock/chat/completions_no_auth endpoint with blocked user."""
-		# Mock the JWT verification to return valid user data
 		with patch("proxy.core.routers.mock.mock.fxa_client") as mock_fxa_client:
-			# Mock JWKS response
 			mock_jwks_response = {
 				"keys": [
 					{
@@ -347,19 +320,16 @@ class TestMockRouterIntegration:
 				]
 			}
 
-			# Mock the API client get method
 			mock_api_client = MagicMock()
 			mock_api_client.get.return_value = mock_jwks_response
 			mock_fxa_client.apiclient = mock_api_client
 
-			# Mock successful JWT verification
 			mock_fxa_client._verify_jwt_token.return_value = {
 				"user": "blocked-user-id",
 				"client_id": "test-client-id",
 				"scope": ["profile"],
 			}
 
-			# Mock get_or_create_user to return a blocked user
 			with patch(
 				"proxy.core.routers.mock.mock.get_or_create_user",
 				new_callable=AsyncMock,
@@ -385,9 +355,7 @@ class TestMockRouterIntegration:
 		"""Test that mock endpoints simulate latency correctly."""
 		import time
 
-		# Mock the JWT verification to return valid user data
 		with patch("proxy.core.routers.mock.mock.fxa_client") as mock_fxa_client:
-			# Mock JWKS response
 			mock_jwks_response = {
 				"keys": [
 					{
@@ -400,19 +368,16 @@ class TestMockRouterIntegration:
 				]
 			}
 
-			# Mock the API client get method
 			mock_api_client = MagicMock()
 			mock_api_client.get.return_value = mock_jwks_response
 			mock_fxa_client.apiclient = mock_api_client
 
-			# Mock successful JWT verification
 			mock_fxa_client._verify_jwt_token.return_value = {
 				"user": TEST_USER_ID,
 				"client_id": "test-client-id",
 				"scope": ["profile"],
 			}
 
-			# Set a custom latency for testing
 			with patch.dict("os.environ", {"MOCK_LATENCY_MS": "100"}):
 				start_time = time.time()
 				response = mocked_client_integration.post(
@@ -426,5 +391,4 @@ class TestMockRouterIntegration:
 				end_time = time.time()
 
 				assert response.status_code == 200
-				# Should take at least 100ms (0.1 seconds)
 				assert (end_time - start_time) >= 0.1

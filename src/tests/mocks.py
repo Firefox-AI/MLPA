@@ -122,10 +122,8 @@ class MockFxAClientForMockRouter:
 		self.fxa_url = fxa_url
 		self.apiclient = MagicMock()
 
-		# Mock the JWKS endpoint response
 		self.apiclient.get.return_value = MOCK_JWKS_RESPONSE
 
-		# Mock the _verify_jwt_token method
 		self._verify_jwt_token = MagicMock()
 		self._verify_jwt_token.return_value = MOCK_FXA_USER_DATA
 
