@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "mlpa"
 version = "0.1.0"
-description = "A proxy to verify App Attest/FxA payloads and proxy requests using LiteLLM virtual keys."
+description = "A proxy to verify App Attest/FxA payloads and proxy requests using Any-LLM-Gateway virtual keys."
 authors = [{ name = "Noah Podgurski", email = "npodgurski@mozilla.com" }]
 readme = "README.md"
 requires-python = ">=3.12"

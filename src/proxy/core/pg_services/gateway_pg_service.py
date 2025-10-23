@@ -62,18 +62,20 @@ class GatewayPGService(PGService):
 				)
 				if response.status_code == 404:
 					raise HTTPException(
-						status_code=404, detail=f"User with user_id '{user_id}' not found."
+						status_code=404,
+						detail=f"User with user_id '{user_id}' not found.",
 					)
 				response.raise_for_status()
 				return response.json()
 			except httpx.HTTPStatusError as e:
 				if e.response.status_code == 404:
 					raise HTTPException(
-						status_code=404, detail=f"User with user_id '{user_id}' not found."
+						status_code=404,
+						detail=f"User with user_id '{user_id}' not found.",
 					)
 				raise HTTPException(
 					status_code=e.response.status_code,
-					detail={"error": f"Error updating user: {e}"}
+					detail={"error": f"Error updating user: {e}"},
 				)
 			except Exception as e:
 				raise HTTPException(

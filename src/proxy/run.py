@@ -26,7 +26,10 @@ tags_metadata = [
 		"name": "App Attest",
 		"description": "Endpoints for verifying App Attest payloads.",
 	},
-	{"name": "Gateway", "description": "Endpoints for interacting with any-llm-gateway."},
+	{
+		"name": "Gateway",
+		"description": "Endpoints for interacting with any-llm-gateway.",
+	},
 ]
 
 

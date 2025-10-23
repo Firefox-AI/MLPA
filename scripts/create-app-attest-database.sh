@@ -1,1 +1,1 @@
-docker exec -it litellm_postgres psql -U litellm -c "CREATE DATABASE app_attest;"
+docker exec -it anyllm_postgres psql -U gateway -c "CREATE DATABASE app_attest;"

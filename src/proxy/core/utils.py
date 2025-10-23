@@ -36,7 +36,7 @@ async def get_or_create_user(user_id: str):
 		except httpx.HTTPStatusError as e:
 			raise HTTPException(
 				status_code=e.response.status_code,
-				detail={"error": f"Error fetching user info: {e}"}
+				detail={"error": f"Error fetching user info: {e}"},
 			)
 		except Exception as e:
 			raise HTTPException(

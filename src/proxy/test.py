@@ -1,18 +1,8 @@
 """
-Simulate projected load
+Generate 1M users using any-llm-gateway API
 
---- Run this in DB to fill DB with 1M users ---
-DELETE FROM "LiteLLM_EndUserTable";
-WITH RECURSIVE generate_series(id) AS (
-    SELECT 0
-    UNION ALL
-    SELECT id + 1 FROM generate_series WHERE id < 1000000
-)
-INSERT INTO "LiteLLM_EndUserTable" ("user_id")
-SELECT
-    'test-user-' || id AS "user_id"
-FROM generate_series;
-SELECT * FROM public."LiteLLM_EndUserTable"
+This script creates 1 million users using the any-llm-gateway API
+with async batching for efficient user creation.
 """
 
 import asyncio
@@ -21,6 +11,7 @@ import os
 import random
 import time
 import uuid
+from typing import List, Tuple
 
 import httpx
 import jwt
@@ -30,19 +21,130 @@ from tabulate import tabulate
 
 load_dotenv()
 
-# Projected total load
+TOTAL_USERS = 1_000_000
+BATCH_SIZE = 10  # Number of users to create in parallel
+PROXY_API_BASE = os.getenv("GATEWAY_API_BASE", "http://localhost:8000")
+GATEWAY_MASTER_KEY = os.getenv("GATEWAY_MASTER_KEY")
 USERS = 2_500_000
 REQ_PER_MINUTE = 465
-# REQ_PER_SECOND = REQ_PER_MINUTE / 60
 REQ_PER_SECOND = 50
-
-PROXY_API_BASE = "http://localhost:8080"
 JWT_SECRET = os.getenv("JWT_SECRET")
 
 
+async def create_user_batch(
+	user_ids: List[str], client: httpx.AsyncClient
+) -> Tuple[int, int]:
+	"""
+	Create a batch of users using the any-llm-gateway API.
+
+	Args:
+	    user_ids: List of user IDs to create
+	    client: HTTP client for making requests
+
+	Returns:
+	    Tuple of (successful_creations, failed_creations)
+	"""
+	if not GATEWAY_MASTER_KEY:
+		raise ValueError("GATEWAY_MASTER_KEY environment variable is required")
+
+	headers = {
+		"X-AnyLLM-Key": f"Bearer {GATEWAY_MASTER_KEY}",
+		"Content-Type": "application/json",
+	}
+
+	success_count = 0
+	failed_count = 0
+
+	tasks = []
+	for user_id in user_ids:
+		payload = {
+			"user_id": user_id,
+			"alias": f"Test User {user_id}",
+			"blocked": False,
+			"metadata": {"created_by": "bulk_script", "batch_id": str(uuid.uuid4())},
+		}
+
+		task = client.post(f"{PROXY_API_BASE}/v1/users", json=payload, headers=headers)
+		tasks.append(task)
+
+	# Wait for all requests in the batch to complete
+	responses = await asyncio.gather(*tasks, return_exceptions=True)
+
+	for response in responses:
+		if isinstance(response, Exception):
+			failed_count += 1
+		elif hasattr(response, "status_code"):
+			if response.status_code == 201:
+				success_count += 1
+			elif response.status_code == 409:
+				# User already exists, count as success
+				success_count += 1
+			else:
+				failed_count += 1
+		else:
+			failed_count += 1
+
+	return success_count, failed_count
+
+
+async def generate_users():
+	"""
+	Generate 1M users using the any-llm-gateway API with async batching.
+	"""
+	if not GATEWAY_MASTER_KEY:
+		print("Error: GATEWAY_MASTER_KEY environment variable is required")
+		return
+
+	print(f"Starting to create {TOTAL_USERS:,} users...")
+	print(f"Gateway URL: {PROXY_API_BASE}")
+	print(f"Batch size: {BATCH_SIZE}")
+	print()
+
+	start_time = time.time()
+	total_success = 0
+	total_failed = 0
+
+	async with httpx.AsyncClient(timeout=30.0) as client:
+		with tqdm.tqdm(total=TOTAL_USERS, desc="Creating users", unit="users") as pbar:
+			for batch_start in range(0, TOTAL_USERS, BATCH_SIZE):
+				batch_end = min(batch_start + BATCH_SIZE, TOTAL_USERS)
+				user_ids = [f"test-user-{i}" for i in range(batch_start, batch_end)]
+
+				try:
+					success, failed = await create_user_batch(user_ids, client)
+					total_success += success
+					total_failed += failed
+
+					pbar.update(len(user_ids))
+					pbar.set_postfix(
+						{
+							"Success": f"{total_success:,}",
+							"Failed": f"{total_failed:,}",
+							"Rate": f"{total_success / (time.time() - start_time):.1f}/s",
+						}
+					)
+
+				except Exception as e:
+					print(f"Error in batch {batch_start}-{batch_end}: {e}")
+					total_failed += len(user_ids)
+					pbar.update(len(user_ids))
+
+	end_time = time.time()
+	duration = end_time - start_time
+
+	print(f"\nUser creation completed!")
+	print(f"Total users created: {total_success:,}")
+	print(f"Total failures: {total_failed:,}")
+	print(f"Duration: {duration:.2f} seconds")
+	print(f"Average rate: {total_success / duration:.1f} users/second")
+	print(
+		f"Success rate: {(total_success / (total_success + total_failed)) * 100:.1f}%"
+	)
+
+
 class User:
-	def __init__(self, id: str = None):
-		self.id = id or str(uuid.uuid4())
+	def __init__(self, user_id: str = None):
+		self.id = user_id or str(uuid.uuid4())
 		self.stats = {}
 		self.key = jwt.encode({"user_id": self.id}, JWT_SECRET, algorithm="HS256")
 
@@ -79,8 +181,8 @@ async def test_server_rps_limit(max_rps=8, test_duration=10):
 	"""
 	Test the maximum requests per second (RPS) the server can handle.
 	Args:
-		max_rps (int): Maximum RPS to test.
-		test_duration (int): Duration of the test in seconds.
+	    max_rps (int): Maximum RPS to test.
+	    test_duration (int): Duration of the test in seconds.
 	"""
 	users = [User(f"test-user-{i}") for i in range(USERS)]
 	random.shuffle(users)
@@ -112,7 +214,7 @@ async def test_server_rps_limit(max_rps=8, test_duration=10):
 
 
 def calculate_metric_stats():
-	with open("metrics.jsonl", "r") as f:
+	with open("metrics.jsonl", "r", encoding="utf-8") as f:
 		data = [json.loads(line) for line in f.readlines()]
 
 	metrics = [
@@ -152,5 +254,22 @@ def calculate_metric_stats():
 
 
 if __name__ == "__main__":
-	asyncio.run(test_server_rps_limit(5, 20))
-	calculate_metric_stats()
+	import sys
+
+	if len(sys.argv) > 1 and sys.argv[1] == "generate-users":
+		# Generate 1M users using any-llm-gateway API
+		asyncio.run(generate_users())
+	elif len(sys.argv) > 1 and sys.argv[1] == "test-rps":
+		# Run the original RPS test
+		asyncio.run(test_server_rps_limit(5, 20))
+		calculate_metric_stats()
+	else:
+		print("Usage:")
+		print(
+			"  python test.py generate-users  # Generate 1M users via any-llm-gateway API"
+		)
+		print("  python test.py test-rps        # Run RPS test")
+		print()
+		print("Environment variables required for generate-users:")
+		print("  GATEWAY_MASTER_KEY - Master key for any-llm-gateway")
+		print("  PROXY_API_BASE  - Gateway URL (default: http://localhost:8000)")

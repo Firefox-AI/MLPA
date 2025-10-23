@@ -7,7 +7,7 @@ from fastapi import HTTPException
 from pytest_httpx import HTTPXMock, IteratorStream
 
 from proxy.core.completions import get_completion, stream_completion
-from proxy.core.config import LITELLM_COMPLETIONS_URL
+from proxy.core.config import GATEWAY_COMPLETIONS_URL
 from proxy.core.prometheus_metrics import PrometheusResult
 from tests.consts import SAMPLE_REQUEST, SUCCESSFUL_CHAT_RESPONSE
 
@@ -150,7 +150,7 @@ async def test_stream_completion_success(httpx_mock: HTTPXMock, mocker):
 	# 2. Use pytest-httpx to mock the response for the correct URL and method
 	httpx_mock.add_response(
 		method="POST",
-		url=LITELLM_COMPLETIONS_URL,
+		url=GATEWAY_COMPLETIONS_URL,
 		stream=IteratorStream(mock_chunks),
 		status_code=200,
 	)
@@ -175,7 +175,7 @@ async def test_stream_completion_success(httpx_mock: HTTPXMock, mocker):
 	assert request is not None
 	request_body = json.loads(request.content)
 	assert request_body["stream"] is True
-	assert request_body["user"] == "test-user-123"
+	assert request_body["user"] == SAMPLE_REQUEST.user
 	assert request_body["model"] == "test-model"
 
 	# 3. Verify TTFT metric was observed
