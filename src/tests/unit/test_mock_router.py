@@ -1,12 +1,17 @@
-import json
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import MagicMock, patch
 
 import jwt
 import pytest
 from fastapi import HTTPException
+from fxa.errors import TrustError
 
 from proxy.core.routers.mock.mock import verify_jwt_token_only
-from tests.consts import TEST_FXA_TOKEN, TEST_USER_ID
+from tests.consts import (
+	MOCK_FXA_USER_DATA,
+	MOCK_JWKS_RESPONSE,
+	TEST_FXA_TOKEN,
+	TEST_USER_ID,
+)
 
 
 class TestVerifyJwtTokenOnly:
@@ -39,29 +44,12 @@ class TestVerifyJwtTokenOnly:
 	@patch("proxy.core.routers.mock.mock.fxa_client")
 	def test_successful_jwt_verification(self, mock_fxa_client):
 		"""Test successful JWT verification with valid token."""
-		mock_jwks_response = {
-			"keys": [
-				{
-					"kty": "RSA",
-					"kid": "test-key-id",
-					"use": "sig",
-					"n": "test-n",
-					"e": "AQAB",
-				}
-			]
-		}
 
 		mock_api_client = MagicMock()
-		mock_api_client.get.return_value = mock_jwks_response
+		mock_api_client.get.return_value = MOCK_JWKS_RESPONSE
 		mock_fxa_client.apiclient = mock_api_client
 
-		expected_result = {
-			"user": TEST_USER_ID,
-			"client_id": "test-client-id",
-			"scope": ["profile"],
-			"generation": 1,
-			"profile_changed_at": 1234567890,
-		}
+		expected_result = MOCK_FXA_USER_DATA
 		mock_fxa_client._verify_jwt_token.return_value = expected_result
 
 		result = verify_jwt_token_only(f"Bearer {TEST_FXA_TOKEN}")
@@ -139,20 +127,9 @@ class TestVerifyJwtTokenOnly:
 	@patch("proxy.core.routers.mock.mock.fxa_client")
 	def test_jwt_verification_expired_token(self, mock_fxa_client):
 		"""Test JWT verification with expired token."""
-		mock_jwks_response = {
-			"keys": [
-				{
-					"kty": "RSA",
-					"kid": "test-key-id",
-					"use": "sig",
-					"n": "test-n",
-					"e": "AQAB",
-				}
-			]
-		}
 
 		mock_api_client = MagicMock()
-		mock_api_client.get.return_value = mock_jwks_response
+		mock_api_client.get.return_value = MOCK_JWKS_RESPONSE
 		mock_fxa_client.apiclient = mock_api_client
 
 		mock_fxa_client._verify_jwt_token.side_effect = (
@@ -168,20 +145,9 @@ class TestVerifyJwtTokenOnly:
 	@patch("proxy.core.routers.mock.mock.fxa_client")
 	def test_jwt_verification_malformed_token(self, mock_fxa_client):
 		"""Test JWT verification with malformed token."""
-		mock_jwks_response = {
-			"keys": [
-				{
-					"kty": "RSA",
-					"kid": "test-key-id",
-					"use": "sig",
-					"n": "test-n",
-					"e": "AQAB",
-				}
-			]
-		}
 
 		mock_api_client = MagicMock()
-		mock_api_client.get.return_value = mock_jwks_response
+		mock_api_client.get.return_value = MOCK_JWKS_RESPONSE
 		mock_fxa_client.apiclient = mock_api_client
 
 		# Mock JWT verification failure due to malformed token
@@ -198,23 +164,10 @@ class TestVerifyJwtTokenOnly:
 	@patch("proxy.core.routers.mock.mock.fxa_client")
 	def test_jwt_verification_trust_error(self, mock_fxa_client):
 		"""Test JWT verification with TrustError."""
-		mock_jwks_response = {
-			"keys": [
-				{
-					"kty": "RSA",
-					"kid": "test-key-id",
-					"use": "sig",
-					"n": "test-n",
-					"e": "AQAB",
-				}
-			]
-		}
 
 		mock_api_client = MagicMock()
-		mock_api_client.get.return_value = mock_jwks_response
+		mock_api_client.get.return_value = MOCK_JWKS_RESPONSE
 		mock_fxa_client.apiclient = mock_api_client
-
-		from fxa.errors import TrustError
 
 		mock_fxa_client._verify_jwt_token.side_effect = TrustError(
 			"Token trust validation failed"

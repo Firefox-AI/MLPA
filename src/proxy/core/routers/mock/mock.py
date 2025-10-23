@@ -1,6 +1,5 @@
 import asyncio
 import json
-import os
 from typing import Annotated, Optional
 
 import jwt
@@ -8,6 +7,8 @@ from fastapi import APIRouter, Depends, Header, HTTPException
 from fastapi.responses import StreamingResponse
 from fxa.errors import TrustError
 from fxa.oauth import Client
+
+from tests.consts import MOCK_CHAT_RESPONSE, MOCK_STREAMING_CHUNKS
 
 from ...auth.fxa_auth import authorize_request
 from ...classes import AuthorizedChatRequest, ChatRequest
@@ -68,6 +69,12 @@ def verify_jwt_token_only(x_fxa_authorization: Annotated[str | None, Header()]):
 		)
 
 
+async def mock_stream():
+	for chunk_index in range(len(MOCK_STREAMING_CHUNKS)):
+		yield MOCK_STREAMING_CHUNKS[chunk_index]
+		await asyncio.sleep(env.MOCK_STREAMING_CHUNK_LATENCY_MS / 1000)
+
+
 @router.post(
 	"/chat/completions", description="Mock LiteLLM endpoint with simulated latency."
 )
@@ -87,25 +94,12 @@ async def chat_completion(
 	if user.get("blocked"):
 		raise HTTPException(status_code=403, detail={"error": "User is blocked."})
 
-	latency_ms = int(os.getenv("MOCK_LATENCY_MS", "200"))
-	await asyncio.sleep(latency_ms / 1000)
+	await asyncio.sleep(env.MOCK_TTFT_MS / 1000)
 
 	if authorized_chat_request.stream:
-
-		async def mock_stream():
-			yield 'data: {"choices":[{"delta":{"content":"mock token 1"}}]}\n\n'
-			await asyncio.sleep(0.05)
-			yield 'data: {"choices":[{"delta":{"content":"mock token 2"}}]}\n\n'
-			await asyncio.sleep(0.05)
-			yield "data: [DONE]\n\n"
-
 		return StreamingResponse(mock_stream(), media_type="text/event-stream")
 
-	return {
-		"choices": [{"message": {"content": "mock completion response"}}],
-		"usage": {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15},
-		"model": "mock-gpt",
-	}
+	return MOCK_CHAT_RESPONSE
 
 
 @router.post(
@@ -127,22 +121,9 @@ async def chat_completion_no_auth(
 	if user.get("blocked"):
 		raise HTTPException(status_code=403, detail={"error": "User is blocked."})
 
-	latency_ms = int(os.getenv("MOCK_LATENCY_MS", "200"))
-	await asyncio.sleep(latency_ms / 1000)
+	await asyncio.sleep(env.MOCK_TTFT_MS / 1000)
 
 	if chat_request.stream:
-
-		async def mock_stream():
-			yield 'data: {"choices":[{"delta":{"content":"mock token 1"}}]}\n\n'
-			await asyncio.sleep(0.05)
-			yield 'data: {"choices":[{"delta":{"content":"mock token 2"}}]}\n\n'
-			await asyncio.sleep(0.05)
-			yield "data: [DONE]\n\n"
-
 		return StreamingResponse(mock_stream(), media_type="text/event-stream")
 
-	return {
-		"choices": [{"message": {"content": "mock completion response"}}],
-		"usage": {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15},
-		"model": "mock-gpt",
-	}
+	return MOCK_CHAT_RESPONSE

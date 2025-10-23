@@ -14,8 +14,10 @@ SAMPLE_REQUEST = AuthorizedChatRequest(
 	max_completion_tokens=150,
 )
 
+MOCK_MODEL_NAME = "mock-gpt"
+
 SAMPLE_CHAT_REQUEST = ChatRequest(
-	model="mock-gpt",
+	model=MOCK_MODEL_NAME,
 	messages=[{"role": "user", "content": "Hello"}],
 	temperature=0.7,
 	top_p=0.9,

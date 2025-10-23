@@ -1,8 +1,15 @@
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pytest
+from tests.consts import (
+	MOCK_FXA_USER_DATA,
+	MOCK_JWKS_RESPONSE,
+	MOCK_MODEL_NAME,
+	SAMPLE_CHAT_REQUEST,
+	TEST_FXA_TOKEN,
+	TEST_USER_ID,
+)
 
-from tests.consts import SUCCESSFUL_CHAT_RESPONSE, TEST_FXA_TOKEN, TEST_USER_ID
+sample_chat_request = SAMPLE_CHAT_REQUEST.model_dump()
 
 
 class TestMockRouterIntegration:
@@ -13,13 +20,7 @@ class TestMockRouterIntegration:
 		response = mocked_client_integration.post(
 			"/mock/chat/completions",
 			headers={"x-fxa-authorization": f"Bearer {TEST_FXA_TOKEN}"},
-			json={
-				"model": "mock-gpt",
-				"messages": [{"role": "user", "content": "Hello"}],
-				"temperature": 0.7,
-				"top_p": 0.9,
-				"max_completion_tokens": 150,
-			},
+			json=sample_chat_request,
 		)
 
 		assert response.status_code == 200
@@ -28,7 +29,7 @@ class TestMockRouterIntegration:
 			response_data["choices"][0]["message"]["content"]
 			== "mock completion response"
 		)
-		assert response_data["model"] == "mock-gpt"
+		assert response_data["model"] == MOCK_MODEL_NAME
 		assert response_data["usage"]["prompt_tokens"] == 10
 		assert response_data["usage"]["completion_tokens"] == 5
 		assert response_data["usage"]["total_tokens"] == 15
@@ -39,8 +40,7 @@ class TestMockRouterIntegration:
 			"/mock/chat/completions",
 			headers={"x-fxa-authorization": f"Bearer {TEST_FXA_TOKEN}"},
 			json={
-				"model": "mock-gpt",
-				"messages": [{"role": "user", "content": "Hello"}],
+				**sample_chat_request,
 				"stream": True,
 			},
 		)
@@ -57,10 +57,7 @@ class TestMockRouterIntegration:
 		"""Test /mock/chat/completions endpoint with missing authentication."""
 		response = mocked_client_integration.post(
 			"/mock/chat/completions",
-			json={
-				"model": "mock-gpt",
-				"messages": [{"role": "user", "content": "Hello"}],
-			},
+			json=sample_chat_request,
 		)
 
 		assert response.status_code == 401
@@ -72,7 +69,7 @@ class TestMockRouterIntegration:
 			"/mock/chat/completions",
 			headers={"x-fxa-authorization": "Bearer invalid-token"},
 			json={
-				"model": "mock-gpt",
+				"model": MOCK_MODEL_NAME,
 				"messages": [{"role": "user", "content": "Hello"}],
 			},
 		)
@@ -82,38 +79,16 @@ class TestMockRouterIntegration:
 	def test_mock_chat_completions_no_auth_success(self, mocked_client_integration):
 		"""Test successful request to /mock/chat/completions_no_auth endpoint."""
 		with patch("proxy.core.routers.mock.mock.fxa_client") as mock_fxa_client:
-			mock_jwks_response = {
-				"keys": [
-					{
-						"kty": "RSA",
-						"kid": "test-key-id",
-						"use": "sig",
-						"n": "test-n",
-						"e": "AQAB",
-					}
-				]
-			}
-
 			mock_api_client = MagicMock()
-			mock_api_client.get.return_value = mock_jwks_response
+			mock_api_client.get.return_value = MOCK_JWKS_RESPONSE
 			mock_fxa_client.apiclient = mock_api_client
 
-			mock_fxa_client._verify_jwt_token.return_value = {
-				"user": TEST_USER_ID,
-				"client_id": "test-client-id",
-				"scope": ["profile"],
-			}
+			mock_fxa_client._verify_jwt_token.return_value = MOCK_FXA_USER_DATA
 
 			response = mocked_client_integration.post(
 				"/mock/chat/completions_no_auth",
 				headers={"x-fxa-authorization": f"Bearer {TEST_FXA_TOKEN}"},
-				json={
-					"model": "mock-gpt",
-					"messages": [{"role": "user", "content": "Hello"}],
-					"temperature": 0.7,
-					"top_p": 0.9,
-					"max_completion_tokens": 150,
-				},
+				json=sample_chat_request,
 			)
 
 			assert response.status_code == 200
@@ -122,7 +97,7 @@ class TestMockRouterIntegration:
 				response_data["choices"][0]["message"]["content"]
 				== "mock completion response"
 			)
-			assert response_data["model"] == "mock-gpt"
+			assert response_data["model"] == MOCK_MODEL_NAME
 			assert response_data["usage"]["prompt_tokens"] == 10
 			assert response_data["usage"]["completion_tokens"] == 5
 			assert response_data["usage"]["total_tokens"] == 15
@@ -130,33 +105,17 @@ class TestMockRouterIntegration:
 	def test_mock_chat_completions_no_auth_streaming(self, mocked_client_integration):
 		"""Test streaming request to /mock/chat/completions_no_auth endpoint."""
 		with patch("proxy.core.routers.mock.mock.fxa_client") as mock_fxa_client:
-			mock_jwks_response = {
-				"keys": [
-					{
-						"kty": "RSA",
-						"kid": "test-key-id",
-						"use": "sig",
-						"n": "test-n",
-						"e": "AQAB",
-					}
-				]
-			}
-
 			mock_api_client = MagicMock()
-			mock_api_client.get.return_value = mock_jwks_response
+			mock_api_client.get.return_value = MOCK_JWKS_RESPONSE
 			mock_fxa_client.apiclient = mock_api_client
 
-			mock_fxa_client._verify_jwt_token.return_value = {
-				"user": TEST_USER_ID,
-				"client_id": "test-client-id",
-				"scope": ["profile"],
-			}
+			mock_fxa_client._verify_jwt_token.return_value = MOCK_FXA_USER_DATA
 
 			response = mocked_client_integration.post(
 				"/mock/chat/completions_no_auth",
 				headers={"x-fxa-authorization": f"Bearer {TEST_FXA_TOKEN}"},
 				json={
-					"model": "mock-gpt",
+					"model": MOCK_MODEL_NAME,
 					"messages": [{"role": "user", "content": "Hello"}],
 					"stream": True,
 				},
@@ -176,10 +135,7 @@ class TestMockRouterIntegration:
 		"""Test /mock/chat/completions_no_auth endpoint with missing authorization header."""
 		response = mocked_client_integration.post(
 			"/mock/chat/completions_no_auth",
-			json={
-				"model": "mock-gpt",
-				"messages": [{"role": "user", "content": "Hello"}],
-			},
+			json=sample_chat_request,
 		)
 
 		assert response.status_code == 422
@@ -189,20 +145,8 @@ class TestMockRouterIntegration:
 	):
 		"""Test /mock/chat/completions_no_auth endpoint with invalid JWT token."""
 		with patch("proxy.core.routers.mock.mock.fxa_client") as mock_fxa_client:
-			mock_jwks_response = {
-				"keys": [
-					{
-						"kty": "RSA",
-						"kid": "test-key-id",
-						"use": "sig",
-						"n": "test-n",
-						"e": "AQAB",
-					}
-				]
-			}
-
 			mock_api_client = MagicMock()
-			mock_api_client.get.return_value = mock_jwks_response
+			mock_api_client.get.return_value = MOCK_JWKS_RESPONSE
 			mock_fxa_client.apiclient = mock_api_client
 
 			import jwt
@@ -215,7 +159,7 @@ class TestMockRouterIntegration:
 				"/mock/chat/completions_no_auth",
 				headers={"x-fxa-authorization": "Bearer invalid-token"},
 				json={
-					"model": "mock-gpt",
+					"model": MOCK_MODEL_NAME,
 					"messages": [{"role": "user", "content": "Hello"}],
 				},
 			)
@@ -231,20 +175,8 @@ class TestMockRouterIntegration:
 	):
 		"""Test /mock/chat/completions_no_auth endpoint with invalid token signature."""
 		with patch("proxy.core.routers.mock.mock.fxa_client") as mock_fxa_client:
-			mock_jwks_response = {
-				"keys": [
-					{
-						"kty": "RSA",
-						"kid": "test-key-id",
-						"use": "sig",
-						"n": "test-n",
-						"e": "AQAB",
-					}
-				]
-			}
-
 			mock_api_client = MagicMock()
-			mock_api_client.get.return_value = mock_jwks_response
+			mock_api_client.get.return_value = MOCK_JWKS_RESPONSE
 			mock_fxa_client.apiclient = mock_api_client
 
 			import jwt
@@ -257,7 +189,7 @@ class TestMockRouterIntegration:
 				"/mock/chat/completions_no_auth",
 				headers={"x-fxa-authorization": "Bearer invalid-signature-token"},
 				json={
-					"model": "mock-gpt",
+					"model": MOCK_MODEL_NAME,
 					"messages": [{"role": "user", "content": "Hello"}],
 				},
 			)
@@ -270,20 +202,8 @@ class TestMockRouterIntegration:
 	):
 		"""Test /mock/chat/completions_no_auth endpoint when JWT token doesn't contain user."""
 		with patch("proxy.core.routers.mock.mock.fxa_client") as mock_fxa_client:
-			mock_jwks_response = {
-				"keys": [
-					{
-						"kty": "RSA",
-						"kid": "test-key-id",
-						"use": "sig",
-						"n": "test-n",
-						"e": "AQAB",
-					}
-				]
-			}
-
 			mock_api_client = MagicMock()
-			mock_api_client.get.return_value = mock_jwks_response
+			mock_api_client.get.return_value = MOCK_JWKS_RESPONSE
 			mock_fxa_client.apiclient = mock_api_client
 
 			mock_fxa_client._verify_jwt_token.return_value = {
@@ -295,7 +215,7 @@ class TestMockRouterIntegration:
 				"/mock/chat/completions_no_auth",
 				headers={"x-fxa-authorization": f"Bearer {TEST_FXA_TOKEN}"},
 				json={
-					"model": "mock-gpt",
+					"model": MOCK_MODEL_NAME,
 					"messages": [{"role": "user", "content": "Hello"}],
 				},
 			)
@@ -308,20 +228,8 @@ class TestMockRouterIntegration:
 	):
 		"""Test /mock/chat/completions_no_auth endpoint with blocked user."""
 		with patch("proxy.core.routers.mock.mock.fxa_client") as mock_fxa_client:
-			mock_jwks_response = {
-				"keys": [
-					{
-						"kty": "RSA",
-						"kid": "test-key-id",
-						"use": "sig",
-						"n": "test-n",
-						"e": "AQAB",
-					}
-				]
-			}
-
 			mock_api_client = MagicMock()
-			mock_api_client.get.return_value = mock_jwks_response
+			mock_api_client.get.return_value = MOCK_JWKS_RESPONSE
 			mock_fxa_client.apiclient = mock_api_client
 
 			mock_fxa_client._verify_jwt_token.return_value = {
@@ -343,7 +251,7 @@ class TestMockRouterIntegration:
 					"/mock/chat/completions_no_auth",
 					headers={"x-fxa-authorization": f"Bearer {TEST_FXA_TOKEN}"},
 					json={
-						"model": "mock-gpt",
+						"model": MOCK_MODEL_NAME,
 						"messages": [{"role": "user", "content": "Hello"}],
 					},
 				)
@@ -356,20 +264,8 @@ class TestMockRouterIntegration:
 		import time
 
 		with patch("proxy.core.routers.mock.mock.fxa_client") as mock_fxa_client:
-			mock_jwks_response = {
-				"keys": [
-					{
-						"kty": "RSA",
-						"kid": "test-key-id",
-						"use": "sig",
-						"n": "test-n",
-						"e": "AQAB",
-					}
-				]
-			}
-
 			mock_api_client = MagicMock()
-			mock_api_client.get.return_value = mock_jwks_response
+			mock_api_client.get.return_value = MOCK_JWKS_RESPONSE
 			mock_fxa_client.apiclient = mock_api_client
 
 			mock_fxa_client._verify_jwt_token.return_value = {
@@ -384,7 +280,7 @@ class TestMockRouterIntegration:
 					"/mock/chat/completions_no_auth",
 					headers={"x-fxa-authorization": f"Bearer {TEST_FXA_TOKEN}"},
 					json={
-						"model": "mock-gpt",
+						"model": MOCK_MODEL_NAME,
 						"messages": [{"role": "user", "content": "Hello"}],
 					},
 				)
