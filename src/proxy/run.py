@@ -1,22 +1,23 @@
-import asyncio
 import time
 from contextlib import asynccontextmanager
 from typing import Annotated, Optional
 
 import sentry_sdk
 import uvicorn
-from fastapi import Depends, FastAPI, Header, HTTPException, Request, Response
+from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.responses import StreamingResponse
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
-from .core.classes import AssertionRequest, AuthorizedChatRequest, ChatRequest
+from .core.auth.fxa_auth import authorize_request
+from .core.classes import AuthorizedChatRequest
 from .core.completions import get_completion, stream_completion
 from .core.config import env
 from .core.pg_services.services import app_attest_pg, litellm_pg
 from .core.prometheus_metrics import metrics
-from .core.routers.appattest import app_attest_auth, appattest_router
-from .core.routers.fxa import fxa_auth, fxa_router
+from .core.routers.appattest import appattest_router
+from .core.routers.fxa import fxa_router
 from .core.routers.health import health_router
+from .core.routers.mock import mock_router
 from .core.routers.user import user_router
 from .core.utils import get_or_create_user
 
@@ -29,35 +30,6 @@ tags_metadata = [
 	},
 	{"name": "LiteLLM", "description": "Endpoints for interacting with LiteLLM."},
 ]
-
-
-async def authorize(
-	chat_request: AssertionRequest | ChatRequest,
-	x_fxa_authorization: Annotated[str | None, Header()] = None,
-) -> AuthorizedChatRequest:
-	if isinstance(chat_request, AssertionRequest):
-		data = await app_attest_auth(chat_request)
-		if data:
-			if data.get("error"):
-				raise HTTPException(status_code=400, detail=data["error"])
-			return AuthorizedChatRequest(
-				user=chat_request.key_id,  # "user" is key_id for app attest
-				**chat_request.model_dump(
-					exclude={"key_id", "challenge_b64", "assertion_obj_b64"}
-				),
-			)
-	if x_fxa_authorization:
-		fxa_user_id = fxa_auth(x_fxa_authorization)
-		if fxa_user_id:
-			if fxa_user_id.get("error"):
-				raise HTTPException(status_code=401, detail=fxa_user_id["error"])
-			return AuthorizedChatRequest(
-				user=fxa_user_id["user"],
-				**chat_request.model_dump(),
-			)
-	raise HTTPException(
-		status_code=401, detail="Please authenticate with App Attest or FxA."
-	)
 
 
 @asynccontextmanager
@@ -115,6 +87,7 @@ app.include_router(health_router, prefix="/health")
 app.include_router(appattest_router, prefix="/verify")
 app.include_router(fxa_router, prefix="/fxa")
 app.include_router(user_router, prefix="/user")
+app.include_router(mock_router, prefix="/mock")
 
 
 @app.post(
@@ -124,7 +97,7 @@ app.include_router(user_router, prefix="/user")
 )
 async def chat_completion(
 	authorized_chat_request: Annotated[
-		Optional[AuthorizedChatRequest], Depends(authorize)
+		Optional[AuthorizedChatRequest], Depends(authorize_request)
 	],
 ):
 	user_id = authorized_chat_request.user
@@ -144,46 +117,6 @@ async def chat_completion(
 		)
 	else:
 		return await get_completion(authorized_chat_request)
-
-
-@app.post(
-	"/v1/chat/mock_completions",
-	tags=["LiteLLM"],
-	description="This endpoints mocks calling LiteLLM. Authorize first using App Attest or FxA. Either pass the x-fxa-authorization header or include the `{key_id, challenge, and assertion_obj}` in the request body for app attest authorization. `payload` is always required and contains the prompt.",
-)
-async def mock_chat_completion(
-	authorized_chat_request: Annotated[
-		Optional[AuthorizedChatRequest], Depends(authorize)
-	],
-):
-	user_id = authorized_chat_request.user
-	if not user_id:
-		raise HTTPException(
-			status_code=400,
-			detail={"error": "User not found from authorization response."},
-		)
-	user, _ = await get_or_create_user(user_id)
-	if user.get("blocked"):
-		raise HTTPException(status_code=403, detail={"error": "User is blocked."})
-
-	# sleep for 1 second
-	await asyncio.sleep(1)
-	if authorized_chat_request.stream:
-
-		async def mock_stream():
-			yield 'data: {"choices": [{"delta": {"content": "mock token 1"}}]}\n\n'
-			await asyncio.sleep(0.1)
-			yield 'data: {"choices": [{"delta": {"content": "mock token 2"}}]}\n\n'
-			await asyncio.sleep(0.1)
-			yield "data: [DONE]\n\n"
-
-		return StreamingResponse(mock_stream(), media_type="text/event-stream")
-	else:
-		return {
-			"choices": [{"message": {"content": "mock completion response"}}],
-			"usage": {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15},
-			"model": "mock-gpt",
-		}
 
 
 def main():
