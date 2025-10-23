@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - feat-use-llm-proxy-prod-artifact-registry
 
 env:
   COMPOSE_FILE: ./mlpa_docker_compose.yaml
