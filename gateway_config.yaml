@@ -1,25 +1,12 @@
-# any-llm Gateway Configuration for MLPA
-
-# Database connection URL (set via environment variable)
 database_url: "${DATABASE_URL}"
 
-# Server configuration
 host: "0.0.0.0"
 port: 8000
 
 # Master key for protecting key management endpoints (set via environment variable)
 master_key: "${GATEWAY_MASTER_KEY}"
 
-# Pre-configured provider credentials
 providers:
-  openai:
-    api_key: "${OPENAI_API_KEY}"
-  anthropic:
-    api_key: "${ANTHROPIC_API_KEY}"
-  gemini:
-    api_key: "${GEMINI_API_KEY}"
-  mistral:
-    api_key: "${MISTRAL_API_KEY}"
   # Vertex AI configuration (for Google Cloud)
   vertexai:
     credentials: "/app/service_account.json"  # Path to service account JSON file
