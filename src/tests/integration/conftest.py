@@ -55,6 +55,12 @@ def mocked_client_integration(mocker):
 		),
 	)
 	mocker.patch(
+		"proxy.core.routers.mock.mock.get_or_create_user",
+		lambda *args, **kwargs: mock_get_or_create_user(
+			mock_litellm_pg, *args, **kwargs
+		),
+	)
+	mocker.patch(
 		"proxy.run.get_completion",
 		side_effect=mock_get_completion,
 	)

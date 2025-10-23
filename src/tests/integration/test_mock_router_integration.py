@@ -1,4 +1,4 @@
-from unittest.mock import MagicMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -361,7 +361,8 @@ class TestMockRouterIntegration:
 
 			# Mock get_or_create_user to return a blocked user
 			with patch(
-				"proxy.core.routers.mock.mock.get_or_create_user"
+				"proxy.core.routers.mock.mock.get_or_create_user",
+				new_callable=AsyncMock,
 			) as mock_get_user:
 				mock_get_user.return_value = (
 					{"user_id": "blocked-user-id", "blocked": True},
