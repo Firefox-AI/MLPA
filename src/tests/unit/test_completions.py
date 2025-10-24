@@ -12,7 +12,6 @@ from proxy.core.prometheus_metrics import PrometheusResult
 from tests.consts import SAMPLE_REQUEST, SUCCESSFUL_CHAT_RESPONSE
 
 
-@pytest.mark.asyncio
 async def test_get_completion_success(mocker):
 	"""
 	Tests the successful execution path of get_completion.
@@ -72,7 +71,6 @@ async def test_get_completion_success(mocker):
 	assert result_data == SUCCESSFUL_CHAT_RESPONSE
 
 
-@pytest.mark.asyncio
 async def test_get_completion_http_error(mocker):
 	"""
 	Tests that an HTTPException is raised when the downstream API returns an error.
@@ -108,7 +106,6 @@ async def test_get_completion_http_error(mocker):
 	mock_metrics.chat_tokens.labels.assert_not_called()
 
 
-@pytest.mark.asyncio
 async def test_get_completion_network_error(mocker):
 	"""
 	Tests that an HTTPException is raised on a network-level error (e.g., timeout).
@@ -136,7 +133,6 @@ async def test_get_completion_network_error(mocker):
 	mock_metrics.chat_completion_latency.labels().observe.assert_called_once()
 
 
-@pytest.mark.asyncio
 async def test_stream_completion_success(httpx_mock: HTTPXMock, mocker):
 	"""
 	Tests the successful execution of a streaming request using pytest-httpx.

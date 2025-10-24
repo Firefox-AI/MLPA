@@ -70,3 +70,6 @@ indent-style = "tab"
 
 [tool.ruff.lint]
 select = ["I"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"

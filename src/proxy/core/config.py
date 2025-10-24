@@ -35,6 +35,12 @@ class Env(BaseSettings):
 	# Sentry
 	SENTRY_DSN: str = ""
 
+	# Mock settings
+	MOCK_TTFT_MS: int = 200  # time to first token
+	MOCK_STREAMING_CHUNK_LATENCY_MS: int = (
+		50  # latency between streaming chunks (50 corresponds to ~20 stream chunks/sec)
+	)
+
 	model_config = ConfigDict(env_file=".env")
 
 

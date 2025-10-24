@@ -4,6 +4,7 @@ from fastapi.testclient import TestClient
 from proxy import run as main_app
 from tests.mocks import (
 	MockAppAttestPGService,
+	MockFxAClientForMockRouter,
 	MockFxAService,
 	MockLiteLLMPGService,
 	mock_get_completion,
@@ -22,6 +23,9 @@ def mocked_client_integration(mocker):
 	mock_fxa_client = MockFxAService(
 		"test-client-id", "test-client-secret", "https://test-fxa.com"
 	)
+	mock_fxa_client_for_mock_router = MockFxAClientForMockRouter(
+		"test-client-id", "test-client-secret", "https://test-fxa.com"
+	)
 
 	mocker.patch("proxy.run.app_attest_pg", mock_app_attest_pg)
 	mocker.patch(
@@ -35,6 +39,9 @@ def mocked_client_integration(mocker):
 	mocker.patch("proxy.core.routers.health.health.litellm_pg", mock_litellm_pg)
 
 	mocker.patch("proxy.core.routers.fxa.fxa.client", mock_fxa_client)
+	mocker.patch(
+		"proxy.core.routers.mock.mock.fxa_client", mock_fxa_client_for_mock_router
+	)
 
 	mocker.patch(
 		"proxy.core.routers.appattest.middleware.verify_assert",
@@ -43,6 +50,12 @@ def mocked_client_integration(mocker):
 
 	mocker.patch(
 		"proxy.run.get_or_create_user",
+		lambda *args, **kwargs: mock_get_or_create_user(
+			mock_litellm_pg, *args, **kwargs
+		),
+	)
+	mocker.patch(
+		"proxy.core.routers.mock.mock.get_or_create_user",
 		lambda *args, **kwargs: mock_get_or_create_user(
 			mock_litellm_pg, *args, **kwargs
 		),

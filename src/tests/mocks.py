@@ -1,7 +1,14 @@
 from datetime import datetime
+from unittest.mock import MagicMock
 
 from proxy.core.classes import AuthorizedChatRequest, ChatRequest
-from tests.consts import SUCCESSFUL_CHAT_RESPONSE, TEST_FXA_TOKEN, TEST_USER_ID
+from tests.consts import (
+	MOCK_FXA_USER_DATA,
+	MOCK_JWKS_RESPONSE,
+	SUCCESSFUL_CHAT_RESPONSE,
+	TEST_FXA_TOKEN,
+	TEST_USER_ID,
+)
 
 
 async def mock_app_attest_auth(request):
@@ -104,3 +111,34 @@ class MockFxAService:
 		if token == TEST_FXA_TOKEN:
 			return {"user": TEST_USER_ID}
 		return {"error": "Invalid token"}
+
+
+class MockFxAClientForMockRouter:
+	"""Mock FxA client specifically for the mock router's JWT verification."""
+
+	def __init__(self, client_id: str, client_secret: str, fxa_url: str):
+		self.client_id = client_id
+		self.client_secret = client_secret
+		self.fxa_url = fxa_url
+		self.apiclient = MagicMock()
+
+		self.apiclient.get.return_value = MOCK_JWKS_RESPONSE
+
+		self._verify_jwt_token = MagicMock()
+		self._verify_jwt_token.return_value = MOCK_FXA_USER_DATA
+
+	def set_jwt_verification_result(self, result):
+		"""Set the result that _verify_jwt_token should return."""
+		self._verify_jwt_token.return_value = result
+
+	def set_jwt_verification_exception(self, exception):
+		"""Set an exception that _verify_jwt_token should raise."""
+		self._verify_jwt_token.side_effect = exception
+
+	def set_jwks_response(self, response):
+		"""Set the JWKS response that apiclient.get should return."""
+		self.apiclient.get.return_value = response
+
+	def set_api_exception(self, exception):
+		"""Set an exception that apiclient.get should raise."""
+		self.apiclient.get.side_effect = exception
