@@ -26,6 +26,9 @@ jobs:
           "$GITHUB_REF_NAME" \
           "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY" \
           "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" > version.json
+      - name: Debug GCP Variables
+        run: |
+          echo "GCPV2_WORKLOAD_IDENTITY_POOL_PROJECT_NUMBER: ${{ vars.GCPV2_WORKLOAD_IDENTITY_POOL_PROJECT_NUMBER }}"
       - name: Build and Tag Container Image
         id: build
         uses: mozilla/deploy-actions/docker-build@e937a559f998239beb7b69ee47200ecf2b9d28c0 # v5.2.0
