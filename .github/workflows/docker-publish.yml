@@ -28,7 +28,7 @@ jobs:
           "$GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" > version.json
       - name: Debug GCP Variables
         run: |
-          echo "GCPV2_WORKLOAD_IDENTITY_POOL_PROJECT_NUMBER: ${{ vars.GCPV2_WORKLOAD_IDENTITY_POOL_PROJECT_NUMBER }}"
+          echo "GCPV2_WORKLOAD_IDENTITY_POOL_PROJECT_NUMBER: ${{ secrets.GCPV2_WORKLOAD_IDENTITY_POOL_PROJECT_NUMBER }}"
       - name: Build and Tag Container Image
         id: build
         uses: mozilla/deploy-actions/docker-build@e937a559f998239beb7b69ee47200ecf2b9d28c0 # v5.2.0
@@ -42,4 +42,4 @@ jobs:
         with:
           image_tags: ${{ steps.build.outputs.image_tags }}
           project_id: ${{ secrets.GCP_PROJECT_ID }}
-          workload_identity_pool_project_number: ${{ vars.GCPV2_WORKLOAD_IDENTITY_POOL_PROJECT_NUMBER }}
+          workload_identity_pool_project_number: ${{ secrets.GCPV2_WORKLOAD_IDENTITY_POOL_PROJECT_NUMBER }}
