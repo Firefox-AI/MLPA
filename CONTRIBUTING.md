@@ -27,29 +27,33 @@ Ensure all tests pass: `pytest -v`
 
 1. Use `litellm_docker_compose.yaml` to start LiteLLM and Postgres locally:
 
-  ```bash
-  docker compose -f litellm_docker_compose.yaml up -d
-  ```
+```bash
+docker compose -f litellm_docker_compose.yaml up -d
+```
 
 or if you are using legacy docker-compose:
 
-  ```bash
-  docker-compose -f litellm_docker_compose.yaml up -d
-  ```
+```bash
+docker-compose -f litellm_docker_compose.yaml up -d
+```
 
-2. Create a second database that is needed for authentication
+2. Create a second database that is needed for authentication, and apply migrations
 
-  ```bash
-  bash scripts/create-app-attest-database.sh
-  ```
+```bash
+bash scripts/create-app-attest-database.sh
+```
+
+```bash
+alembic upgrade head
+```
 
 LiteLLM will be accessible at `localhost:4000` and `localhost:4000/ui`.
 
 3. Run MLPA with
 
-  ```bash
-  mlpa
-  ```
+```bash
+mlpa
+```
 
 4. Stop the service with
 
@@ -75,19 +79,19 @@ curl --location 'http://0.0.0.0:8080/health/readiness' \
 
 1. MLPA completion:
 
-  ```bash
-  curl --location 'http://0.0.0.0:8080/v1/chat/completions' \
-  --header 'Content-Type: application/json' \
-  --header 'x-fxa-authorization: Bearer {YOUR_MOZILLA_FXA_TOKEN}' \
-  --header 'X-LiteLLM-Key: Bearer {MASTER_KEY}' \
-  --data '{
-   "model": "openai/gpt-4o",
-    "messages": [{
-       "role": "user",
-       "content": "Hello!"
-     }]
-  }'
-  ```
+```bash
+curl --location 'http://0.0.0.0:8080/v1/chat/completions' \
+--header 'Content-Type: application/json' \
+--header 'x-fxa-authorization: Bearer {YOUR_MOZILLA_FXA_TOKEN}' \
+--header 'X-LiteLLM-Key: Bearer {MASTER_KEY}' \
+--data '{
+ "model": "openai/gpt-4o",
+  "messages": [{
+     "role": "user",
+     "content": "Hello!"
+   }]
+}'
+```
 
 1. LiteLLM liveness:
 
