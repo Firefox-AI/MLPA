@@ -18,6 +18,7 @@ from pyattest.configs.apple import AppleConfig
 from mlpa.core.config import env
 from mlpa.core.pg_services.services import app_attest_pg
 from mlpa.core.prometheus_metrics import PrometheusResult, metrics
+from mlpa.core.utils import b64decode_safe
 
 challenge_store = {}
 
@@ -28,7 +29,7 @@ root_ca_pem = root_ca.public_bytes(serialization.Encoding.PEM)
 
 async def generate_client_challenge(key_id_b64: str) -> str:
 	"""Create a unique challenge tied to a key ID"""
-	# First check if challenge already exists for key_id_b64 (relevant security measure, & they're on PRIMARY KEY key_id_b64)
+	# First check if challenge already exists for key_id (relevant security measure, & they're on PRIMARY KEY key_id_b64)
 	stored_challenge = await app_attest_pg.get_challenge(key_id_b64)
 	if (
 		not stored_challenge
@@ -63,8 +64,9 @@ async def validate_challenge(challenge: str, key_id_b64: str) -> bool:
 
 async def verify_attest(key_id_b64: str, challenge: str, attestation_obj: str):
 	start_time = time.time()
+	key_id = b64decode_safe(key_id_b64, "key_id_b64")
 	config = AppleConfig(
-		key_id_b64=key_id_b64,
+		key_id=key_id,
 		app_id=f"{env.APP_DEVELOPMENT_TEAM}.{env.APP_BUNDLE_ID}",
 		root_ca=root_ca_pem,
 		production=False,
@@ -113,7 +115,7 @@ async def verify_attest(key_id_b64: str, challenge: str, attestation_obj: str):
 			time.time() - start_time
 		)
 
-	# save public_key
+	# save public_key in b64
 	await app_attest_pg.store_key(key_id_b64, public_key_pem)
 
 	return {"status": "success"}
@@ -121,20 +123,20 @@ async def verify_attest(key_id_b64: str, challenge: str, attestation_obj: str):
 
 async def verify_assert(key_id_b64: str, assertion: str, payload: dict):
 	start_time = time.time()
+	key_id = b64decode_safe(key_id_b64, "key_id_b64")
 	payload_bytes = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
 	expected_hash = hashlib.sha256(payload_bytes).digest()
 
-	key_info = await app_attest_pg.get_key(key_id_b64)
-	if not key_info:
+	public_key_pem = await app_attest_pg.get_key(key_id_b64)
+	if not public_key_pem:
 		raise HTTPException(
 			status_code=403, detail="public key not found for key_id_b64"
 		)
 
-	public_key_pem = key_info["public_key_pem"].encode()
-	public_key_obj = serialization.load_pem_public_key(public_key_pem)
+	public_key_obj = serialization.load_pem_public_key(public_key_pem.encode())
 
 	config = AppleConfig(
-		key_id_b64=key_id_b64,
+		key_id=key_id,
 		app_id=f"{env.APP_DEVELOPMENT_TEAM}.{env.APP_BUNDLE_ID}",
 		root_ca=root_ca_pem,
 		production=False,

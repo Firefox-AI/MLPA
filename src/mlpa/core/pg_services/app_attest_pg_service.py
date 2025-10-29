@@ -41,15 +41,15 @@ class AppAttestPGService(PGService):
 			print(f"Error deleting challenge: {e}")
 
 	# Keys #
-	async def store_key(self, key_id_b64: str, public_key: str):
+	async def store_key(self, key_id_b64: str, public_key_pem: str):
 		try:
 			await self.pg.execute(
 				"""
-				INSERT INTO public_keys (key_id_b64, public_key)
+				INSERT INTO public_keys (key_id_b64, public_key_pem)
 				VALUES ($1, $2)
 				""",
 				key_id_b64,
-				public_key,
+				public_key_pem,
 			)
 		except Exception as e:
 			print(f"Error storing key: {e}")
@@ -58,13 +58,13 @@ class AppAttestPGService(PGService):
 		try:
 			record = await self.pg.fetchrow(
 				"""
-				SELECT public_key FROM public_keys
+				SELECT public_key_pem FROM public_keys
 				WHERE key_id_b64 = $1
 				""",
 				key_id_b64,
 			)
 			if record:
-				return record["public_key"]
+				return record["public_key_pem"]
 			return None
 		except Exception as e:
 			print(f"Error retrieving key: {e}")

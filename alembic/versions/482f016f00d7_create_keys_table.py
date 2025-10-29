@@ -21,7 +21,7 @@ def upgrade() -> None:
 	op.execute("""
         CREATE TABLE public_keys (
             key_id_b64 VARCHAR(255) PRIMARY KEY,
-            public_key TEXT,
+            public_key_pem TEXT,
             created_at TIMESTAMPTZ DEFAULT NOW()
         )
     """)

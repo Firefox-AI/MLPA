@@ -15,7 +15,7 @@ async def mock_app_attest_auth(request):
 	return {"username": "testuser"}
 
 
-async def mock_verify_assert(key_id_b64, assertion_obj, payload: ChatRequest):
+async def mock_verify_assert(key_id, assertion_obj, payload: ChatRequest):
 	return {"status": "success"}
 
 
