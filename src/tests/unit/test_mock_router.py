@@ -5,7 +5,7 @@ import pytest
 from fastapi import HTTPException
 from fxa.errors import TrustError
 
-from proxy.core.routers.mock.mock import verify_jwt_token_only
+from mlpa.core.routers.mock.mock import verify_jwt_token_only
 from tests.consts import (
 	MOCK_FXA_USER_DATA,
 	MOCK_JWKS_RESPONSE,
@@ -41,7 +41,7 @@ class TestVerifyJwtTokenOnly:
 		assert exc_info.value.status_code == 401
 		assert "Invalid authorization header format" in exc_info.value.detail
 
-	@patch("proxy.core.routers.mock.mock.fxa_client")
+	@patch("mlpa.core.routers.mock.mock.fxa_client")
 	def test_successful_jwt_verification(self, mock_fxa_client):
 		"""Test successful JWT verification with valid token."""
 
@@ -58,7 +58,7 @@ class TestVerifyJwtTokenOnly:
 		mock_api_client.get.assert_called_once_with("/jwks")
 		mock_fxa_client._verify_jwt_token.assert_called_once()
 
-	@patch("proxy.core.routers.mock.mock.fxa_client")
+	@patch("mlpa.core.routers.mock.mock.fxa_client")
 	def test_jwt_verification_with_multiple_keys(self, mock_fxa_client):
 		"""Test JWT verification when multiple keys are available."""
 		mock_jwks_response = {
@@ -95,7 +95,7 @@ class TestVerifyJwtTokenOnly:
 		assert result == expected_result
 		assert mock_fxa_client._verify_jwt_token.call_count == 2
 
-	@patch("proxy.core.routers.mock.mock.fxa_client")
+	@patch("mlpa.core.routers.mock.mock.fxa_client")
 	def test_jwt_verification_invalid_signature_all_keys(self, mock_fxa_client):
 		"""Test JWT verification when all keys fail signature validation."""
 		mock_jwks_response = {
@@ -124,7 +124,7 @@ class TestVerifyJwtTokenOnly:
 		assert exc_info.value.status_code == 401
 		assert "Invalid token signature" in exc_info.value.detail
 
-	@patch("proxy.core.routers.mock.mock.fxa_client")
+	@patch("mlpa.core.routers.mock.mock.fxa_client")
 	def test_jwt_verification_expired_token(self, mock_fxa_client):
 		"""Test JWT verification with expired token."""
 
@@ -142,7 +142,7 @@ class TestVerifyJwtTokenOnly:
 		assert exc_info.value.status_code == 401
 		assert "JWT verification failed: Token has expired" in exc_info.value.detail
 
-	@patch("proxy.core.routers.mock.mock.fxa_client")
+	@patch("mlpa.core.routers.mock.mock.fxa_client")
 	def test_jwt_verification_malformed_token(self, mock_fxa_client):
 		"""Test JWT verification with malformed token."""
 
@@ -161,7 +161,7 @@ class TestVerifyJwtTokenOnly:
 		assert exc_info.value.status_code == 401
 		assert "JWT verification failed: Invalid token format" in exc_info.value.detail
 
-	@patch("proxy.core.routers.mock.mock.fxa_client")
+	@patch("mlpa.core.routers.mock.mock.fxa_client")
 	def test_jwt_verification_trust_error(self, mock_fxa_client):
 		"""Test JWT verification with TrustError."""
 
@@ -181,7 +181,7 @@ class TestVerifyJwtTokenOnly:
 			"Token trust error: Token trust validation failed" in exc_info.value.detail
 		)
 
-	@patch("proxy.core.routers.mock.mock.fxa_client")
+	@patch("mlpa.core.routers.mock.mock.fxa_client")
 	def test_jwt_verification_api_error(self, mock_fxa_client):
 		"""Test JWT verification when API call fails."""
 		mock_api_client = MagicMock()
@@ -194,7 +194,7 @@ class TestVerifyJwtTokenOnly:
 		assert exc_info.value.status_code == 401
 		assert "Token verification failed: Network error" in exc_info.value.detail
 
-	@patch("proxy.core.routers.mock.mock.fxa_client")
+	@patch("mlpa.core.routers.mock.mock.fxa_client")
 	def test_jwt_verification_empty_jwks_response(self, mock_fxa_client):
 		"""Test JWT verification when JWKS response has no keys."""
 		mock_jwks_response = {"keys": []}

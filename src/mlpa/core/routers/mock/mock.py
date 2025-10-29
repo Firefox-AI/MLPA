@@ -8,10 +8,10 @@ from fastapi.responses import StreamingResponse
 from fxa.errors import TrustError
 from fxa.oauth import Client
 
-from proxy.core.auth.fxa_auth import authorize_request
-from proxy.core.classes import AuthorizedChatRequest, ChatRequest
-from proxy.core.config import env
-from proxy.core.utils import get_fxa_client, get_or_create_user
+from mlpa.core.auth.fxa_auth import authorize_request
+from mlpa.core.classes import AuthorizedChatRequest, ChatRequest
+from mlpa.core.config import env
+from mlpa.core.utils import get_fxa_client, get_or_create_user
 from tests.consts import MOCK_CHAT_RESPONSE, MOCK_STREAMING_CHUNKS
 
 router = APIRouter()

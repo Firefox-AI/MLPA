@@ -64,7 +64,7 @@ package-dir = { "" = "src" }
 where = ["src"]
 
 [project.scripts]
-mlpa = "proxy.run:main"
+mlpa = "mlpa.run:main"
 
 [tool.ruff.format]
 quote-style = "double"

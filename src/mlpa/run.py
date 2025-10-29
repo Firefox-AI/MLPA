@@ -8,18 +8,18 @@ from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.responses import StreamingResponse
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
-from proxy.core.auth.fxa_auth import authorize_request
-from proxy.core.classes import AuthorizedChatRequest
-from proxy.core.completions import get_completion, stream_completion
-from proxy.core.config import env
-from proxy.core.pg_services.services import app_attest_pg, litellm_pg
-from proxy.core.prometheus_metrics import metrics
-from proxy.core.routers.appattest import appattest_router
-from proxy.core.routers.fxa import fxa_router
-from proxy.core.routers.health import health_router
-from proxy.core.routers.mock import mock_router
-from proxy.core.routers.user import user_router
-from proxy.core.utils import get_or_create_user
+from mlpa.core.auth.fxa_auth import authorize_request
+from mlpa.core.classes import AuthorizedChatRequest
+from mlpa.core.completions import get_completion, stream_completion
+from mlpa.core.config import env
+from mlpa.core.pg_services.services import app_attest_pg, litellm_pg
+from mlpa.core.prometheus_metrics import metrics
+from mlpa.core.routers.appattest import appattest_router
+from mlpa.core.routers.fxa import fxa_router
+from mlpa.core.routers.health import health_router
+from mlpa.core.routers.mock import mock_router
+from mlpa.core.routers.user import user_router
+from mlpa.core.utils import get_or_create_user
 
 tags_metadata = [
 	{"name": "Health", "description": "Health check endpoints."},

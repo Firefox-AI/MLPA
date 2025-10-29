@@ -4,7 +4,7 @@ import httpx
 from fastapi import HTTPException
 from fxa.oauth import Client
 
-from proxy.core.config import LITELLM_HEADERS, env
+from mlpa.core.config import LITELLM_HEADERS, env
 
 
 async def get_or_create_user(user_id: str):

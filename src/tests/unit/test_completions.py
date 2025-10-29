@@ -6,9 +6,9 @@ import pytest
 from fastapi import HTTPException
 from pytest_httpx import HTTPXMock, IteratorStream
 
-from proxy.core.completions import get_completion, stream_completion
-from proxy.core.config import LITELLM_COMPLETIONS_URL
-from proxy.core.prometheus_metrics import PrometheusResult
+from mlpa.core.completions import get_completion, stream_completion
+from mlpa.core.config import LITELLM_COMPLETIONS_URL
+from mlpa.core.prometheus_metrics import PrometheusResult
 from tests.consts import SAMPLE_REQUEST, SUCCESSFUL_CHAT_RESPONSE
 
 
@@ -30,12 +30,12 @@ async def test_get_completion_success(mocker):
 	mock_client.post.return_value = mock_response
 
 	# Patch the AsyncClient class where it's used
-	mock_async_client_class = mocker.patch("proxy.core.completions.httpx.AsyncClient")
+	mock_async_client_class = mocker.patch("mlpa.core.completions.httpx.AsyncClient")
 	# Configure the mock class's context manager to return our client
 	mock_async_client_class.return_value.__aenter__.return_value = mock_client
 
 	# Mock the metrics to check if they are called
-	mock_metrics = mocker.patch("proxy.core.completions.metrics")
+	mock_metrics = mocker.patch("mlpa.core.completions.metrics")
 
 	# Act: Call the function under test
 	result_data = await get_completion(SAMPLE_REQUEST)
@@ -83,10 +83,10 @@ async def test_get_completion_http_error(mocker):
 
 	mock_client = AsyncMock()
 	mock_client.post.return_value = mock_response
-	mock_async_client_class = mocker.patch("proxy.core.completions.httpx.AsyncClient")
+	mock_async_client_class = mocker.patch("mlpa.core.completions.httpx.AsyncClient")
 	mock_async_client_class.return_value.__aenter__.return_value = mock_client
 
-	mock_metrics = mocker.patch("proxy.core.completions.metrics")
+	mock_metrics = mocker.patch("mlpa.core.completions.metrics")
 
 	# Act & Assert: Expect an HTTPException to be raised
 	with pytest.raises(HTTPException) as exc_info:
@@ -113,10 +113,10 @@ async def test_get_completion_network_error(mocker):
 	# Arrange: Mock httpx to raise a network error
 	mock_client = AsyncMock()
 	mock_client.post.side_effect = httpx.TimeoutException("Connection timed out")
-	mock_async_client_class = mocker.patch("proxy.core.completions.httpx.AsyncClient")
+	mock_async_client_class = mocker.patch("mlpa.core.completions.httpx.AsyncClient")
 	mock_async_client_class.return_value.__aenter__.return_value = mock_client
 
-	mock_metrics = mocker.patch("proxy.core.completions.metrics")
+	mock_metrics = mocker.patch("mlpa.core.completions.metrics")
 
 	# Act & Assert: Expect an HTTPException
 	with pytest.raises(HTTPException) as exc_info:
@@ -152,10 +152,10 @@ async def test_stream_completion_success(httpx_mock: HTTPXMock, mocker):
 	)
 
 	# 3. Mock metrics and tiktoken
-	mock_metrics = mocker.patch("proxy.core.completions.metrics")
+	mock_metrics = mocker.patch("mlpa.core.completions.metrics")
 	mock_tokenizer = MagicMock()
 	mock_tokenizer.encode.return_value = [1, 2]  # Simulate 2 prompt tokens
-	mock_tiktoken = mocker.patch("proxy.core.completions.tiktoken")
+	mock_tiktoken = mocker.patch("mlpa.core.completions.tiktoken")
 	mock_tiktoken.encoding_for_model.return_value = mock_tokenizer
 	mock_tiktoken.get_encoding.return_value = mock_tokenizer
 

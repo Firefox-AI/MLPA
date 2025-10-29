@@ -1,5 +1,5 @@
-from proxy.core.config import env
-from proxy.core.pg_services.pg_service import PGService
+from mlpa.core.config import env
+from mlpa.core.pg_services.pg_service import PGService
 
 
 class AppAttestPGService(PGService):

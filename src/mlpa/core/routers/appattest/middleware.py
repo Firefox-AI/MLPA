@@ -1,13 +1,13 @@
 from fastapi import APIRouter, HTTPException
 
-from proxy.core.classes import AssertionRequest, AttestationRequest
-from proxy.core.routers.appattest import (
+from mlpa.core.classes import AssertionRequest, AttestationRequest
+from mlpa.core.routers.appattest import (
 	generate_client_challenge,
 	validate_challenge,
 	verify_assert,
 	verify_attest,
 )
-from proxy.core.utils import b64decode_safe
+from mlpa.core.utils import b64decode_safe
 
 router = APIRouter()
 

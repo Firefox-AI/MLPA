@@ -1,7 +1,7 @@
 import pytest
 from fastapi.testclient import TestClient
 
-from proxy import run as main_app
+from mlpa import run as main_app
 from tests.mocks import (
 	MockAppAttestPGService,
 	MockFxAClientForMockRouter,
@@ -27,41 +27,41 @@ def mocked_client_integration(mocker):
 		"test-client-id", "test-client-secret", "https://test-fxa.com"
 	)
 
-	mocker.patch("proxy.run.app_attest_pg", mock_app_attest_pg)
+	mocker.patch("mlpa.run.app_attest_pg", mock_app_attest_pg)
 	mocker.patch(
-		"proxy.core.routers.appattest.appattest.app_attest_pg", mock_app_attest_pg
+		"mlpa.core.routers.appattest.appattest.app_attest_pg", mock_app_attest_pg
 	)
-	mocker.patch("proxy.core.routers.health.health.app_attest_pg", mock_app_attest_pg)
+	mocker.patch("mlpa.core.routers.health.health.app_attest_pg", mock_app_attest_pg)
 	mocker.patch(
-		"proxy.core.routers.appattest.appattest.app_attest_pg", mock_app_attest_pg
+		"mlpa.core.routers.appattest.appattest.app_attest_pg", mock_app_attest_pg
 	)
-	mocker.patch("proxy.run.litellm_pg", mock_litellm_pg)
-	mocker.patch("proxy.core.routers.health.health.litellm_pg", mock_litellm_pg)
+	mocker.patch("mlpa.run.litellm_pg", mock_litellm_pg)
+	mocker.patch("mlpa.core.routers.health.health.litellm_pg", mock_litellm_pg)
 
-	mocker.patch("proxy.core.routers.fxa.fxa.client", mock_fxa_client)
+	mocker.patch("mlpa.core.routers.fxa.fxa.client", mock_fxa_client)
 	mocker.patch(
-		"proxy.core.routers.mock.mock.fxa_client", mock_fxa_client_for_mock_router
+		"mlpa.core.routers.mock.mock.fxa_client", mock_fxa_client_for_mock_router
 	)
 
 	mocker.patch(
-		"proxy.core.routers.appattest.middleware.verify_assert",
+		"mlpa.core.routers.appattest.middleware.verify_assert",
 		side_effect=mock_verify_assert,
 	)
 
 	mocker.patch(
-		"proxy.run.get_or_create_user",
+		"mlpa.run.get_or_create_user",
 		lambda *args, **kwargs: mock_get_or_create_user(
 			mock_litellm_pg, *args, **kwargs
 		),
 	)
 	mocker.patch(
-		"proxy.core.routers.mock.mock.get_or_create_user",
+		"mlpa.core.routers.mock.mock.get_or_create_user",
 		lambda *args, **kwargs: mock_get_or_create_user(
 			mock_litellm_pg, *args, **kwargs
 		),
 	)
 	mocker.patch(
-		"proxy.run.get_completion",
+		"mlpa.run.get_completion",
 		side_effect=mock_get_completion,
 	)
 
