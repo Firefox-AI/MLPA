@@ -1,11 +1,11 @@
-from .appattest import (
+from mlpa.core.routers.appattest.appattest import (
 	generate_client_challenge,
 	validate_challenge,
 	verify_assert,
 	verify_attest,
 )
-from .middleware import app_attest_auth
-from .middleware import router as appattest_router
+from mlpa.core.routers.appattest.middleware import app_attest_auth
+from mlpa.core.routers.appattest.middleware import router as appattest_router
 
 __all__ = [
 	"app_attest_auth",

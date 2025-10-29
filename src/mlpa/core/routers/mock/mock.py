@@ -8,12 +8,11 @@ from fastapi.responses import StreamingResponse
 from fxa.errors import TrustError
 from fxa.oauth import Client
 
+from mlpa.core.auth.fxa_auth import authorize_request
+from mlpa.core.classes import AuthorizedChatRequest, ChatRequest
+from mlpa.core.config import env
+from mlpa.core.utils import get_fxa_client, get_or_create_user
 from tests.consts import MOCK_CHAT_RESPONSE, MOCK_STREAMING_CHUNKS
-
-from ...auth.fxa_auth import authorize_request
-from ...classes import AuthorizedChatRequest, ChatRequest
-from ...config import env
-from ...utils import get_fxa_client, get_or_create_user
 
 router = APIRouter()
 fxa_client = get_fxa_client()

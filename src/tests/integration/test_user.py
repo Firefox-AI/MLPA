@@ -1,4 +1,4 @@
-from proxy.core.config import env
+from mlpa.core.config import env
 from tests.consts import TEST_FXA_TOKEN, TEST_USER_ID
 
 

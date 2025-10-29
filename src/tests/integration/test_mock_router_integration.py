@@ -78,7 +78,7 @@ class TestMockRouterIntegration:
 
 	def test_mock_chat_completions_no_auth_success(self, mocked_client_integration):
 		"""Test successful request to /mock/chat/completions_no_auth endpoint."""
-		with patch("proxy.core.routers.mock.mock.fxa_client") as mock_fxa_client:
+		with patch("mlpa.core.routers.mock.mock.fxa_client") as mock_fxa_client:
 			mock_api_client = MagicMock()
 			mock_api_client.get.return_value = MOCK_JWKS_RESPONSE
 			mock_fxa_client.apiclient = mock_api_client
@@ -104,7 +104,7 @@ class TestMockRouterIntegration:
 
 	def test_mock_chat_completions_no_auth_streaming(self, mocked_client_integration):
 		"""Test streaming request to /mock/chat/completions_no_auth endpoint."""
-		with patch("proxy.core.routers.mock.mock.fxa_client") as mock_fxa_client:
+		with patch("mlpa.core.routers.mock.mock.fxa_client") as mock_fxa_client:
 			mock_api_client = MagicMock()
 			mock_api_client.get.return_value = MOCK_JWKS_RESPONSE
 			mock_fxa_client.apiclient = mock_api_client
@@ -144,7 +144,7 @@ class TestMockRouterIntegration:
 		self, mocked_client_integration
 	):
 		"""Test /mock/chat/completions_no_auth endpoint with invalid JWT token."""
-		with patch("proxy.core.routers.mock.mock.fxa_client") as mock_fxa_client:
+		with patch("mlpa.core.routers.mock.mock.fxa_client") as mock_fxa_client:
 			mock_api_client = MagicMock()
 			mock_api_client.get.return_value = MOCK_JWKS_RESPONSE
 			mock_fxa_client.apiclient = mock_api_client
@@ -174,7 +174,7 @@ class TestMockRouterIntegration:
 		self, mocked_client_integration
 	):
 		"""Test /mock/chat/completions_no_auth endpoint with invalid token signature."""
-		with patch("proxy.core.routers.mock.mock.fxa_client") as mock_fxa_client:
+		with patch("mlpa.core.routers.mock.mock.fxa_client") as mock_fxa_client:
 			mock_api_client = MagicMock()
 			mock_api_client.get.return_value = MOCK_JWKS_RESPONSE
 			mock_fxa_client.apiclient = mock_api_client
@@ -201,7 +201,7 @@ class TestMockRouterIntegration:
 		self, mocked_client_integration
 	):
 		"""Test /mock/chat/completions_no_auth endpoint when JWT token doesn't contain user."""
-		with patch("proxy.core.routers.mock.mock.fxa_client") as mock_fxa_client:
+		with patch("mlpa.core.routers.mock.mock.fxa_client") as mock_fxa_client:
 			mock_api_client = MagicMock()
 			mock_api_client.get.return_value = MOCK_JWKS_RESPONSE
 			mock_fxa_client.apiclient = mock_api_client
@@ -227,7 +227,7 @@ class TestMockRouterIntegration:
 		self, mocked_client_integration
 	):
 		"""Test /mock/chat/completions_no_auth endpoint with blocked user."""
-		with patch("proxy.core.routers.mock.mock.fxa_client") as mock_fxa_client:
+		with patch("mlpa.core.routers.mock.mock.fxa_client") as mock_fxa_client:
 			mock_api_client = MagicMock()
 			mock_api_client.get.return_value = MOCK_JWKS_RESPONSE
 			mock_fxa_client.apiclient = mock_api_client
@@ -239,7 +239,7 @@ class TestMockRouterIntegration:
 			}
 
 			with patch(
-				"proxy.core.routers.mock.mock.get_or_create_user",
+				"mlpa.core.routers.mock.mock.get_or_create_user",
 				new_callable=AsyncMock,
 			) as mock_get_user:
 				mock_get_user.return_value = (
@@ -263,7 +263,7 @@ class TestMockRouterIntegration:
 		"""Test that mock endpoints simulate latency correctly."""
 		import time
 
-		with patch("proxy.core.routers.mock.mock.fxa_client") as mock_fxa_client:
+		with patch("mlpa.core.routers.mock.mock.fxa_client") as mock_fxa_client:
 			mock_api_client = MagicMock()
 			mock_api_client.get.return_value = MOCK_JWKS_RESPONSE
 			mock_fxa_client.apiclient = mock_api_client

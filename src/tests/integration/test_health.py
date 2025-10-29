@@ -1,4 +1,4 @@
-from proxy.core.config import env
+from mlpa.core.config import env
 
 
 def test_health_liveness(mocked_client_integration, httpx_mock):

@@ -2,9 +2,9 @@ from typing import Annotated
 
 from fastapi import Header, HTTPException
 
-from ..classes import AssertionRequest, AuthorizedChatRequest, ChatRequest
-from ..routers.appattest import app_attest_auth
-from ..routers.fxa import fxa_auth
+from mlpa.core.classes import AssertionRequest, AuthorizedChatRequest, ChatRequest
+from mlpa.core.routers.appattest import app_attest_auth
+from mlpa.core.routers.fxa import fxa_auth
 
 
 async def authorize_request(

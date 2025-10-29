@@ -1,7 +1,7 @@
 import httpx
 from fastapi import APIRouter, HTTPException
 
-from ...config import LITELLM_HEADERS, env
+from mlpa.core.config import LITELLM_HEADERS, env
 
 router = APIRouter()
 

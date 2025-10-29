@@ -3,7 +3,7 @@ import base64
 import pytest
 from fastapi import HTTPException
 
-from proxy.core.utils import b64decode_safe
+from mlpa.core.utils import b64decode_safe
 
 
 def test_b64decode_safe():

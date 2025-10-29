@@ -15,9 +15,9 @@ from pyattest.assertion import Assertion
 from pyattest.attestation import Attestation
 from pyattest.configs.apple import AppleConfig
 
-from ...config import env
-from ...pg_services.services import app_attest_pg
-from ...prometheus_metrics import PrometheusResult, metrics
+from mlpa.core.config import env
+from mlpa.core.pg_services.services import app_attest_pg
+from mlpa.core.prometheus_metrics import PrometheusResult, metrics
 
 challenge_store = {}
 

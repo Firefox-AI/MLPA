@@ -1,4 +1,4 @@
-from proxy.core.classes import AuthorizedChatRequest, ChatRequest
+from mlpa.core.classes import AuthorizedChatRequest, ChatRequest
 
 TEST_USER_ID = "test-user-id"
 TEST_KEY_ID = "test-key-id"

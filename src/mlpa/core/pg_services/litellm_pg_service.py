@@ -1,8 +1,8 @@
 from fastapi import Header, HTTPException
 
-from ..classes import UserUpdatePayload
-from ..config import env
-from .pg_service import PGService
+from mlpa.core.classes import UserUpdatePayload
+from mlpa.core.config import env
+from mlpa.core.pg_services.pg_service import PGService
 
 
 class LiteLLMPGService(PGService):

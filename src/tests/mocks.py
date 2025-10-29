@@ -1,7 +1,7 @@
 from datetime import datetime
 from unittest.mock import MagicMock
 
-from proxy.core.classes import AuthorizedChatRequest, ChatRequest
+from mlpa.core.classes import AuthorizedChatRequest, ChatRequest
 from tests.consts import (
 	MOCK_FXA_USER_DATA,
 	MOCK_JWKS_RESPONSE,

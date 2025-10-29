@@ -4,7 +4,7 @@ from alembic.config import Config
 from sqlalchemy import engine_from_config, pool
 
 from alembic import context
-from proxy.core.config import env
+from mlpa.core.config import env
 
 alembic_cfg = Config()
 alembic_cfg.set_main_option(
