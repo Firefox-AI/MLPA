@@ -4,9 +4,9 @@ import httpx
 import tiktoken
 from fastapi import HTTPException
 
-from .classes import AuthorizedChatRequest
-from .config import LITELLM_COMPLETIONS_URL, LITELLM_HEADERS
-from .prometheus_metrics import PrometheusResult, metrics
+from proxy.core.classes import AuthorizedChatRequest
+from proxy.core.config import LITELLM_COMPLETIONS_URL, LITELLM_HEADERS
+from proxy.core.prometheus_metrics import PrometheusResult, metrics
 
 
 async def stream_completion(authorized_chat_request: AuthorizedChatRequest):

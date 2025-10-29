@@ -2,7 +2,7 @@ import os
 
 import asyncpg
 
-from ..config import env
+from proxy.core.config import env
 
 
 class PGService:

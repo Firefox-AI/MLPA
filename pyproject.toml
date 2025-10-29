@@ -16,6 +16,7 @@ classifiers = [
     "Operating System :: OS Independent",
 ]
 dependencies = [
+    "absolufy-imports==0.3.1",
     "alembic==1.17.0",
     "asyncpg==0.30.0",
     "cbor2==5.7.0",

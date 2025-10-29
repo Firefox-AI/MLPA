@@ -2,7 +2,7 @@ from typing import Optional
 
 from pydantic import BaseModel
 
-from .config import env
+from proxy.core.config import env
 
 
 class ChatRequest(BaseModel):

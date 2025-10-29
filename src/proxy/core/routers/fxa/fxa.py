@@ -3,9 +3,8 @@ from typing import Annotated
 
 from fastapi import APIRouter, Header
 
-from ...config import env
-from ...prometheus_metrics import PrometheusResult, metrics
-from ...utils import get_fxa_client
+from proxy.core.prometheus_metrics import PrometheusResult, metrics
+from proxy.core.utils import get_fxa_client
 
 router = APIRouter()
 client = get_fxa_client()
