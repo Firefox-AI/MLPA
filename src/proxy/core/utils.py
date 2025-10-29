@@ -2,6 +2,7 @@ import base64
 
 import httpx
 from fastapi import HTTPException
+from fxa.oauth import Client
 
 from .config import LITELLM_HEADERS, env
 
@@ -48,3 +49,12 @@ def b64decode_safe(data_b64: str, obj_name: str = "object") -> str:
 		return base64.urlsafe_b64decode(data_b64)
 	except Exception as e:
 		raise HTTPException(status_code=400, detail={obj_name: f"Invalid Base64: {e}"})
+
+
+def get_fxa_client():
+	fxa_url = (
+		"https://api-accounts.stage.mozaws.net/v1"
+		if env.MLPA_DEBUG
+		else "https://oauth.accounts.firefox.com/v1"
+	)
+	return Client(env.CLIENT_ID, env.CLIENT_SECRET, fxa_url)
