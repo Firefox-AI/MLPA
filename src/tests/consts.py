@@ -1,7 +1,7 @@
 from mlpa.core.classes import AuthorizedChatRequest, ChatRequest
 
 TEST_USER_ID = "test-user-id"
-TEST_KEY_ID = "test-key-id"
+TEST_KEY_ID_B64 = "40+vcf\/02ekUwrQ8\/r+1cha74UXR5FQXNxrKuy4gGmQ="
 TEST_FXA_TOKEN = "test-fxa-token"
 TEST_BLOCKED_USER_ID = "blocked-user-id"
 

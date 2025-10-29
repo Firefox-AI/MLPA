@@ -26,10 +26,10 @@ root_ca = load_pem_x509_certificate(Path(ROOT_CA_PEM).read_bytes())
 root_ca_pem = root_ca.public_bytes(serialization.Encoding.PEM)
 
 
-async def generate_client_challenge(key_id: str) -> str:
+async def generate_client_challenge(key_id_b64: str) -> str:
 	"""Create a unique challenge tied to a key ID"""
-	# First check if challenge already exists for key_id (relevant security measure, & they're on PRIMARY KEY key_id)
-	stored_challenge = await app_attest_pg.get_challenge(key_id)
+	# First check if challenge already exists for key_id_b64 (relevant security measure, & they're on PRIMARY KEY key_id_b64)
+	stored_challenge = await app_attest_pg.get_challenge(key_id_b64)
 	if (
 		not stored_challenge
 		or time.time() - stored_challenge.get("created_at").timestamp()
@@ -38,17 +38,17 @@ async def generate_client_challenge(key_id: str) -> str:
 		challenge = binascii.hexlify(os.urandom(32)).decode(
 			"utf-8"
 		)  # Slightly faster than secrets.token_urlsafe(32)
-		await app_attest_pg.store_challenge(key_id, challenge)
+		await app_attest_pg.store_challenge(key_id_b64, challenge)
 		return challenge
 	else:
 		return stored_challenge["challenge"]
 
 
-async def validate_challenge(challenge: str, key_id: str) -> bool:
-	"""Check that the challenge exists, is fresh, and matches key_id"""
+async def validate_challenge(challenge: str, key_id_b64: str) -> bool:
+	"""Check that the challenge exists, is fresh, and matches key_id_b64"""
 	start_time = time.time()
-	stored_challenge = await app_attest_pg.get_challenge(key_id)
-	await app_attest_pg.delete_challenge(key_id)  # Remove challenge after one use
+	stored_challenge = await app_attest_pg.get_challenge(key_id_b64)
+	await app_attest_pg.delete_challenge(key_id_b64)  # Remove challenge after one use
 	try:
 		if (
 			not stored_challenge
@@ -61,10 +61,10 @@ async def validate_challenge(challenge: str, key_id: str) -> bool:
 		metrics.validate_challenge_latency.observe(time.time() - start_time)
 
 
-async def verify_attest(key_id: str, challenge: str, attestation_obj: str):
+async def verify_attest(key_id_b64: str, challenge: str, attestation_obj: str):
 	start_time = time.time()
 	config = AppleConfig(
-		key_id=key_id,
+		key_id_b64=key_id_b64,
 		app_id=f"{env.APP_DEVELOPMENT_TEAM}.{env.APP_BUNDLE_ID}",
 		root_ca=root_ca_pem,
 		production=False,
@@ -114,25 +114,27 @@ async def verify_attest(key_id: str, challenge: str, attestation_obj: str):
 		)
 
 	# save public_key
-	await app_attest_pg.store_key(key_id, public_key_pem)
+	await app_attest_pg.store_key(key_id_b64, public_key_pem)
 
 	return {"status": "success"}
 
 
-async def verify_assert(key_id: str, assertion: str, payload: dict):
+async def verify_assert(key_id_b64: str, assertion: str, payload: dict):
 	start_time = time.time()
 	payload_bytes = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
 	expected_hash = hashlib.sha256(payload_bytes).digest()
 
-	key_info = await app_attest_pg.get_key(key_id)
+	key_info = await app_attest_pg.get_key(key_id_b64)
 	if not key_info:
-		raise HTTPException(status_code=403, detail="public key not found for key_id")
+		raise HTTPException(
+			status_code=403, detail="public key not found for key_id_b64"
+		)
 
 	public_key_pem = key_info["public_key_pem"].encode()
 	public_key_obj = serialization.load_pem_public_key(public_key_pem)
 
 	config = AppleConfig(
-		key_id=key_id,
+		key_id_b64=key_id_b64,
 		app_id=f"{env.APP_DEVELOPMENT_TEAM}.{env.APP_BUNDLE_ID}",
 		root_ca=root_ca_pem,
 		production=False,

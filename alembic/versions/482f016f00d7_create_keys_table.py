@@ -20,7 +20,7 @@ depends_on: Union[str, Sequence[str], None] = None
 def upgrade() -> None:
 	op.execute("""
         CREATE TABLE public_keys (
-            key_id VARCHAR(255) PRIMARY KEY,
+            key_id_b64 VARCHAR(255) PRIMARY KEY,
             public_key TEXT,
             created_at TIMESTAMPTZ DEFAULT NOW()
         )

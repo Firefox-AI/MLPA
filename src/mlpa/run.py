@@ -93,7 +93,7 @@ app.include_router(mock_router, prefix="/mock")
 @app.post(
 	"/v1/chat/completions",
 	tags=["LiteLLM"],
-	description="Authorize first using App Attest or FxA. Either pass the x-fxa-authorization header or include the `{key_id, challenge, and assertion_obj}` in the request body for app attest authorization. `payload` is always required and contains the prompt.",
+	description="Authorize first using App Attest or FxA. Either pass the x-fxa-authorization header or include the `{key_id_b64, challenge_b64, and assertion_obj_b64}` in the request body for app attest authorization. `payload` is always required and contains the prompt.",
 )
 async def chat_completion(
 	authorized_chat_request: Annotated[

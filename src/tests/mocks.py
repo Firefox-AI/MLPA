@@ -15,7 +15,7 @@ async def mock_app_attest_auth(request):
 	return {"username": "testuser"}
 
 
-async def mock_verify_assert(key_id, assertion_obj, payload: ChatRequest):
+async def mock_verify_assert(key_id_b64, assertion_obj, payload: ChatRequest):
 	return {"status": "success"}
 
 
@@ -50,29 +50,29 @@ class MockAppAttestPGService:
 	def check_status(self):
 		return self.connected
 
-	async def store_challenge(self, key_id: str, challenge: str):
-		self.challenges[key_id] = {
+	async def store_challenge(self, key_id_b64: str, challenge: str):
+		self.challenges[key_id_b64] = {
 			"created_at": datetime.now(),
 			"challenge": challenge.encode(),
 		}
 
-	async def get_challenge(self, key_id: str) -> dict | None:
-		return self.challenges.get(key_id)
+	async def get_challenge(self, key_id_b64: str) -> dict | None:
+		return self.challenges.get(key_id_b64)
 
-	async def delete_challenge(self, key_id: str):
+	async def delete_challenge(self, key_id_b64: str):
 		try:
-			del self.challenges[key_id]
+			del self.challenges[key_id_b64]
 		except:
 			pass
 
-	async def store_key(self, key_id: str, public_key: str):
-		self.keys[key_id] = public_key
+	async def store_key(self, key_id_b64: str, public_key: str):
+		self.keys[key_id_b64] = public_key
 
-	async def get_key(self, key_id: str) -> str | None:
-		return self.keys.get(key_id)
+	async def get_key(self, key_id_b64: str) -> str | None:
+		return self.keys.get(key_id_b64)
 
-	async def delete_key(self, key_id: str):
-		del self.keys[key_id]
+	async def delete_key(self, key_id_b64: str):
+		del self.keys[key_id_b64]
 
 
 class MockLiteLLMPGService:
