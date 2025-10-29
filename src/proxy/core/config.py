@@ -3,7 +3,7 @@ from pydantic_settings import BaseSettings
 
 
 class Env(BaseSettings):
-	DEBUG: bool = False
+	MLPA_DEBUG: bool = False
 	METRICS_LOG_FILE: str = "metrics.jsonl"
 
 	# PostgreSQL url (no /database)

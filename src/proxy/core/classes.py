@@ -4,8 +4,6 @@ from pydantic import BaseModel
 
 from .config import env
 
-DEBUG = env.DEBUG
-
 
 class ChatRequest(BaseModel):
 	stream: Optional[bool] = False

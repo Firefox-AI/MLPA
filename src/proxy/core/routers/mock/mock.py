@@ -13,16 +13,10 @@ from tests.consts import MOCK_CHAT_RESPONSE, MOCK_STREAMING_CHUNKS
 from ...auth.fxa_auth import authorize_request
 from ...classes import AuthorizedChatRequest, ChatRequest
 from ...config import env
-from ...utils import get_or_create_user
+from ...utils import get_fxa_client, get_or_create_user
 
 router = APIRouter()
-
-fxa_url = (
-	"https://api-accounts.stage.mozaws.net/v1"
-	if env.DEBUG
-	else "https://oauth.accounts.firefox.com/v1"
-)
-fxa_client = Client(env.CLIENT_ID, env.CLIENT_SECRET, fxa_url)
+fxa_client = get_fxa_client()
 
 
 def verify_jwt_token_only(x_fxa_authorization: Annotated[str | None, Header()]):

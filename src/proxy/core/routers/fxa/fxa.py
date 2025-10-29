@@ -3,18 +3,12 @@ from typing import Annotated
 
 from fastapi import APIRouter, Header
 
-from fxa.oauth import Client
-
 from ...config import env
 from ...prometheus_metrics import PrometheusResult, metrics
+from ...utils import get_fxa_client
 
 router = APIRouter()
-fxa_url = (
-	"https://api-accounts.stage.mozaws.net/v1"
-	if env.DEBUG
-	else "https://oauth.accounts.firefox.com/v1"
-)
-client = Client(env.CLIENT_ID, env.CLIENT_SECRET, fxa_url)
+client = get_fxa_client()
 
 
 def fxa_auth(x_fxa_authorization: Annotated[str | None, Header()]):
