@@ -4,27 +4,29 @@ from pydantic_settings import BaseSettings
 
 class Env(BaseSettings):
 	MLPA_DEBUG: bool = False
-	METRICS_LOG_FILE: str = "metrics.jsonl"
-
-	# PostgreSQL url (no /database)
-	PG_DB_URL: str = "postgresql://litellm:litellm@localhost:5432"
+	PORT: int | None = 8080
 
 	# LiteLLM
 	MASTER_KEY: str = "sk-default"
 	OPENAI_API_KEY: str = "sk-add-your-key"
 	LITELLM_API_BASE: str = "http://localhost:4000"
-	LITELLM_DB_NAME: str = "litellm"
 	CHALLENGE_EXPIRY_SECONDS: int = 300  # 5 minutes
-	PORT: int | None = 8080
 
 	# App Attest
 	APP_BUNDLE_ID: str = "org.example.app"
 	APP_DEVELOPMENT_TEAM: str = "TEAMID1234"
-	APP_ATTEST_DB_NAME: str = "app_attest"
 
 	# FxA
 	CLIENT_ID: str = "default-client-id"
 	CLIENT_SECRET: str = "default-client-secret"
+
+	# Database
+	LITELLM_DB_NAME: str = "litellm"
+	APP_ATTEST_DB_NAME: str = "app_attest"
+	DB_USERNAME: str = "litellm"
+	DB_PASSWORD: str = "litellm"
+	DB_HOST: str = "localhost"
+	DB_PORT: int = 5432
 
 	# LLM request default values
 	MODEL_NAME: str = "gpt-4"
@@ -40,8 +42,13 @@ class Env(BaseSettings):
 	MOCK_STREAMING_CHUNK_LATENCY_MS: int = (
 		50  # latency between streaming chunks (50 corresponds to ~20 stream chunks/sec)
 	)
+	PG_DB_URL: str | None = None
 
 	model_config = ConfigDict(env_file=".env")
+
+	def __init__(self):
+		super().__init__()
+		self.PG_DB_URL = f"postgresql://{self.DB_USERNAME}:{self.DB_PASSWORD}@{self.DB_HOST}:{self.DB_PORT}"
 
 
 env = Env()
