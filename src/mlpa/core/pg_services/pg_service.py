@@ -1,4 +1,5 @@
 import os
+import sys
 
 import asyncpg
 
@@ -14,9 +15,14 @@ class PGService:
 		self.connected = False
 
 	async def connect(self):
-		self.pg = await asyncpg.connect(self.db_url)
-		self.connected = True
-		print(f"Connected to /{self.db_name}")
+		try:
+			self.pg = await asyncpg.connect(self.db_url)
+			self.connected = True
+			print(f"Connected to /{self.db_name}")
+		except Exception as e:
+			sys.exit(
+				f"Couldn't connect to a database {self.db_name}, URL: {self.db_url}, error: {e}"
+			)
 
 	async def disconnect(self):
 		if self.connected:
