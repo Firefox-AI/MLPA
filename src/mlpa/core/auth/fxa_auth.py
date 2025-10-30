@@ -17,9 +17,9 @@ async def authorize_request(
 			if data.get("error"):
 				raise HTTPException(status_code=400, detail=data["error"])
 			return AuthorizedChatRequest(
-				user=chat_request.key_id,  # "user" is key_id for app attest
+				user=chat_request.key_id_b64,  # "user" is key_id_b64 for app attest
 				**chat_request.model_dump(
-					exclude={"key_id", "challenge_b64", "assertion_obj_b64"}
+					exclude={"key_id_b64", "challenge_b64", "assertion_obj_b64"}
 				),
 			)
 	if x_fxa_authorization:

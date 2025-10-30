@@ -22,13 +22,13 @@ class UserUpdatePayload(BaseModel):
 
 
 class AttestationRequest(BaseModel):
-	key_id: str
+	key_id_b64: str
 	challenge_b64: str
 	attestation_obj_b64: str
 
 
 class AssertionRequest(ChatRequest):
-	key_id: str
+	key_id_b64: str
 	challenge_b64: str
 	assertion_obj_b64: str
 

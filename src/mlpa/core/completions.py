@@ -94,8 +94,14 @@ async def get_completion(authorized_chat_request: AuthorizedChatRequest):
 			response = await client.post(
 				LITELLM_COMPLETIONS_URL, headers=LITELLM_HEADERS, json=body, timeout=10
 			)
-			response.raise_for_status()
 			data = response.json()
+			try:
+				response.raise_for_status()
+			except httpx.HTTPStatusError as e:
+				raise HTTPException(
+					status_code=e.response.status_code,
+					detail=f"Upstream service returned an error: {e.response.status_code} - {e.response.text}",
+				)
 			usage = data.get("usage", {})
 			prompt_tokens = usage.get("prompt_tokens", 0)
 			completion_tokens = usage.get("completion_tokens", 0)
