@@ -31,7 +31,7 @@ dependencies = [
     "PyFxA==0.8.1",
     "PyJWT==2.10.1",
     "pyhanko==0.16.0",
-    "psycopg2==2.9.11",
+    "psycopg2-binary==2.9.11",
     "python-dotenv==1.1.1",
     "python_jose==3.4.0",
     "sentry-sdk[fastapi]==2.42.0",
