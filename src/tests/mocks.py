@@ -1,6 +1,8 @@
 from datetime import datetime
 from unittest.mock import MagicMock
 
+from loguru import logger
+
 from mlpa.core.classes import AuthorizedChatRequest, ChatRequest
 from tests.consts import (
     MOCK_FXA_USER_DATA,
@@ -83,7 +85,7 @@ class MockLiteLLMPGService:
         self.users = {}
 
     async def connect(self):
-        print("mock connect called")
+        logger.debug("mock connect called")
         pass
 
     async def disconnect(self):
@@ -93,11 +95,11 @@ class MockLiteLLMPGService:
         return self.connected
 
     async def get_user(self, user_id: str):
-        print("mock get_user called with user_id:", user_id)
+        logger.debug("mock get_user called with user_id:", user_id)
         return self.users.get(user_id)
 
     async def store_user(self, user_id: str, data: dict):
-        print("mock store_user called with user_id:", user_id, "data:", data)
+        logger.debug("mock store_user called with user_id:", user_id, "data:", data)
         self.users[user_id] = data
 
 

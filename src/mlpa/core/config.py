@@ -14,14 +14,11 @@ class Env(BaseSettings):
 
     # Logging
     LOG_LEVEL: str = "INFO"
-    LOG_FILE: str = "logs/mlpa.log"
+    LOG_FILE: str | None = None  # "logs/mlpa.log"
     LOG_ROTATION: str = "500 MB"
-
-    # LiteLLM
-    MASTER_KEY: str = "sk-default"
-    OPENAI_API_KEY: str = "sk-add-your-key"
-    LITELLM_API_BASE: str = "http://localhost:4000"
-    CHALLENGE_EXPIRY_SECONDS: int = 300  # 5 minutes
+    LOG_COMPRESSION: str = "zip"
+    HTTPX_LOGGING: bool = True
+    ASYNCPG_LOGGING: bool = True
 
     # App Attest
     APP_BUNDLE_ID: str = "org.example.app"

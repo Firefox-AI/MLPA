@@ -1,4 +1,3 @@
-import logging
 import time
 from contextlib import asynccontextmanager
 from typing import Annotated, Optional
@@ -6,14 +5,15 @@ from typing import Annotated, Optional
 import sentry_sdk
 import uvicorn
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
+from fastapi.exception_handlers import http_exception_handler
 from fastapi.responses import StreamingResponse
-from mlpa.core.logger import setup_logger
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
 from mlpa.core.auth.fxa_auth import authorize_request
 from mlpa.core.classes import AuthorizedChatRequest
 from mlpa.core.completions import get_completion, stream_completion
 from mlpa.core.config import env
+from mlpa.core.logger import logger, setup_logger
 from mlpa.core.pg_services.services import app_attest_pg, litellm_pg
 from mlpa.core.prometheus_metrics import metrics
 from mlpa.core.routers.appattest import appattest_router
@@ -31,6 +31,7 @@ tags_metadata = [
         "description": "Endpoints for verifying App Attest payloads.",
     },
     {"name": "LiteLLM", "description": "Endpoints for interacting with LiteLLM."},
+    {"name": "Mock", "description": "Mock endpoints for testing purposes."},
 ]
 
 
@@ -55,7 +56,7 @@ app = FastAPI(
 )
 
 
-# run before all requests
+# Run before all requests
 @app.middleware("http")
 async def instrument_requests(request: Request, call_next):
     """
@@ -121,22 +122,17 @@ async def chat_completion(
         return await get_completion(authorized_chat_request)
 
 
-def main():
-    loggers = (
-        "uvicorn",
-        "uvicorn.access",
-        "uvicorn.error",
-        "fastapi",
-        "asyncio",
+@app.exception_handler(HTTPException)
+async def log_and_handle_http_exception(request: Request, exc: HTTPException):
+    """Logs HTTPExceptions"""
+    logger.error(
+        f"HTTPException for {request.method} {request.url.path} -> status={exc.status_code} detail={exc.detail}",
     )
+    return await http_exception_handler(request, exc)
 
-    for logger_name in loggers:
-        logging_logger = logging.getLogger(logger_name)
-        logging_logger.handlers = []
-        logging_logger.propagate = True
 
-    setup_logger(env)
-
+def main():
+    setup_logger()
     uvicorn.run(
         app,
         host="0.0.0.0",
