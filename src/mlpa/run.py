@@ -1,3 +1,4 @@
+import logging
 import time
 from contextlib import asynccontextmanager
 from typing import Annotated, Optional
@@ -6,6 +7,7 @@ import sentry_sdk
 import uvicorn
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.responses import StreamingResponse
+from mlpa.core.logger import setup_logger
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
 from mlpa.core.auth.fxa_auth import authorize_request
@@ -120,7 +122,29 @@ async def chat_completion(
 
 
 def main():
-    uvicorn.run(app, host="0.0.0.0", port=env.PORT, timeout_keep_alive=10)
+    loggers = (
+        "uvicorn",
+        "uvicorn.access",
+        "uvicorn.error",
+        "fastapi",
+        "asyncio",
+    )
+
+    for logger_name in loggers:
+        logging_logger = logging.getLogger(logger_name)
+        logging_logger.handlers = []
+        logging_logger.propagate = True
+
+    setup_logger(env)
+
+    uvicorn.run(
+        app,
+        host="0.0.0.0",
+        port=env.PORT,
+        timeout_keep_alive=10,
+        log_config=None,
+        log_level=None,
+    )
 
 
 if __name__ == "__main__":
