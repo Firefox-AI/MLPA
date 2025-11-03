@@ -28,132 +28,132 @@ root_ca_pem = root_ca.public_bytes(serialization.Encoding.PEM)
 
 
 async def generate_client_challenge(key_id_b64: str) -> str:
-	"""Create a unique challenge tied to a key ID"""
-	# First check if challenge already exists for key_id (relevant security measure, & they're on PRIMARY KEY key_id_b64)
-	stored_challenge = await app_attest_pg.get_challenge(key_id_b64)
-	if (
-		not stored_challenge
-		or time.time() - stored_challenge.get("created_at").timestamp()
-		> env.CHALLENGE_EXPIRY_SECONDS
-	):
-		challenge = binascii.hexlify(os.urandom(32)).decode(
-			"utf-8"
-		)  # Slightly faster than secrets.token_urlsafe(32)
-		await app_attest_pg.store_challenge(key_id_b64, challenge)
-		return challenge
-	else:
-		return stored_challenge["challenge"]
+    """Create a unique challenge tied to a key ID"""
+    # First check if challenge already exists for key_id (relevant security measure, & they're on PRIMARY KEY key_id_b64)
+    stored_challenge = await app_attest_pg.get_challenge(key_id_b64)
+    if (
+        not stored_challenge
+        or time.time() - stored_challenge.get("created_at").timestamp()
+        > env.CHALLENGE_EXPIRY_SECONDS
+    ):
+        challenge = binascii.hexlify(os.urandom(32)).decode(
+            "utf-8"
+        )  # Slightly faster than secrets.token_urlsafe(32)
+        await app_attest_pg.store_challenge(key_id_b64, challenge)
+        return challenge
+    else:
+        return stored_challenge["challenge"]
 
 
 async def validate_challenge(challenge: str, key_id_b64: str) -> bool:
-	"""Check that the challenge exists, is fresh, and matches key_id_b64"""
-	start_time = time.time()
-	stored_challenge = await app_attest_pg.get_challenge(key_id_b64)
-	await app_attest_pg.delete_challenge(key_id_b64)  # Remove challenge after one use
-	try:
-		if (
-			not stored_challenge
-			or time.time() - stored_challenge.get("created_at").timestamp()
-			> env.CHALLENGE_EXPIRY_SECONDS
-		):
-			return False
-		return challenge == stored_challenge["challenge"]
-	finally:
-		metrics.validate_challenge_latency.observe(time.time() - start_time)
+    """Check that the challenge exists, is fresh, and matches key_id_b64"""
+    start_time = time.time()
+    stored_challenge = await app_attest_pg.get_challenge(key_id_b64)
+    await app_attest_pg.delete_challenge(key_id_b64)  # Remove challenge after one use
+    try:
+        if (
+            not stored_challenge
+            or time.time() - stored_challenge.get("created_at").timestamp()
+            > env.CHALLENGE_EXPIRY_SECONDS
+        ):
+            return False
+        return challenge == stored_challenge["challenge"]
+    finally:
+        metrics.validate_challenge_latency.observe(time.time() - start_time)
 
 
 async def verify_attest(key_id_b64: str, challenge: str, attestation_obj: str):
-	start_time = time.time()
-	key_id = b64decode_safe(key_id_b64, "key_id_b64")
-	config = AppleConfig(
-		key_id=key_id,
-		app_id=f"{env.APP_DEVELOPMENT_TEAM}.{env.APP_BUNDLE_ID}",
-		root_ca=root_ca_pem,
-		production=False,
-	)
+    start_time = time.time()
+    key_id = b64decode_safe(key_id_b64, "key_id_b64")
+    config = AppleConfig(
+        key_id=key_id,
+        app_id=f"{env.APP_DEVELOPMENT_TEAM}.{env.APP_BUNDLE_ID}",
+        root_ca=root_ca_pem,
+        production=False,
+    )
 
-	result = PrometheusResult.ERROR
-	try:
-		attestation = Attestation(attestation_obj, challenge, config)
-		await run_in_threadpool(attestation.verify)
+    result = PrometheusResult.ERROR
+    try:
+        attestation = Attestation(attestation_obj, challenge, config)
+        await run_in_threadpool(attestation.verify)
 
-		# Retrieve verified public key
-		verified_data = attestation.data["data"]
-		credential_id = verified_data["credential_id"]
-		auth_data = verified_data["raw"]["authData"]
-		cred_id_len = len(credential_id)
-		# Offset = 37 bytes (for rpIdHash, flags, counter) + 16 (aaguid) + 2 (len) + cred_id_len
-		public_key_offset = 37 + 16 + 2 + cred_id_len
-		# Slice the authData to get the raw COSE public key
-		cose_public_key_bytes = auth_data[public_key_offset:]
-		# Decode the COSE key and convert it to PEM format.
-		cose_key_obj = cbor2.loads(cose_public_key_bytes)
-		# COSE Key Map for EC2 keys: 1=kty, -1=crv, -2=x, -3=y
-		if cose_key_obj.get(1) != 2 or cose_key_obj.get(-1) != 1:  # kty=EC2, crv=P-256
-			raise ValueError("Public key is not a P-256 elliptic curve key.")
-		x_coord = cose_key_obj.get(-2)
-		y_coord = cose_key_obj.get(-3)
+        # Retrieve verified public key
+        verified_data = attestation.data["data"]
+        credential_id = verified_data["credential_id"]
+        auth_data = verified_data["raw"]["authData"]
+        cred_id_len = len(credential_id)
+        # Offset = 37 bytes (for rpIdHash, flags, counter) + 16 (aaguid) + 2 (len) + cred_id_len
+        public_key_offset = 37 + 16 + 2 + cred_id_len
+        # Slice the authData to get the raw COSE public key
+        cose_public_key_bytes = auth_data[public_key_offset:]
+        # Decode the COSE key and convert it to PEM format.
+        cose_key_obj = cbor2.loads(cose_public_key_bytes)
+        # COSE Key Map for EC2 keys: 1=kty, -1=crv, -2=x, -3=y
+        if cose_key_obj.get(1) != 2 or cose_key_obj.get(-1) != 1:  # kty=EC2, crv=P-256
+            raise ValueError("Public key is not a P-256 elliptic curve key.")
+        x_coord = cose_key_obj.get(-2)
+        y_coord = cose_key_obj.get(-3)
 
-		public_key = ec.EllipticCurvePublicNumbers(
-			x=int.from_bytes(x_coord, "big"),
-			y=int.from_bytes(y_coord, "big"),
-			curve=ec.SECP256R1(),
-		).public_key()
+        public_key = ec.EllipticCurvePublicNumbers(
+            x=int.from_bytes(x_coord, "big"),
+            y=int.from_bytes(y_coord, "big"),
+            curve=ec.SECP256R1(),
+        ).public_key()
 
-		public_key_pem = public_key.public_bytes(
-			encoding=serialization.Encoding.PEM,
-			format=serialization.PublicFormat.SubjectPublicKeyInfo,
-		).decode("utf-8")
-		result = PrometheusResult.SUCCESS
+        public_key_pem = public_key.public_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PublicFormat.SubjectPublicKeyInfo,
+        ).decode("utf-8")
+        result = PrometheusResult.SUCCESS
 
-	except Exception as e:
-		raise HTTPException(
-			status_code=403, detail=f"Attestation verification failed: {e}"
-		)
-	finally:
-		metrics.validate_app_attest_latency.labels(result=result).observe(
-			time.time() - start_time
-		)
+    except Exception as e:
+        raise HTTPException(
+            status_code=403, detail=f"Attestation verification failed: {e}"
+        )
+    finally:
+        metrics.validate_app_attest_latency.labels(result=result).observe(
+            time.time() - start_time
+        )
 
-	# save public_key in b64
-	await app_attest_pg.store_key(key_id_b64, public_key_pem)
+    # save public_key in b64
+    await app_attest_pg.store_key(key_id_b64, public_key_pem)
 
-	return {"status": "success"}
+    return {"status": "success"}
 
 
 async def verify_assert(key_id_b64: str, assertion: str, payload: dict):
-	start_time = time.time()
-	key_id = b64decode_safe(key_id_b64, "key_id_b64")
-	payload_bytes = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
-	expected_hash = hashlib.sha256(payload_bytes).digest()
+    start_time = time.time()
+    key_id = b64decode_safe(key_id_b64, "key_id_b64")
+    payload_bytes = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
+    expected_hash = hashlib.sha256(payload_bytes).digest()
 
-	public_key_pem = await app_attest_pg.get_key(key_id_b64)
-	if not public_key_pem:
-		raise HTTPException(
-			status_code=403, detail="public key not found for key_id_b64"
-		)
+    public_key_pem = await app_attest_pg.get_key(key_id_b64)
+    if not public_key_pem:
+        raise HTTPException(
+            status_code=403, detail="public key not found for key_id_b64"
+        )
 
-	public_key_obj = serialization.load_pem_public_key(public_key_pem.encode())
+    public_key_obj = serialization.load_pem_public_key(public_key_pem.encode())
 
-	config = AppleConfig(
-		key_id=key_id,
-		app_id=f"{env.APP_DEVELOPMENT_TEAM}.{env.APP_BUNDLE_ID}",
-		root_ca=root_ca_pem,
-		production=False,
-	)
+    config = AppleConfig(
+        key_id=key_id,
+        app_id=f"{env.APP_DEVELOPMENT_TEAM}.{env.APP_BUNDLE_ID}",
+        root_ca=root_ca_pem,
+        production=False,
+    )
 
-	result = PrometheusResult.ERROR
-	try:
-		assertion_to_test = Assertion(assertion, expected_hash, public_key_obj, config)
-		assertion_to_test.verify()
-		result = PrometheusResult.SUCCESS
-	except Exception as e:
-		raise HTTPException(
-			status_code=403, detail=f"Assertion verification failed: {e}"
-		)
-	finally:
-		metrics.validate_app_assert_latency.labels(result=result).observe(
-			time.time() - start_time
-		)
+    result = PrometheusResult.ERROR
+    try:
+        assertion_to_test = Assertion(assertion, expected_hash, public_key_obj, config)
+        assertion_to_test.verify()
+        result = PrometheusResult.SUCCESS
+    except Exception as e:
+        raise HTTPException(
+            status_code=403, detail=f"Assertion verification failed: {e}"
+        )
+    finally:
+        metrics.validate_app_assert_latency.labels(result=result).observe(
+            time.time() - start_time
+        )
 
-	return {"status": "success"}
+    return {"status": "success"}
