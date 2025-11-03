@@ -57,5 +57,5 @@ LITELLM_READINESS_URL = f"{env.LITELLM_API_BASE}/health/readiness"
 LITELLM_COMPLETIONS_URL = f"{env.LITELLM_API_BASE}/v1/chat/completions"
 LITELLM_HEADERS = {
     "Content-Type": "application/json",
-    "X-LiteLLM-Key": f"Bearer {env.MASTER_KEY}",
+    "Authorization": f"Bearer {env.MASTER_KEY}",
 }
