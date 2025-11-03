@@ -3,6 +3,7 @@ import time
 import httpx
 import tiktoken
 from fastapi import HTTPException
+from loguru import logger
 
 from mlpa.core.classes import AuthorizedChatRequest
 from mlpa.core.config import LITELLM_COMPLETIONS_URL, LITELLM_HEADERS
@@ -27,6 +28,9 @@ async def stream_completion(authorized_chat_request: AuthorizedChatRequest):
     result = PrometheusResult.ERROR
     is_first_token = True
     num_completion_tokens = 0
+    logger.debug(
+        f"Starting a stream completion using {authorized_chat_request.model}, for user {authorized_chat_request.user}"
+    )
     try:
         async with httpx.AsyncClient() as client:
             async with client.stream(
