@@ -1,9 +1,9 @@
 from logging.config import fileConfig
 
-from alembic.config import Config
 from sqlalchemy import engine_from_config, pool
 
 from alembic import context
+from alembic.config import Config
 from mlpa.core.config import env
 
 alembic_cfg = Config()
