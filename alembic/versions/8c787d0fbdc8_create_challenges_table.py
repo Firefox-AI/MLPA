@@ -18,7 +18,7 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
-	op.execute("""
+    op.execute("""
         CREATE TABLE challenges (
             key_id_b64 VARCHAR(255) PRIMARY KEY,
             challenge VARCHAR(255),
@@ -28,4 +28,4 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-	op.drop_table("challenges")
+    op.drop_table("challenges")
