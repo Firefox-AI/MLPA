@@ -11,6 +11,7 @@ from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.x509.base import load_pem_x509_certificate
 from fastapi import HTTPException
 from fastapi.concurrency import run_in_threadpool
+from loguru import logger
 from pyattest.assertion import Assertion
 from pyattest.attestation import Attestation
 from pyattest.configs.apple import AppleConfig
@@ -107,9 +108,8 @@ async def verify_attest(key_id_b64: str, challenge: str, attestation_obj: str):
         result = PrometheusResult.SUCCESS
 
     except Exception as e:
-        raise HTTPException(
-            status_code=403, detail=f"Attestation verification failed: {e}"
-        )
+        logger.error(f"Attestation verification failed: {e}")
+        raise HTTPException(status_code=403, detail="Attestation verification failed")
     finally:
         metrics.validate_app_attest_latency.labels(result=result).observe(
             time.time() - start_time
@@ -129,9 +129,10 @@ async def verify_assert(key_id_b64: str, assertion: str, payload: dict):
 
     public_key_pem = await app_attest_pg.get_key(key_id_b64)
     if not public_key_pem:
-        raise HTTPException(
-            status_code=403, detail="public key not found for key_id_b64"
+        logger.error(
+            f"Assertion verification failed: No public key found for key_id_b64: {key_id_b64}"
         )
+        raise HTTPException(status_code=403, detail="Assertion verification failed")
 
     public_key_obj = serialization.load_pem_public_key(public_key_pem.encode())
 
@@ -148,9 +149,8 @@ async def verify_assert(key_id_b64: str, assertion: str, payload: dict):
         assertion_to_test.verify()
         result = PrometheusResult.SUCCESS
     except Exception as e:
-        raise HTTPException(
-            status_code=403, detail=f"Assertion verification failed: {e}"
-        )
+        logger.error(f"Assertion verification failed: {e}")
+        raise HTTPException(status_code=403, detail=f"Assertion verification failed")
     finally:
         metrics.validate_app_assert_latency.labels(result=result).observe(
             time.time() - start_time

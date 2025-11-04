@@ -124,7 +124,7 @@ async def test_get_completion_network_error(mocker):
 
     # 1. Verify exception details
     assert exc_info.value.status_code == 500
-    assert "Connection timed out" in exc_info.value.detail["error"]
+    assert "Failed to proxy request" in exc_info.value.detail["error"]
 
     # 2. Verify latency metric was observed with ERROR
     mock_metrics.chat_completion_latency.labels.assert_called_once_with(

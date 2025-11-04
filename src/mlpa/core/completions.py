@@ -103,9 +103,12 @@ async def get_completion(authorized_chat_request: AuthorizedChatRequest):
             try:
                 response.raise_for_status()
             except httpx.HTTPStatusError as e:
+                logger.error(
+                    f"Upstream service returned an error: {e.response.status_code} - {e.response.text}"
+                )
                 raise HTTPException(
                     status_code=e.response.status_code,
-                    detail=f"Upstream service returned an error: {e.response.status_code} - {e.response.text}",
+                    detail=f"Upstream service returned an error",
                 )
             usage = data.get("usage", {})
             prompt_tokens = usage.get("prompt_tokens", 0)
@@ -120,9 +123,7 @@ async def get_completion(authorized_chat_request: AuthorizedChatRequest):
         logger.error(f"Failed to proxy request to {LITELLM_COMPLETIONS_URL}: {e}")
         raise HTTPException(
             status_code=500,
-            detail={
-                "error": f"Failed to proxy request to {LITELLM_COMPLETIONS_URL}: {e}"
-            },
+            detail={"error": f"Failed to proxy request"},
         )
     finally:
         metrics.chat_completion_latency.labels(result=result).observe(

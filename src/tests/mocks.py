@@ -56,7 +56,7 @@ class MockAppAttestPGService:
     async def store_challenge(self, key_id_b64: str, challenge: str):
         self.challenges[key_id_b64] = {
             "created_at": datetime.now(),
-            "challenge": challenge.encode(),
+            "challenge": challenge,
         }
 
     async def get_challenge(self, key_id_b64: str) -> dict | None:
