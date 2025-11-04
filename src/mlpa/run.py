@@ -37,7 +37,7 @@ tags_metadata = [
 async def lifespan(app: FastAPI):
     # NOTE: From https://starlette.dev/threadpool/
     limiter = anyio.to_thread.current_default_thread_limiter()
-    limiter.total_tokens = 100
+    limiter.total_tokens = 200
     await litellm_pg.connect()
     await app_attest_pg.connect()
     yield
