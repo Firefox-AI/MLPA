@@ -11,14 +11,6 @@ for handler in logging.root.handlers[:]:
     logging.root.removeHandler(handler)
 
 
-def _prefix_debug(record):
-    if env.MLPA_DEBUG:
-        record["message"] = f":DEBUG: {record['message']}"
-
-
-logger = logger.patch(_prefix_debug)
-
-
 class InterceptHandler(logging.Handler):
     def emit(self, record):
         # Get corresponding Loguru level

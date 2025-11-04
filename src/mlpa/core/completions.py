@@ -55,12 +55,10 @@ async def stream_completion(authorized_chat_request: AuthorizedChatRequest):
                     )
                 except KeyError:
                     tokenizer = tiktoken.get_encoding("cl100k_base")
-                prompt_tokens = len(
-                    tokenizer.encode(
-                        message["content"]
-                        for message in authorized_chat_request.messages
-                    )
+                prompt_text = "".join(
+                    message["content"] for message in authorized_chat_request.messages
                 )
+                prompt_tokens = len(tokenizer.encode(prompt_text))
                 metrics.chat_tokens.labels(type="prompt").inc(prompt_tokens)
                 metrics.chat_tokens.labels(type="completion").inc(num_completion_tokens)
                 result = PrometheusResult.SUCCESS
