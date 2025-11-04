@@ -120,7 +120,9 @@ async def chat_completion(
 
 
 def main():
-    uvicorn.run(app, host="0.0.0.0", port=env.PORT, timeout_keep_alive=10, workers=2)
+    uvicorn.run(
+        "mlpa.run:app", host="0.0.0.0", port=env.PORT, timeout_keep_alive=10, workers=2
+    )
 
 
 if __name__ == "__main__":
