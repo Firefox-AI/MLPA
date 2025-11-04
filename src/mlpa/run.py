@@ -2,6 +2,7 @@ import time
 from contextlib import asynccontextmanager
 from typing import Annotated, Optional
 
+import anyio.to_thread
 import sentry_sdk
 import uvicorn
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
@@ -34,6 +35,9 @@ tags_metadata = [
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # NOTE: From https://starlette.dev/threadpool/
+    limiter = anyio.to_thread.current_default_thread_limiter()
+    limiter.total_tokens = 100
     await litellm_pg.connect()
     await app_attest_pg.connect()
     yield
@@ -120,9 +124,7 @@ async def chat_completion(
 
 
 def main():
-    uvicorn.run(
-        "mlpa.run:app", host="0.0.0.0", port=env.PORT, timeout_keep_alive=10, workers=2
-    )
+    uvicorn.run("mlpa.run:app", host="0.0.0.0", port=env.PORT, timeout_keep_alive=10)
 
 
 if __name__ == "__main__":
