@@ -13,8 +13,10 @@ class Env(BaseSettings):
     CHALLENGE_EXPIRY_SECONDS: int = 300  # 5 minutes
 
     # Logging
-    LOG_LEVEL: str = "INFO"
-    LOG_FILE: str | None = None  # "logs/mlpa.log"
+    LOGURU_LEVEL: str = "INFO"
+    LOG_FILE: str | None = (
+        None  # Change to ex: "logs/mlpa.log" to enable file logging for local dev
+    )
     LOG_ROTATION: str = "500 MB"
     LOG_COMPRESSION: str = "zip"
     HTTPX_LOGGING: bool = True
@@ -28,7 +30,7 @@ class Env(BaseSettings):
     CLIENT_ID: str = "default-client-id"
     CLIENT_SECRET: str = "default-client-secret"
 
-    # Database
+    # PostgreSQL
     LITELLM_DB_NAME: str = "litellm"
     APP_ATTEST_DB_NAME: str = "app_attest"
     DB_USERNAME: str = "litellm"

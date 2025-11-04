@@ -4,6 +4,7 @@ from unittest.mock import MagicMock
 from loguru import logger
 
 from mlpa.core.classes import AuthorizedChatRequest, ChatRequest
+from mlpa.core.config import env
 from tests.consts import (
     MOCK_FXA_USER_DATA,
     MOCK_JWKS_RESPONSE,
@@ -85,7 +86,9 @@ class MockLiteLLMPGService:
         self.users = {}
 
     async def connect(self):
-        logger.debug("mock connect called")
+        logger.debug(
+            "mock connect called",
+        )
         pass
 
     async def disconnect(self):
@@ -95,11 +98,15 @@ class MockLiteLLMPGService:
         return self.connected
 
     async def get_user(self, user_id: str):
-        logger.debug("mock get_user called with user_id:", user_id)
+        logger.debug(
+            f"mock get_user called with user_id: {user_id}",
+        )
         return self.users.get(user_id)
 
     async def store_user(self, user_id: str, data: dict):
-        logger.debug("mock store_user called with user_id:", user_id, "data:", data)
+        logger.debug(
+            f"mock store_user called with user_id: {user_id}, data: {data}",
+        )
         self.users[user_id] = data
 
 

@@ -1,4 +1,5 @@
 import logging
+import sys
 
 import asyncpg
 import httpx
@@ -34,9 +35,7 @@ def setup_logger():
     loggers = (
         "alembic",
         "asyncio",
-        "asyncpg",
         "fastapi",
-        "httpx",
         "prometheus_client",
         "sentry_sdk",
         "sqlalchemy",
@@ -58,16 +57,27 @@ def setup_logger():
 
     logging.basicConfig(
         handlers=[InterceptHandler()],
-        level=getattr(logging, env.LOG_LEVEL.upper(), logging.INFO),
+        level=getattr(logging, env.LOGURU_LEVEL.upper(), logging.INFO),
     )
     _enable_httpx_logging()
     _enable_asyncpg_logging()
+
     if env.LOG_FILE:
         logger.add(
             env.LOG_FILE,
             rotation=env.LOG_ROTATION,
             compression=env.LOG_COMPRESSION,
-            level=env.LOG_LEVEL,
+            level=env.LOGURU_LEVEL,
+            backtrace=True,
+            diagnose=True,
+        )
+    else:
+        logger.remove()
+        # Log to stdout for GKE compatibility
+        logger.add(
+            sys.stdout,
+            level=env.LOGURU_LEVEL.upper(),
+            serialize=True,
             backtrace=True,
             diagnose=True,
         )
@@ -112,15 +122,15 @@ def _enable_httpx_logging():
                 if isinstance(json_data, dict)
                 else _truncate(json_data)
             )
-            logger.debug(
-                f"HTTPX {method_name.upper()} request -> {url=} {params_repr=} {json_repr=}"
+            logger.info(
+                f"HTTPX {method_name.upper()} request -> {url=} {params_repr=} {json_repr=}",
             )
             try:
                 response = await original(self, *args, **kwargs)
             except Exception:
                 logger.error(f"HTTPX {method_name.upper()=} request failed for {url=}")
                 raise
-            logger.debug(
+            logger.info(
                 f"HTTPX {method_name.upper()} response <- {url=} {response.status_code=}",
             )
             return response
@@ -148,16 +158,16 @@ def _enable_asyncpg_logging():
         return
 
     async def _execute_wrapper(self, query, *args, **kwargs):
-        logger.debug(
-            f"ASYNCPG execute -> {query=} {args=} {kwargs=}",
+        logger.info(
+            f"ASYNCPG execute -> {query=} {args=}",
         )
         try:
             result = await original_execute(self, query, *args, **kwargs)
         except Exception:
             logger.error(f"ASYNCPG execute failed -> {query=}")
             raise
-        logger.debug(
-            f"ASYNCPG execute <- {query=} {result=}",
+        logger.info(
+            f"ASYNCPG execute <- {query=} {args=}{result=}",
         )
         return result
 
