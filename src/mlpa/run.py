@@ -65,20 +65,27 @@ async def instrument_requests(request: Request, call_next):
     start_time = time.time()
     metrics.in_progress_requests.inc()
 
-    try:
-        response = await call_next(request)
+    # Forward session-id and user-agent headers to log metadata if present
+    with logger.contextualize(
+        session_id=request.headers.get("session-id", "N/A"),
+        user_agent=request.headers.get("user-agent", "N/A"),
+    ):
+        try:
+            response = await call_next(request)
 
-        route = request.scope.get("route")
-        endpoint = route.path if route else request.url.path
+            route = request.scope.get("route")
+            endpoint = route.path if route else request.url.path
 
-        metrics.request_latency.labels(
-            method=request.method, endpoint=endpoint
-        ).observe(time.time() - start_time)
-        metrics.requests_total.labels(method=request.method, endpoint=endpoint).inc()
-        metrics.response_status_codes.labels(status_code=response.status_code).inc()
-        return response
-    finally:
-        metrics.in_progress_requests.dec()
+            metrics.request_latency.labels(
+                method=request.method, endpoint=endpoint
+            ).observe(time.time() - start_time)
+            metrics.requests_total.labels(
+                method=request.method, endpoint=endpoint
+            ).inc()
+            metrics.response_status_codes.labels(status_code=response.status_code).inc()
+            return response
+        finally:
+            metrics.in_progress_requests.dec()
 
 
 @app.get("/metrics", tags=["Metrics"])
