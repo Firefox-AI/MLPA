@@ -3,6 +3,7 @@ import base64
 import httpx
 from fastapi import HTTPException
 from fxa.oauth import Client
+from loguru import logger
 
 from mlpa.core.config import LITELLM_HEADERS, env
 
@@ -39,8 +40,9 @@ async def get_or_create_user(user_id: str):
                 return [response.json(), True]
             return [user, False]
         except Exception as e:
+            logger.error(f"Error fetching or creating user {user_id}: {e}")
             raise HTTPException(
-                status_code=500, detail={"error": f"Error fetching user info: {e}"}
+                status_code=500, detail={"error": f"Error fetching user info"}
             )
 
 
@@ -48,7 +50,8 @@ def b64decode_safe(data_b64: str, obj_name: str = "object") -> str:
     try:
         return base64.urlsafe_b64decode(data_b64)
     except Exception as e:
-        raise HTTPException(status_code=400, detail={obj_name: f"Invalid Base64: {e}"})
+        logger.error(f"Error decoding base64 for {obj_name}: {e}")
+        raise HTTPException(status_code=400, detail={obj_name: f"Invalid Base64"})
 
 
 def get_fxa_client():

@@ -1,3 +1,5 @@
+from loguru import logger
+
 from mlpa.core.config import env
 from mlpa.core.pg_services.pg_service import PGService
 
@@ -21,7 +23,7 @@ class AppAttestPGService(PGService):
                 challenge,
             )
         except Exception as e:
-            print(f"Error storing challenge: {e}")
+            logger.error(f"Error storing challenge: {e}")
 
     async def get_challenge(self, key_id_b64: str) -> dict | None:
         try:
@@ -30,7 +32,7 @@ class AppAttestPGService(PGService):
                 key_id_b64,
             )
         except Exception as e:
-            print(f"Error retrieving challenge: {e}")
+            logger.error(f"Error retrieving challenge: {e}")
 
     async def delete_challenge(self, key_id_b64: str):
         try:
@@ -38,7 +40,7 @@ class AppAttestPGService(PGService):
                 "DELETE FROM challenges WHERE key_id_b64 = $1", key_id_b64
             )
         except Exception as e:
-            print(f"Error deleting challenge: {e}")
+            logger.error(f"Error deleting challenge: {e}")
 
     # Keys #
     async def store_key(self, key_id_b64: str, public_key_pem: str):
@@ -52,7 +54,7 @@ class AppAttestPGService(PGService):
                 public_key_pem,
             )
         except Exception as e:
-            print(f"Error storing key: {e}")
+            logger.error(f"Error storing key: {e}")
 
     async def get_key(self, key_id_b64: str) -> str | None:
         try:
@@ -67,7 +69,7 @@ class AppAttestPGService(PGService):
                 return record["public_key_pem"]
             return None
         except Exception as e:
-            print(f"Error retrieving key: {e}")
+            logger.error(f"Error retrieving key: {e}")
             return None
 
     async def delete_key(self, key_id_b64: str):
@@ -76,4 +78,4 @@ class AppAttestPGService(PGService):
                 "DELETE FROM public_keys WHERE key_id_b64 = $1", key_id_b64
             )
         except Exception as e:
-            print(f"Error deleting key: {e}")
+            logger.error(f"Error deleting key: {e}")

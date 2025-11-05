@@ -69,7 +69,9 @@ async def mock_stream():
 
 
 @router.post(
-    "/chat/completions", description="Mock LiteLLM endpoint with simulated latency."
+    "/chat/completions",
+    description="Mock LiteLLM endpoint with simulated latency.",
+    tags=["Mock"],
 )
 async def chat_completion(
     authorized_chat_request: Annotated[
@@ -98,6 +100,7 @@ async def chat_completion(
 @router.post(
     "/chat/completions_no_auth",
     description="Mock LiteLLM endpoint with simulated latency and JWT-only token validation (no POST calls).",
+    tags=["Mock"],
 )
 async def chat_completion_no_auth(
     chat_request: ChatRequest,

@@ -1,4 +1,5 @@
 from fastapi import Header, HTTPException
+from loguru import logger
 
 from mlpa.core.classes import UserUpdatePayload
 from mlpa.core.config import env
@@ -52,13 +53,13 @@ class LiteLLMPGService(PGService):
             query = f'UPDATE "LiteLLM_EndUserTable" SET {set_clause} WHERE user_id = ${where_value_index} RETURNING *'
             updated_user_record = await self.pg.fetchrow(query, *values, user_id)
         except Exception as e:
+            logger.error(f"Error updating user {user_id}: {e}")
             raise HTTPException(
-                status_code=500, detail={"error": f"Error updating user: {e}"}
+                status_code=500, detail={"error": f"Error updating user"}
             )
 
         if updated_user_record is None:
-            raise HTTPException(
-                status_code=404, detail=f"User with user_id '{user_id}' not found."
-            )
+            logger.error(f"User {user_id} not found for update.")
+            raise HTTPException(status_code=404, detail=f"User not found.")
 
         return dict(updated_user_record)

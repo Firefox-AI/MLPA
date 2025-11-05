@@ -3,9 +3,10 @@ import time
 import httpx
 import tiktoken
 from fastapi import HTTPException
+from loguru import logger
 
 from mlpa.core.classes import AuthorizedChatRequest
-from mlpa.core.config import LITELLM_COMPLETIONS_URL, LITELLM_HEADERS
+from mlpa.core.config import LITELLM_COMPLETIONS_URL, LITELLM_HEADERS, env
 from mlpa.core.prometheus_metrics import PrometheusResult, metrics
 
 
@@ -27,6 +28,9 @@ async def stream_completion(authorized_chat_request: AuthorizedChatRequest):
     result = PrometheusResult.ERROR
     is_first_token = True
     num_completion_tokens = 0
+    logger.info(
+        f"Starting a stream completion using {authorized_chat_request.model}, for user {authorized_chat_request.user}",
+    )
     try:
         async with httpx.AsyncClient() as client:
             async with client.stream(
@@ -51,22 +55,20 @@ async def stream_completion(authorized_chat_request: AuthorizedChatRequest):
                     )
                 except KeyError:
                     tokenizer = tiktoken.get_encoding("cl100k_base")
-                prompt_tokens = len(
-                    tokenizer.encode(
-                        message["content"]
-                        for message in authorized_chat_request.messages
-                    )
+                prompt_text = "".join(
+                    message["content"] for message in authorized_chat_request.messages
                 )
+                prompt_tokens = len(tokenizer.encode(prompt_text))
                 metrics.chat_tokens.labels(type="prompt").inc(prompt_tokens)
                 metrics.chat_tokens.labels(type="completion").inc(num_completion_tokens)
                 result = PrometheusResult.SUCCESS
     except httpx.HTTPStatusError as e:
-        print(
+        logger.error(
             f"Upstream service returned an error: {e.response.status_code} - {e.response.text}"
         )
         return
     except Exception as e:
-        print(f"Failed to proxy request to {LITELLM_COMPLETIONS_URL}: {e}")
+        logger.error(f"Failed to proxy request to {LITELLM_COMPLETIONS_URL}: {e}")
         return
     finally:
         metrics.chat_completion_latency.labels(result=result).observe(
@@ -89,6 +91,9 @@ async def get_completion(authorized_chat_request: AuthorizedChatRequest):
         "stream": False,
     }
     result = PrometheusResult.ERROR
+    logger.info(
+        f"Starting a non-stream completion using {authorized_chat_request.model}, for user {authorized_chat_request.user}",
+    )
     try:
         async with httpx.AsyncClient() as client:
             response = await client.post(
@@ -98,9 +103,12 @@ async def get_completion(authorized_chat_request: AuthorizedChatRequest):
             try:
                 response.raise_for_status()
             except httpx.HTTPStatusError as e:
+                logger.error(
+                    f"Upstream service returned an error: {e.response.status_code} - {e.response.text}"
+                )
                 raise HTTPException(
                     status_code=e.response.status_code,
-                    detail=f"Upstream service returned an error: {e.response.status_code} - {e.response.text}",
+                    detail=f"Upstream service returned an error",
                 )
             usage = data.get("usage", {})
             prompt_tokens = usage.get("prompt_tokens", 0)
@@ -112,11 +120,10 @@ async def get_completion(authorized_chat_request: AuthorizedChatRequest):
             result = PrometheusResult.SUCCESS
             return data
     except Exception as e:
+        logger.error(f"Failed to proxy request to {LITELLM_COMPLETIONS_URL}: {e}")
         raise HTTPException(
             status_code=500,
-            detail={
-                "error": f"Failed to proxy request to {LITELLM_COMPLETIONS_URL}: {e}"
-            },
+            detail={"error": f"Failed to proxy request"},
         )
     finally:
         metrics.chat_completion_latency.labels(result=result).observe(
