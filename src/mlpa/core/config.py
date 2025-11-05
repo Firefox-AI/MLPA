@@ -13,15 +13,13 @@ class Env(BaseSettings):
     CHALLENGE_EXPIRY_SECONDS: int = 300  # 5 minutes
 
     # Logging
+    LOG_JSON: bool = False  # Set to True for GKE deployment
     LOGURU_LEVEL: str = "INFO"
-    LOG_FILE: str | None = (
-        None  # Change to ex: "logs/mlpa.log" to enable file logging for local dev
-    )
+    LOG_FILE: str = "logs/mlpa.log"
     LOG_ROTATION: str = "500 MB"
     LOG_COMPRESSION: str = "zip"
     HTTPX_LOGGING: bool = True
     ASYNCPG_LOGGING: bool = True
-    MEMORY_PROFILING: bool = True
 
     # App Attest
     APP_BUNDLE_ID: str = "org.example.app"
