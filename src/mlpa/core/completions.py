@@ -8,8 +8,10 @@ from loguru import logger
 from mlpa.core.classes import AuthorizedChatRequest
 from mlpa.core.config import LITELLM_COMPLETIONS_URL, LITELLM_HEADERS, env
 from mlpa.core.prometheus_metrics import PrometheusResult, metrics
+from mlpa.core.utils import profile_memory
 
 
+@profile_memory
 async def stream_completion(authorized_chat_request: AuthorizedChatRequest):
     """
     Proxies a streaming request to LiteLLM.
@@ -76,6 +78,7 @@ async def stream_completion(authorized_chat_request: AuthorizedChatRequest):
         )
 
 
+@profile_memory
 async def get_completion(authorized_chat_request: AuthorizedChatRequest):
     """
     Proxies a non-streaming request to LiteLLM.
