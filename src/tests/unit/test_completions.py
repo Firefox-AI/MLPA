@@ -93,7 +93,7 @@ async def test_get_completion_http_error(mocker):
         await get_completion(SAMPLE_REQUEST)
 
     # 1. Verify exception details
-    assert exc_info.value.status_code == 500
+    assert exc_info.value.status_code == 502
     assert "Failed to proxy request" in exc_info.value.detail["error"]
 
     # 2. Verify latency metric was observed with ERROR
@@ -123,7 +123,7 @@ async def test_get_completion_network_error(mocker):
         await get_completion(SAMPLE_REQUEST)
 
     # 1. Verify exception details
-    assert exc_info.value.status_code == 500
+    assert exc_info.value.status_code == 502
     assert "Failed to proxy request" in exc_info.value.detail["error"]
 
     # 2. Verify latency metric was observed with ERROR
