@@ -1,7 +1,8 @@
 import time
 from typing import Annotated
 
-from fastapi import APIRouter, Header
+from fastapi import APIRouter, Header, HTTPException
+from loguru import logger
 
 from mlpa.core.prometheus_metrics import PrometheusResult, metrics
 from mlpa.core.utils import get_fxa_client
@@ -18,7 +19,8 @@ def fxa_auth(x_fxa_authorization: Annotated[str | None, Header()]):
         profile = client.verify_token(token, scope="profile")
         result = PrometheusResult.SUCCESS
     except Exception as e:
-        return {"error": f"Invalid FxA auth: {e}"}
+        logger.error(f"FxA auth error: {e}")
+        raise HTTPException(status_code=401, detail="Invalid FxA auth")
     finally:
         metrics.validate_fxa_latency.labels(result=result).observe(
             time.time() - start_time

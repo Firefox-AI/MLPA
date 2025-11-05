@@ -5,6 +5,7 @@ from typing import Annotated, Optional
 import sentry_sdk
 import uvicorn
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
+from fastapi.exception_handlers import http_exception_handler
 from fastapi.responses import StreamingResponse
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
@@ -12,6 +13,7 @@ from mlpa.core.auth.fxa_auth import authorize_request
 from mlpa.core.classes import AuthorizedChatRequest
 from mlpa.core.completions import get_completion, stream_completion
 from mlpa.core.config import env
+from mlpa.core.logger import logger, setup_logger
 from mlpa.core.pg_services.services import app_attest_pg, litellm_pg
 from mlpa.core.prometheus_metrics import metrics
 from mlpa.core.routers.appattest import appattest_router
@@ -29,6 +31,7 @@ tags_metadata = [
         "description": "Endpoints for verifying App Attest payloads.",
     },
     {"name": "LiteLLM", "description": "Endpoints for interacting with LiteLLM."},
+    {"name": "Mock", "description": "Mock endpoints for testing purposes."},
 ]
 
 
@@ -53,7 +56,7 @@ app = FastAPI(
 )
 
 
-# run before all requests
+# Run before all requests
 @app.middleware("http")
 async def instrument_requests(request: Request, call_next):
     """
@@ -62,20 +65,27 @@ async def instrument_requests(request: Request, call_next):
     start_time = time.time()
     metrics.in_progress_requests.inc()
 
-    try:
-        response = await call_next(request)
+    # Forward session-id and user-agent headers to log metadata if present
+    with logger.contextualize(
+        session_id=request.headers.get("session-id", "N/A"),
+        user_agent=request.headers.get("user-agent", "N/A"),
+    ):
+        try:
+            response = await call_next(request)
 
-        route = request.scope.get("route")
-        endpoint = route.path if route else request.url.path
+            route = request.scope.get("route")
+            endpoint = route.path if route else request.url.path
 
-        metrics.request_latency.labels(
-            method=request.method, endpoint=endpoint
-        ).observe(time.time() - start_time)
-        metrics.requests_total.labels(method=request.method, endpoint=endpoint).inc()
-        metrics.response_status_codes.labels(status_code=response.status_code).inc()
-        return response
-    finally:
-        metrics.in_progress_requests.dec()
+            metrics.request_latency.labels(
+                method=request.method, endpoint=endpoint
+            ).observe(time.time() - start_time)
+            metrics.requests_total.labels(
+                method=request.method, endpoint=endpoint
+            ).inc()
+            metrics.response_status_codes.labels(status_code=response.status_code).inc()
+            return response
+        finally:
+            metrics.in_progress_requests.dec()
 
 
 @app.get("/metrics", tags=["Metrics"])
@@ -119,8 +129,25 @@ async def chat_completion(
         return await get_completion(authorized_chat_request)
 
 
+@app.exception_handler(HTTPException)
+async def log_and_handle_http_exception(request: Request, exc: HTTPException):
+    """Logs HTTPExceptions"""
+    logger.error(
+        f"HTTPException for {request.method} {request.url.path} -> status={exc.status_code} detail={exc.detail}",
+    )
+    return await http_exception_handler(request, exc)
+
+
 def main():
-    uvicorn.run(app, host="0.0.0.0", port=env.PORT, timeout_keep_alive=10)
+    setup_logger()
+    uvicorn.run(
+        app,
+        host="0.0.0.0",
+        port=env.PORT,
+        timeout_keep_alive=10,
+        log_config=None,
+        log_level=None,
+    )
 
 
 if __name__ == "__main__":

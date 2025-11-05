@@ -12,6 +12,15 @@ class Env(BaseSettings):
     LITELLM_API_BASE: str = "http://localhost:4000"
     CHALLENGE_EXPIRY_SECONDS: int = 300  # 5 minutes
 
+    # Logging
+    LOG_JSON: bool = False  # Set to True for GKE deployment
+    LOGURU_LEVEL: str = "INFO"
+    LOG_FILE: str = "logs/mlpa.log"
+    LOG_ROTATION: str = "500 MB"
+    LOG_COMPRESSION: str = "zip"
+    HTTPX_LOGGING: bool = True
+    ASYNCPG_LOGGING: bool = True
+
     # App Attest
     APP_BUNDLE_ID: str = "org.example.app"
     APP_DEVELOPMENT_TEAM: str = "TEAMID1234"
@@ -20,7 +29,7 @@ class Env(BaseSettings):
     CLIENT_ID: str = "default-client-id"
     CLIENT_SECRET: str = "default-client-secret"
 
-    # Database
+    # PostgreSQL
     LITELLM_DB_NAME: str = "litellm"
     APP_ATTEST_DB_NAME: str = "app_attest"
     DB_USERNAME: str = "litellm"
