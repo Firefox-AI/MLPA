@@ -28,7 +28,7 @@ async def stream_completion(authorized_chat_request: AuthorizedChatRequest):
     result = PrometheusResult.ERROR
     is_first_token = True
     num_completion_tokens = 0
-    logger.info(
+    logger.debug(
         f"Starting a stream completion using {authorized_chat_request.model}, for user {authorized_chat_request.user}",
     )
     try:
@@ -69,7 +69,10 @@ async def stream_completion(authorized_chat_request: AuthorizedChatRequest):
         return
     except Exception as e:
         logger.error(f"Failed to proxy request to {LITELLM_COMPLETIONS_URL}: {e}")
-        return
+        raise HTTPException(
+            status_code=502,
+            detail={"error": f"Failed to proxy request"},
+        )
     finally:
         metrics.chat_completion_latency.labels(result=result).observe(
             time.time() - start_time
@@ -91,7 +94,7 @@ async def get_completion(authorized_chat_request: AuthorizedChatRequest):
         "stream": False,
     }
     result = PrometheusResult.ERROR
-    logger.info(
+    logger.debug(
         f"Starting a non-stream completion using {authorized_chat_request.model}, for user {authorized_chat_request.user}",
     )
     try:
@@ -122,7 +125,7 @@ async def get_completion(authorized_chat_request: AuthorizedChatRequest):
     except Exception as e:
         logger.error(f"Failed to proxy request to {LITELLM_COMPLETIONS_URL}: {e}")
         raise HTTPException(
-            status_code=500,
+            status_code=502,
             detail={"error": f"Failed to proxy request"},
         )
     finally:
