@@ -20,7 +20,7 @@ class Env(BaseSettings):
     LOG_COMPRESSION: str = "zip"
     HTTPX_LOGGING: bool = True
     ASYNCPG_LOGGING: bool = True
-    MEMORY_PROFILING: bool = True
+    MEMORY_PROFILING: bool = False
 
     # App Attest
     APP_BUNDLE_ID: str = "org.example.app"
