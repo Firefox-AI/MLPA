@@ -23,9 +23,33 @@ from mlpa.core.utils import b64decode_safe
 
 challenge_store = {}
 
-ROOT_CA_PEM = "Apple_App_Attestation_Root_CA.pem"
-root_ca = load_pem_x509_certificate(Path(ROOT_CA_PEM).read_bytes())
-root_ca_pem = root_ca.public_bytes(serialization.Encoding.PEM)
+
+def _load_root_ca():
+    """Load the root CA certificate based on APP_ATTEST_QA flag"""
+    if env.APP_ATTEST_QA:
+        logger.warning(
+            "⚠️  APP_ATTEST_QA is set to TRUE - App Attest will use FAKE QA certificates for testing. "
+            "DO NOT use in production!"
+        )
+        qa_cert_path = Path("qa_certificates/root_cert.pem")
+        if qa_cert_path.exists():
+            root_ca = load_pem_x509_certificate(qa_cert_path.read_bytes())
+            return root_ca.public_bytes(serialization.Encoding.PEM)
+        else:
+            logger.warning(
+                f"APP_ATTEST_QA is enabled but {qa_cert_path} not found. "
+                "Falling back to production certificate."
+            )
+
+    # Default to production certificate
+    root_ca_path = Path("Apple_App_Attestation_Root_CA.pem")
+    if not root_ca_path.exists():
+        raise FileNotFoundError(
+            f"Root CA certificate not found at {root_ca_path}. "
+            "For QA testing, set APP_ATTEST_QA=true and run the certificate generation script."
+        )
+    root_ca = load_pem_x509_certificate(root_ca_path.read_bytes())
+    return root_ca.public_bytes(serialization.Encoding.PEM)
 
 
 async def generate_client_challenge(key_id_b64: str) -> str:
@@ -66,6 +90,7 @@ async def validate_challenge(challenge: str, key_id_b64: str) -> bool:
 async def verify_attest(key_id_b64: str, challenge: str, attestation_obj: str):
     start_time = time.time()
     key_id = b64decode_safe(key_id_b64, "key_id_b64")
+    root_ca_pem = _load_root_ca()
     config = AppleConfig(
         key_id=key_id,
         app_id=f"{env.APP_DEVELOPMENT_TEAM}.{env.APP_BUNDLE_ID}",
@@ -136,6 +161,7 @@ async def verify_assert(key_id_b64: str, assertion: str, payload: dict):
 
     public_key_obj = serialization.load_pem_public_key(public_key_pem.encode())
 
+    root_ca_pem = _load_root_ca()
     config = AppleConfig(
         key_id=key_id,
         app_id=f"{env.APP_DEVELOPMENT_TEAM}.{env.APP_BUNDLE_ID}",
