@@ -1,10 +1,19 @@
 from datetime import datetime
 from unittest.mock import MagicMock
 
+import cbor2
+from cryptography.hazmat.primitives import serialization
+from cryptography.x509 import load_der_x509_certificate
+from fastapi import HTTPException
+from fastapi.responses import JSONResponse
 from loguru import logger
+from pyattest.assertion import Assertion
+from pyattest.testutils.factories.attestation import apple as apple_factory
 
 from mlpa.core.classes import AuthorizedChatRequest, ChatRequest
 from mlpa.core.config import env
+from mlpa.core.routers.appattest.appattest import validate_challenge
+from mlpa.core.utils import b64decode_safe, parse_app_attest_jwt
 from tests.consts import (
     MOCK_FXA_USER_DATA,
     MOCK_JWKS_RESPONSE,
@@ -14,12 +23,43 @@ from tests.consts import (
 )
 
 
-async def mock_app_attest_auth(request):
-    return {"username": "testuser"}
+async def mock_verify_attest(
+    app_attest_pg, key_id_b64: str, challenge: str, attestation_obj: str
+):
+    try:
+        attestation_data = cbor2.loads(attestation_obj)
+        certificate_chain = attestation_data.get("attStmt", {}).get("x5c", [])
+        if not certificate_chain:
+            raise ValueError("Attestation missing certificate chain data.")
+        leaf_certificate = load_der_x509_certificate(certificate_chain[0])
+        public_key = leaf_certificate.public_key()
+        public_key_pem = public_key.public_bytes(
+            encoding=serialization.Encoding.PEM,
+            format=serialization.PublicFormat.SubjectPublicKeyInfo,
+        ).decode("utf-8")
 
-
-async def mock_verify_assert(key_id, assertion_obj, payload: ChatRequest):
+    except Exception as e:
+        logger.error(f"Attestation verification failed: {e}")
+        raise HTTPException(status_code=403, detail="Attestation verification failed")
+    await app_attest_pg.store_key(key_id_b64, public_key_pem)
     return {"status": "success"}
+
+
+async def mock_verify_assert(key_id_b64, assertion_obj, payload: ChatRequest):
+    # TODO: implement
+    return {"status": "success"}
+
+
+async def mock_app_attest_auth(app_attest_jwt: str):
+    app_attest_request = parse_app_attest_jwt(app_attest_jwt, "attest")
+    if app_attest_request.key_id_b64 == "invalid_key":
+        raise HTTPException(status_code=401, detail="Invalid key")
+    challenge = b64decode_safe(
+        app_attest_request.challenge_b64, "challenge_b64"
+    ).decode()
+    if not await validate_challenge(challenge, app_attest_request.key_id_b64):
+        raise HTTPException(status_code=401, detail="Invalid or expired challenge")
+    return {"username": "testuser"}
 
 
 async def mock_get_or_create_user(mock_litellm_pg, user_id: str):

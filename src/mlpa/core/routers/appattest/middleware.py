@@ -1,14 +1,16 @@
-from fastapi import APIRouter, HTTPException
+from typing import Annotated
+
+from fastapi import APIRouter, Header, HTTPException
 from loguru import logger
 
-from mlpa.core.classes import AssertionRequest, AttestationRequest
+from mlpa.core.classes import AssertionAuth, ChatRequest
 from mlpa.core.routers.appattest import (
     generate_client_challenge,
     validate_challenge,
     verify_assert,
     verify_attest,
 )
-from mlpa.core.utils import b64decode_safe
+from mlpa.core.utils import b64decode_safe, parse_app_attest_jwt
 
 router = APIRouter()
 
@@ -20,37 +22,40 @@ async def get_challenge(key_id_b64: str):
     return {"challenge": await generate_client_challenge(key_id_b64)}
 
 
-# Attest - send key_id_b64, challenge_b64, attestation_obj_b64
-@router.post("/attest", tags=["App Attest"])
-async def attest(request: AttestationRequest):
-    challenge = b64decode_safe(request.challenge_b64, "challenge_b64").decode()
-    if not await validate_challenge(challenge, request.key_id_b64):
+# Attest validation
+@router.post("/attest", tags=["App Attest"], status_code=201)
+async def attest(authorization: Annotated[str | None, Header()] = None):
+    attestationAuth = parse_app_attest_jwt(authorization, "attest")
+    challenge = b64decode_safe(attestationAuth.challenge_b64, "challenge_b64").decode()
+    if not await validate_challenge(challenge, attestationAuth.key_id_b64):
         raise HTTPException(status_code=401, detail="Invalid or expired challenge")
 
-    attestation_obj = b64decode_safe(request.attestation_obj_b64, "attestation_obj_b64")
+    attestation_obj = b64decode_safe(
+        attestationAuth.attestation_obj_b64, "attestation_obj_b64"
+    )
     try:
-        result = await verify_attest(request.key_id_b64, challenge, attestation_obj)
+        result = await verify_attest(
+            attestationAuth.key_id_b64, challenge, attestation_obj
+        )
     except ValueError as e:
         logger.error(f"App Attest attestation error: {e}")
         raise HTTPException(status_code=401, detail="Invalid App Attest attestation")
     return result
 
 
-# Assert - send key_id_b64, challenge_b64, assertion_obj_b64, payload
-async def app_attest_auth(request: AssertionRequest):
-    challenge = b64decode_safe(request.challenge_b64, "challenge_b64").decode()
-    if not await validate_challenge(challenge, request.key_id_b64):
+# Assert validation
+async def app_attest_auth(assertionAuth: AssertionAuth, chat_request: ChatRequest):
+    challenge = b64decode_safe(assertionAuth.challenge_b64, "challenge_b64").decode()
+    if not await validate_challenge(challenge, assertionAuth.key_id_b64):
         raise HTTPException(status_code=401, detail="Invalid or expired challenge")
 
-    assertion_obj = b64decode_safe(request.assertion_obj_b64, "assertion_obj_b64")
+    assertion_obj = b64decode_safe(assertionAuth.assertion_obj_b64, "assertion_obj_b64")
 
     try:
         result = await verify_assert(
-            request.key_id_b64,
+            assertionAuth.key_id_b64,
             assertion_obj,
-            request.model_dump(
-                exclude={"key_id_b64", "challenge_b64", "assertion_obj_b64"}
-            ),
+            chat_request.model_dump(),
         )
     except HTTPException:
         raise HTTPException(status_code=401, detail="Invalid App Attest attestation")

@@ -9,7 +9,7 @@ from fastapi.exception_handlers import http_exception_handler
 from fastapi.responses import StreamingResponse
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
-from mlpa.core.auth.fxa_auth import authorize_request
+from mlpa.core.auth.authorize import authorize_request
 from mlpa.core.classes import AuthorizedChatRequest
 from mlpa.core.completions import get_completion, stream_completion
 from mlpa.core.config import env
@@ -103,7 +103,7 @@ app.include_router(mock_router, prefix="/mock")
 @app.post(
     "/v1/chat/completions",
     tags=["LiteLLM"],
-    description="Authorize first using App Attest or FxA. Either pass the x-fxa-authorization header or include the `{key_id_b64, challenge_b64, and assertion_obj_b64}` in the request body for app attest authorization. `payload` is always required and contains the prompt.",
+    description="Authorize first using App Attest or FxA. Pass the authorization header containing either the FxA token or the App Attest data JWT",
 )
 async def chat_completion(
     authorized_chat_request: Annotated[
