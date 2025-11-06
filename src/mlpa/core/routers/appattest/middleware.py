@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from loguru import logger
 
 from mlpa.core.classes import AssertionRequest, AttestationRequest
@@ -14,7 +14,7 @@ router = APIRouter()
 
 
 @router.get("/challenge", tags=["App Attest"])
-async def get_challenge(key_id_b64: str):
+async def get_challenge(key_id_b64: str = Query(..., alias="key_id")):
     if not key_id_b64:
         raise HTTPException(status_code=400, detail="Bad Request: missing key_id_b64")
     return {"challenge": await generate_client_challenge(key_id_b64)}
