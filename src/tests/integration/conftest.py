@@ -7,9 +7,11 @@ from tests.mocks import (
     MockFxAClientForMockRouter,
     MockFxAService,
     MockLiteLLMPGService,
+    mock_app_attest_auth,
     mock_get_completion,
     mock_get_or_create_user,
     mock_verify_assert,
+    mock_verify_attest,
 )
 
 
@@ -32,9 +34,6 @@ def mocked_client_integration(mocker):
         "mlpa.core.routers.appattest.appattest.app_attest_pg", mock_app_attest_pg
     )
     mocker.patch("mlpa.core.routers.health.health.app_attest_pg", mock_app_attest_pg)
-    mocker.patch(
-        "mlpa.core.routers.appattest.appattest.app_attest_pg", mock_app_attest_pg
-    )
     mocker.patch("mlpa.run.litellm_pg", mock_litellm_pg)
     mocker.patch("mlpa.core.routers.health.health.litellm_pg", mock_litellm_pg)
 
@@ -43,9 +42,24 @@ def mocked_client_integration(mocker):
         "mlpa.core.routers.mock.mock.fxa_client", mock_fxa_client_for_mock_router
     )
 
+    async def _mock_verify_attest(
+        key_id_b64: str, challenge: str, attestation_obj: str
+    ):
+        return await mock_verify_attest(
+            mock_app_attest_pg, key_id_b64, challenge, attestation_obj
+        )
+
+    mocker.patch(
+        "mlpa.core.routers.appattest.middleware.verify_attest",
+        side_effect=_mock_verify_attest,
+    )
     mocker.patch(
         "mlpa.core.routers.appattest.middleware.verify_assert",
         side_effect=mock_verify_assert,
+    )
+    mocker.patch(
+        "mlpa.core.routers.appattest.middleware.app_attest_auth",
+        side_effect=mock_app_attest_auth,
     )
 
     mocker.patch(

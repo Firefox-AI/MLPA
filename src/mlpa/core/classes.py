@@ -21,13 +21,13 @@ class UserUpdatePayload(BaseModel):
     blocked: bool | None = None
 
 
-class AttestationRequest(BaseModel):
+class AttestationAuth(BaseModel):
     key_id_b64: str
     challenge_b64: str
     attestation_obj_b64: str
 
 
-class AssertionRequest(ChatRequest):
+class AssertionAuth(BaseModel):
     key_id_b64: str
     challenge_b64: str
     assertion_obj_b64: str

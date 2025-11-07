@@ -11,9 +11,9 @@ router = APIRouter()
 client = get_fxa_client()
 
 
-def fxa_auth(x_fxa_authorization: Annotated[str | None, Header()]):
+def fxa_auth(authorization: Annotated[str | None, Header()]):
     start_time = time.time()
-    token = x_fxa_authorization.removeprefix("Bearer ").split()[0]
+    token = authorization.removeprefix("Bearer ").split()[0]
     result = PrometheusResult.ERROR
     try:
         profile = client.verify_token(token, scope="profile")
