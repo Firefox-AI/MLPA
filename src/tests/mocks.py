@@ -41,7 +41,7 @@ async def mock_verify_attest(
     except Exception as e:
         logger.error(f"Attestation verification failed: {e}")
         raise HTTPException(status_code=403, detail="Attestation verification failed")
-    await app_attest_pg.store_key(key_id_b64, public_key_pem)
+    await app_attest_pg.store_key(key_id_b64, public_key_pem, 0)
     return {"status": "success"}
 
 
@@ -108,11 +108,15 @@ class MockAppAttestPGService:
         except:
             pass
 
-    async def store_key(self, key_id_b64: str, public_key: str):
-        self.keys[key_id_b64] = public_key
+    async def store_key(self, key_id_b64: str, public_key: str, counter: int):
+        self.keys[key_id_b64] = {"public_key_pem": public_key, "counter": counter}
 
-    async def get_key(self, key_id_b64: str) -> str | None:
+    async def get_key(self, key_id_b64: str) -> dict | None:
         return self.keys.get(key_id_b64)
+
+    async def update_key_counter(self, key_id_b64: str, counter: int):
+        if key_id_b64 in self.keys:
+            self.keys[key_id_b64]["counter"] = counter
 
     async def delete_key(self, key_id_b64: str):
         del self.keys[key_id_b64]
