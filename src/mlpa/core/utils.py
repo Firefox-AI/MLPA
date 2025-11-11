@@ -1,10 +1,12 @@
 import base64
 
 import httpx
+import jwt
 from fastapi import HTTPException
 from fxa.oauth import Client
 from loguru import logger
 
+from mlpa.core.classes import AssertionAuth, AttestationAuth
 from mlpa.core.config import LITELLM_HEADERS, env
 
 
@@ -61,3 +63,21 @@ def get_fxa_client():
         else "https://oauth.accounts.firefox.com/v1"
     )
     return Client(env.CLIENT_ID, env.CLIENT_SECRET, fxa_url)
+
+
+def parse_app_attest_jwt(authorization: str, type: str):
+    # Parse App Attest/Assert authorization JWT
+    try:
+        # Remove "Bearer " prefix if present
+        token = authorization.removeprefix("Bearer ").strip()
+        value = jwt.decode(token, options={"verify_signature": False})
+        if type == "attest":
+            appAuth = AttestationAuth(**value)
+        elif type == "assert":
+            appAuth = AssertionAuth(**value)
+        else:
+            raise HTTPException(status_code=400, detail="Invalid App Attest type")
+    except Exception as e:
+        logger.error(f"App {type} JWT decode error: {e}")
+        raise HTTPException(status_code=401, detail=f"Invalid App {type}")
+    return appAuth
