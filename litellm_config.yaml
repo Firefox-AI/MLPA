@@ -19,4 +19,4 @@ general_settings:
   store_model_in_db: true
   master_key: os.environ/MASTER_KEY
   database_url: os.environ/PG_DB_URL
-  litellm_key_header_name: X-Litellm-Key
+  litellm_key_header_name: Authorization

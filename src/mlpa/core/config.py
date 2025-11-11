@@ -39,7 +39,7 @@ class Env(BaseSettings):
     DB_PORT: int = 5432
 
     # LLM request default values
-    MODEL_NAME: str = "gpt-4"
+    MODEL_NAME: str = "openai/gpt-4o"
     TEMPERATURE: float = 0.1
     MAX_COMPLETION_TOKENS: int = 1024
     TOP_P: float = 0.01

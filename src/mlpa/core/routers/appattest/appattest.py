@@ -26,12 +26,16 @@ challenge_store = {}
 
 def _load_root_ca():
     """Load the root CA certificate based on APP_ATTEST_QA flag"""
+    current_file = Path(__file__).resolve()
+    project_root = current_file.parent.parent.parent.parent.parent.parent
+
     if env.APP_ATTEST_QA:
         logger.warning(
             "⚠️  APP_ATTEST_QA is set to TRUE - App Attest will use FAKE QA certificates for testing. "
             "DO NOT use in production!"
         )
-        qa_cert_path = Path("qa_certificates/root_cert.pem")
+        qa_cert_path = project_root / "qa_certificates" / "root_cert.pem"
+        logger.debug(f"Looking for QA certificate at: {qa_cert_path}")
         if qa_cert_path.exists():
             root_ca = load_pem_x509_certificate(qa_cert_path.read_bytes())
             return root_ca.public_bytes(serialization.Encoding.PEM)
@@ -42,7 +46,7 @@ def _load_root_ca():
             )
 
     # Default to production certificate
-    root_ca_path = Path("Apple_App_Attestation_Root_CA.pem")
+    root_ca_path = project_root / "Apple_App_Attestation_Root_CA.pem"
     if not root_ca_path.exists():
         raise FileNotFoundError(
             f"Root CA certificate not found at {root_ca_path}. "
@@ -87,7 +91,7 @@ async def validate_challenge(challenge: str, key_id_b64: str) -> bool:
         metrics.validate_challenge_latency.observe(time.time() - start_time)
 
 
-async def verify_attest(key_id_b64: str, challenge: str, attestation_obj: str):
+async def verify_attest(key_id_b64: str, challenge: bytes, attestation_obj: bytes):
     start_time = time.time()
     key_id = b64decode_safe(key_id_b64, "key_id_b64")
     root_ca_pem = _load_root_ca()
@@ -146,7 +150,7 @@ async def verify_attest(key_id_b64: str, challenge: str, attestation_obj: str):
     return {"status": "success"}
 
 
-async def verify_assert(key_id_b64: str, assertion: str, payload: dict):
+async def verify_assert(key_id_b64: str, assertion: bytes, payload: dict):
     start_time = time.time()
     key_id = b64decode_safe(key_id_b64, "key_id_b64")
     payload_bytes = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()

@@ -1,7 +1,8 @@
-# scripts/generate_qa_certificates.py
+#!/usr/bin/env python3
 """
 Generate test certificates for local QA using pyattest testutils.
 Run this script to create test root CA and certificates for App Attest testing.
+This script also generates a device key pair and derives key_id from the EC public key.
 """
 
 import base64
@@ -11,21 +12,32 @@ import shutil
 from pathlib import Path
 
 from cryptography.hazmat.primitives import serialization
+from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.x509 import load_pem_x509_certificate
 from pyattest.testutils.factories.certificates import generate
 
 
-def generate_key_id_b64_from_certificate(cert_path: Path) -> str:
-    """Generate a key_id_b64 from the certificate's public key"""
-    cert = load_pem_x509_certificate(cert_path.read_bytes())
-    # Get the public key bytes
-    public_key_bytes = cert.public_key().public_bytes(
-        encoding=serialization.Encoding.DER,
-        format=serialization.PublicFormat.SubjectPublicKeyInfo,
+def generate_key_id_from_ec_public_key(
+    public_key: ec.EllipticCurvePublicKey,
+) -> tuple[bytes, str, str]:
+    """Generate key_id from an EC public key using uncompressed point format
+
+    Args:
+        public_key: Elliptic curve public key (SECP256R1)
+
+    Returns:
+        tuple: (key_id_bytes, key_id_hex, key_id_b64)
+    """
+    # Get uncompressed point format (0x04 + X + Y, 65 bytes total)
+    pubkey_uncompressed = public_key.public_bytes(
+        encoding=serialization.Encoding.X962,
+        format=serialization.PublicFormat.UncompressedPoint,
     )
-    # Hash the public key to create a deterministic key_id
-    digest = hashlib.sha256(public_key_bytes).digest()
-    return base64.urlsafe_b64encode(digest).rstrip(b"=").decode("ascii")
+    # Hash the uncompressed public key to create key_id
+    key_id_bytes = hashlib.sha256(pubkey_uncompressed).digest()
+    # Base64 encode the raw bytes (not the hex string)
+    key_id_b64 = base64.urlsafe_b64encode(key_id_bytes).decode("utf-8")
+    return key_id_bytes, key_id_b64
 
 
 def main():
@@ -79,30 +91,53 @@ def main():
         shutil.rmtree(correct_fixtures_dir.parent.parent)  # Remove "pyattest" directory
         print(f"Cleaned up pyattest directory: {correct_fixtures_dir.parent.parent}")
 
-    # Generate key_id_b64 from the certificate
-    root_cert_path = certs_dir / "root_cert.pem"
-    if root_cert_path.exists():
-        key_id_b64 = generate_key_id_b64_from_certificate(root_cert_path)
+    # Generate a device EC key pair and derive key_id from it
+    # This matches the notebook approach where key_id is derived from the device public key
+    print("\nGenerating device EC key pair for key_id...")
+    device_private_key = ec.generate_private_key(ec.SECP256R1())
+    device_public_key = device_private_key.public_key()
 
-        # Store key_id info as JSON
-        key_id_info = {
-            "key_id_b64": key_id_b64,
-            "certificate_path": str(root_cert_path),
-            "note": "This key_id_b64 is derived from the QA certificate's public key. Use this key_id_b64 for testing App Attest flow with the QA certificates.",
-        }
+    key_id_bytes, key_id_b64 = generate_key_id_from_ec_public_key(device_public_key)
 
-        key_id_json_path = certs_dir / "key_id.json"
-        with open(key_id_json_path, "w") as f:
-            json.dump(key_id_info, f, indent=2)
-        print(f"Created: {key_id_json_path}")
-    else:
-        print(f"Warning: {root_cert_path} not found, skipping key_id generation")
+    # Store the device private key (PEM format) for use in attestation generation
+    device_private_key_pem = device_private_key.private_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PrivateFormat.PKCS8,
+        encryption_algorithm=serialization.NoEncryption(),
+    )
+
+    # Store device public key in uncompressed format for reference
+    pubkey_uncompressed = device_public_key.public_bytes(
+        encoding=serialization.Encoding.X962,
+        format=serialization.PublicFormat.UncompressedPoint,
+    )
+
+    # Store key_id info as JSON (all formats for convenience)
+    key_id_info = {
+        "key_id_b64": key_id_b64,  # For API calls (base64 of raw bytes)
+        "key_id_bytes": base64.b64encode(key_id_bytes).decode(
+            "utf-8"
+        ),  # Base64-encoded bytes for storage
+        "device_private_key_pem": device_private_key_pem.decode(
+            "utf-8"
+        ),  # Device private key for attestation generation
+        "device_public_key_uncompressed_b64": base64.b64encode(
+            pubkey_uncompressed
+        ).decode("utf-8"),  # Uncompressed public key
+        "note": "key_id_b64 is base64 of raw SHA256(pubkey_uncompressed) bytes. Use key_id_b64 for API calls.",
+    }
+
+    key_id_json_path = certs_dir / "key_id.json"
+    with open(key_id_json_path, "w") as f:
+        json.dump(key_id_info, f, indent=2)
+    print(f"Created: {key_id_json_path}")
 
     print("\n✅ Test certificates generated successfully!")
     print(f"Root CA certificate: {certs_dir / 'root_cert.pem'}")
     print(f"Root CA key: {certs_dir / 'root_key.pem'}")
-    print(f"Test key_id: {certs_dir / 'key_id.json'}")
-    print(f"\nTest key_id_b64: {key_id_b64}")
+    print(f"Device key pair and key_id: {certs_dir / 'key_id.json'}")
+    print(f"\nTest key_id formats:")
+    print(f"  key_id_b64 (for API calls): {key_id_b64}")
     print("\n⚠️  WARNING: These are test certificates only. Do NOT use in production!")
 
 
