@@ -24,7 +24,9 @@ class Env(BaseSettings):
     # App Attest
     APP_BUNDLE_ID: str = "org.example.app"
     APP_DEVELOPMENT_TEAM: str = "TEAMID1234"
-    APP_ATTEST_QA: bool = True  # Set to True to use QA test certificates
+    # NOTE: Should be False in production
+    # only use it for local testing
+    APP_ATTEST_QA: bool = False  # Set to True to use QA test certificates
 
     # FxA
     CLIENT_ID: str = "default-client-id"
