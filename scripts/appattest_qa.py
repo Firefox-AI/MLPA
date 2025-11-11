@@ -15,6 +15,7 @@ from typing import Optional
 
 import cbor2
 import httpx
+import jwt
 import typer
 from asn1crypto.core import OctetString
 from cryptography import x509
@@ -130,7 +131,6 @@ def generate_attestation_object(
 
 
 def generate_assertion_object(
-    challenge: str,
     app_id: str,
     key_id_bytes: bytes,
     device_private_key: ec.EllipticCurvePrivateKey,
@@ -140,7 +140,6 @@ def generate_assertion_object(
     Generate a CBOR-encoded Apple App Attest assertion object.
 
     Args:
-        challenge: Challenge string from the server (not used in signature, but kept for consistency)
         app_id: App Attest identifier (team_id.bundle_id)
         key_id_bytes: Raw bytes of the key ID
         device_private_key: EC private key for the device
@@ -223,6 +222,30 @@ def fetch_challenge(url: str, key_id_b64: str) -> str:
     return challenge
 
 
+def create_attestation_jwt(
+    key_id_b64: str, challenge: str, attestation_obj_b64: str
+) -> str:
+    """
+    Create a JWT token for attestation containing App Attest data.
+
+    Args:
+        key_id_b64: Base64-encoded key ID
+        challenge: Hex-encoded challenge string
+        attestation_obj_b64: Base64-encoded attestation object
+
+    Returns:
+        JWT token string
+    """
+    challenge_b64 = base64.urlsafe_b64encode(challenge.encode()).decode("utf-8")
+    payload = {
+        "key_id_b64": key_id_b64,
+        "challenge_b64": challenge_b64,
+        "attestation_obj_b64": attestation_obj_b64,
+    }
+    # JWT signature is not verified by the server, so we can use any secret
+    return jwt.encode(payload, key="qa-secret", algorithm="HS256")
+
+
 def submit_attestation(
     url: str, key_id_b64: str, challenge: str, attestation_obj_b64: str
 ) -> dict:
@@ -241,16 +264,35 @@ def submit_attestation(
     Raises:
         httpx.HTTPStatusError: If the HTTP request fails
     """
-    challenge_bytes = binascii.unhexlify(challenge)
-    challenge_b64 = base64.urlsafe_b64encode(challenge_bytes).decode("utf-8")
+    jwt_token = create_attestation_jwt(key_id_b64, challenge, attestation_obj_b64)
+    headers = {"authorization": f"Bearer {jwt_token}"}
+    response = httpx.post(url, headers=headers, timeout=30.0)
+    response.raise_for_status()
+    return response.json()
+
+
+def create_assertion_jwt(
+    key_id_b64: str, challenge: str, assertion_obj_b64: str
+) -> str:
+    """
+    Create a JWT token for assertion containing App Attest data.
+
+    Args:
+        key_id_b64: Base64-encoded key ID
+        challenge: Hex-encoded challenge string
+        assertion_obj_b64: Base64-encoded assertion object
+
+    Returns:
+        JWT token string
+    """
+    challenge_b64 = base64.urlsafe_b64encode(challenge.encode()).decode("utf-8")
     payload = {
         "key_id_b64": key_id_b64,
         "challenge_b64": challenge_b64,
-        "attestation_obj_b64": attestation_obj_b64,
+        "assertion_obj_b64": assertion_obj_b64,
     }
-    response = httpx.post(url, json=payload, timeout=30.0)
-    response.raise_for_status()
-    return response.json()
+    # JWT signature is not verified by the server, so we can use any secret
+    return jwt.encode(payload, key="qa-secret", algorithm="HS256")
 
 
 def submit_completion(
@@ -262,7 +304,7 @@ def submit_completion(
     Args:
         url: Chat completions endpoint URL
         key_id_b64: Base64-encoded key ID
-        challenge: Challenge string from the server
+        challenge: Hex-encoded challenge string
         assertion_obj_b64: Base64-encoded assertion object
         payload: Chat completion request payload (messages, model, etc.)
 
@@ -272,16 +314,13 @@ def submit_completion(
     Raises:
         httpx.HTTPStatusError: If the HTTP request fails
     """
-    challenge_b64 = base64.urlsafe_b64encode(challenge.encode()).decode("utf-8")
-    completion_payload = {
-        "key_id_b64": key_id_b64,
-        "challenge_b64": challenge_b64,
-        "assertion_obj_b64": assertion_obj_b64,
-        **payload,
+    jwt_token = create_assertion_jwt(key_id_b64, challenge, assertion_obj_b64)
+    headers = {
+        "authorization": f"Bearer {jwt_token}",
+        "use-app-attest": "true",
+        **LITELLM_HEADERS,
     }
-    response = httpx.post(
-        url, json=completion_payload, headers=LITELLM_HEADERS, timeout=30.0
-    )
+    response = httpx.post(url, json=payload, headers=headers, timeout=30.0)
     response.raise_for_status()
     return response.json()
 
@@ -387,7 +426,7 @@ def request_completion(
     payload_hash = compute_payload_hash(payload)
     assertion_obj_b64 = base64.urlsafe_b64encode(
         generate_assertion_object(
-            challenge, app_attest_id(), key_id_bytes, device_private_key, payload_hash
+            app_attest_id(), key_id_bytes, device_private_key, payload_hash
         )
     ).decode("utf-8")
 
