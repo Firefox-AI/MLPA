@@ -4,6 +4,7 @@ from fastapi import APIRouter, Header, HTTPException
 from loguru import logger
 
 from mlpa.core.classes import AssertionAuth, ChatRequest
+from mlpa.core.config import env
 from mlpa.core.routers.appattest import (
     generate_client_challenge,
     validate_challenge,
@@ -24,7 +25,10 @@ async def get_challenge(key_id_b64: str):
 
 # Attest validation
 @router.post("/attest", tags=["App Attest"], status_code=201)
-async def attest(authorization: Annotated[str | None, Header()] = None):
+async def attest(
+    authorization: Annotated[str | None, Header()] = None,
+    use_qa_certificates: Annotated[str | None, Header()] = None,
+):
     attestationAuth = parse_app_attest_jwt(authorization, "attest")
     challenge_bytes = b64decode_safe(attestationAuth.challenge_b64, "challenge_b64")
     if not await validate_challenge(
@@ -37,7 +41,10 @@ async def attest(authorization: Annotated[str | None, Header()] = None):
     )
     try:
         result = await verify_attest(
-            attestationAuth.key_id_b64, challenge_bytes, attestation_obj
+            attestationAuth.key_id_b64,
+            challenge_bytes,
+            attestation_obj,
+            use_qa_certificates.lower() == "true",
         )
     except ValueError as e:
         logger.error(f"App Attest attestation error: {e}")
@@ -46,7 +53,11 @@ async def attest(authorization: Annotated[str | None, Header()] = None):
 
 
 # Assert validation
-async def app_attest_auth(assertionAuth: AssertionAuth, chat_request: ChatRequest):
+async def app_attest_auth(
+    assertionAuth: AssertionAuth,
+    chat_request: ChatRequest,
+    use_qa_certificates: bool,
+):
     challenge_bytes = b64decode_safe(assertionAuth.challenge_b64, "challenge_b64")
     if not await validate_challenge(challenge_bytes.decode(), assertionAuth.key_id_b64):
         raise HTTPException(status_code=401, detail="Invalid or expired challenge")
@@ -58,6 +69,7 @@ async def app_attest_auth(assertionAuth: AssertionAuth, chat_request: ChatReques
             assertionAuth.key_id_b64,
             assertion_obj,
             chat_request.model_dump(exclude_unset=True),
+            use_qa_certificates,
         )
     except HTTPException:
         raise HTTPException(status_code=401, detail="Invalid App Attest attestation")

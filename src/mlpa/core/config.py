@@ -28,6 +28,9 @@ class Env(BaseSettings):
     # NOTE: Should be False in production
     # only use it for local testing
     APP_ATTEST_QA: bool = False  # Set to True to use QA test certificates
+    APP_ATTEST_QA_BUCKET: str | None = None
+    APP_ATTEST_QA_BUCKET_PREFIX: str | None = None
+    APP_ATTEST_QA_GCP_PROJECT_ID: str | None = None
 
     # FxA
     CLIENT_ID: str = "default-client-id"

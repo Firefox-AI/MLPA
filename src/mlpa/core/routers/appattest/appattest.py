@@ -16,6 +16,7 @@ from pyattest.assertion import Assertion
 from pyattest.attestation import Attestation
 from pyattest.configs.apple import AppleConfig
 
+from mlpa.core.app_attest import QA_CERT_DIR, ensure_qa_certificates
 from mlpa.core.config import env
 from mlpa.core.pg_services.services import app_attest_pg
 from mlpa.core.prometheus_metrics import PrometheusResult, metrics
@@ -24,17 +25,15 @@ from mlpa.core.utils import b64decode_safe
 challenge_store = {}
 
 
-def _load_root_ca():
+def _load_root_ca(use_qa_certificates: bool) -> bytes:
     """Load the root CA certificate based on APP_ATTEST_QA flag"""
-    current_file = Path(__file__).resolve()
-    project_root = current_file.parent.parent.parent.parent.parent.parent
-
-    if env.APP_ATTEST_QA:
+    if env.APP_ATTEST_QA and use_qa_certificates:
+        ensure_qa_certificates()
         logger.warning(
             "⚠️  APP_ATTEST_QA is set to TRUE - App Attest will use FAKE QA certificates for testing. "
             "DO NOT use in production!"
         )
-        qa_cert_path = project_root / "qa_certificates" / "root_cert.pem"
+        qa_cert_path = QA_CERT_DIR / "root_cert.pem"
         logger.debug(f"Looking for QA certificate at: {qa_cert_path}")
         if qa_cert_path.exists():
             root_ca = load_pem_x509_certificate(qa_cert_path.read_bytes())
@@ -46,7 +45,7 @@ def _load_root_ca():
             )
 
     # Default to production certificate
-    root_ca_path = project_root / "Apple_App_Attestation_Root_CA.pem"
+    root_ca_path = QA_CERT_DIR.parent / "Apple_App_Attestation_Root_CA.pem"
     if not root_ca_path.exists():
         raise FileNotFoundError(
             f"Root CA certificate not found at {root_ca_path}. "
@@ -91,10 +90,15 @@ async def validate_challenge(challenge: str, key_id_b64: str) -> bool:
         metrics.validate_challenge_latency.observe(time.time() - start_time)
 
 
-async def verify_attest(key_id_b64: str, challenge: bytes, attestation_obj: bytes):
+async def verify_attest(
+    key_id_b64: str,
+    challenge: bytes,
+    attestation_obj: bytes,
+    use_qa_certificates: bool,
+):
     start_time = time.time()
     key_id = b64decode_safe(key_id_b64, "key_id_b64")
-    root_ca_pem = _load_root_ca()
+    root_ca_pem = _load_root_ca(use_qa_certificates)
     config = AppleConfig(
         key_id=key_id,
         app_id=f"{env.APP_DEVELOPMENT_TEAM}.{env.APP_BUNDLE_ID}",
@@ -151,7 +155,9 @@ async def verify_attest(key_id_b64: str, challenge: bytes, attestation_obj: byte
     return {"status": "success"}
 
 
-async def verify_assert(key_id_b64: str, assertion: bytes, payload: dict):
+async def verify_assert(
+    key_id_b64: str, assertion: bytes, payload: dict, use_qa_certificates: bool
+):
     start_time = time.time()
     key_id = b64decode_safe(key_id_b64, "key_id_b64")
     payload_bytes = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
@@ -168,7 +174,7 @@ async def verify_assert(key_id_b64: str, assertion: bytes, payload: dict):
 
     public_key_obj = serialization.load_pem_public_key(public_key_pem.encode())
 
-    root_ca_pem = _load_root_ca()
+    root_ca_pem = _load_root_ca(use_qa_certificates)
     config = AppleConfig(
         key_id=key_id,
         app_id=f"{env.APP_DEVELOPMENT_TEAM}.{env.APP_BUNDLE_ID}",
