@@ -83,9 +83,7 @@ def generate_attestation_object(
         }
     )
 
-    challenge_bytes = (
-        binascii.unhexlify(challenge) if isinstance(challenge, str) else challenge
-    )
+    challenge_bytes = challenge.encode()
     nonce_hash = hashlib.sha256(
         auth_data + hashlib.sha256(challenge_bytes).digest()
     ).digest()
@@ -192,11 +190,10 @@ def load_key_material(
     """
     data = json.loads(key_id_file.read_text())
     key_id_b64 = data["key_id_b64"]
-    key_id_bytes = base64.urlsafe_b64decode(key_id_b64)
     device_private_key = load_pem_private_key(
         data["device_private_key_pem"].encode(), password=None
     )
-    return data, key_id_b64, key_id_bytes, device_private_key
+    return data, key_id_b64, device_private_key
 
 
 def fetch_challenge(url: str, key_id_b64: str) -> str:
@@ -383,7 +380,8 @@ def register_device(
     """
     Perform App Attest registration (steps 1 and 2). Only required once per device/user.
     """
-    _, key_id_b64, key_id_bytes, device_private_key = load_key_material(key_id_file)
+    _, key_id_b64, device_private_key = load_key_material(key_id_file)
+    key_id_bytes = base64.urlsafe_b64decode(key_id_b64)
     urls = resolve_urls(mlpa_url)
 
     typer.echo("Requesting attestation challenge...")
@@ -415,7 +413,8 @@ def request_completion(
     """
     Request a chat completion (steps 3 and 4). Requires prior successful registration.
     """
-    _, key_id_b64, key_id_bytes, device_private_key = load_key_material(key_id_file)
+    _, key_id_b64, device_private_key = load_key_material(key_id_file)
+    key_id_bytes = base64.urlsafe_b64decode(key_id_b64)
     urls = resolve_urls(mlpa_url)
 
     typer.echo("Requesting assertion challenge...")

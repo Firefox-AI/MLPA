@@ -115,16 +115,12 @@ def main():
     # Store key_id info as JSON (all formats for convenience)
     key_id_info = {
         "key_id_b64": key_id_b64,  # For API calls (base64 of raw bytes)
-        "key_id_bytes": base64.b64encode(key_id_bytes).decode(
-            "utf-8"
-        ),  # Base64-encoded bytes for storage
         "device_private_key_pem": device_private_key_pem.decode(
             "utf-8"
         ),  # Device private key for attestation generation
         "device_public_key_uncompressed_b64": base64.b64encode(
             pubkey_uncompressed
         ).decode("utf-8"),  # Uncompressed public key
-        "note": "key_id_b64 is base64 of raw SHA256(pubkey_uncompressed) bytes. Use key_id_b64 for API calls.",
     }
 
     key_id_json_path = certs_dir / "key_id.json"
