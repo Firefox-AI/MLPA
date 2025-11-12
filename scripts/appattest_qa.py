@@ -4,7 +4,6 @@ Typer CLI for exercising the App Attest QA flow.
 """
 
 import base64
-import binascii
 import datetime
 import hashlib
 import json

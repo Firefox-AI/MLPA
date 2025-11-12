@@ -13,7 +13,6 @@ from pathlib import Path
 
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import ec
-from cryptography.x509 import load_pem_x509_certificate
 from pyattest.testutils.factories.certificates import generate
 
 
@@ -97,7 +96,7 @@ def main():
     device_private_key = ec.generate_private_key(ec.SECP256R1())
     device_public_key = device_private_key.public_key()
 
-    key_id_bytes, key_id_b64 = generate_key_id_from_ec_public_key(device_public_key)
+    _, key_id_b64 = generate_key_id_from_ec_public_key(device_public_key)
 
     # Store the device private key (PEM format) for use in attestation generation
     device_private_key_pem = device_private_key.private_bytes(
