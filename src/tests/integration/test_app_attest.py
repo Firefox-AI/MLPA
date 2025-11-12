@@ -19,7 +19,7 @@ from tests.consts import (
 )
 from tests.mocks import MockAppAttestPGService
 
-sample_chat_request = SAMPLE_CHAT_REQUEST.model_dump()
+sample_chat_request = SAMPLE_CHAT_REQUEST.model_dump(exclude_unset=True)
 jwt_secret = "secret"
 
 
@@ -251,7 +251,7 @@ async def test_verify_assert_succeeds_and_updates_counter(mocker):
     await mock_pg.store_key(TEST_KEY_ID_B64, public_key_pem, counter=previous_counter)
     mocker.patch("pyattest.assertion.Assertion.verify", return_value=None)
 
-    chat_payload = SAMPLE_CHAT_REQUEST.model_dump()
+    chat_payload = SAMPLE_CHAT_REQUEST.model_dump(exclude_unset=True)
     payload_bytes = json.dumps(
         chat_payload, sort_keys=True, separators=(",", ":")
     ).encode()

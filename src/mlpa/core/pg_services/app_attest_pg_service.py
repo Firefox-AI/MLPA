@@ -47,8 +47,8 @@ class AppAttestPGService(PGService):
         try:
             await self.pg.execute(
                 """
-                INSERT INTO public_keys (key_id_b64, public_key_pem, counter)
-                VALUES ($1, $2, $3)
+                INSERT INTO public_keys (key_id_b64, public_key_pem, counter, updated_at)
+                VALUES ($1, $2, $3, NOW())
                 ON CONFLICT (key_id_b64) DO UPDATE SET
                 public_key_pem = EXCLUDED.public_key_pem,
                 counter = EXCLUDED.counter,

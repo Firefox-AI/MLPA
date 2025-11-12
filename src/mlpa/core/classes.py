@@ -12,6 +12,7 @@ class ChatRequest(BaseModel):
     temperature: Optional[float] = env.TEMPERATURE
     max_completion_tokens: Optional[int] = env.MAX_COMPLETION_TOKENS
     top_p: Optional[float] = env.TOP_P
+    mock_response: Optional[str] = None
 
 
 class UserUpdatePayload(BaseModel):
