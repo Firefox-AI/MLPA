@@ -48,7 +48,7 @@ async def get_or_create_user(user_id: str):
             )
 
 
-def b64decode_safe(data_b64: str, obj_name: str = "object") -> str:
+def b64decode_safe(data_b64: str, obj_name: str = "object") -> bytes:
     try:
         return base64.urlsafe_b64decode(data_b64)
     except Exception as e:

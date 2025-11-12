@@ -52,6 +52,7 @@ test = [
     "tqdm==4.67.1",
 ]
 lint = ["pre_commit==4.3.0", "ruff==0.14.0"]
+qa = [ "typer==0.12.5"]
 
 
 [project.urls]
