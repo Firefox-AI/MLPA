@@ -10,3 +10,4 @@ service_account.json
 uv.lock
 .secrets
 logs/
+qa_certificates/

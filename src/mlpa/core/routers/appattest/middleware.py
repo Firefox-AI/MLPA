@@ -26,8 +26,10 @@ async def get_challenge(key_id_b64: str):
 @router.post("/attest", tags=["App Attest"], status_code=201)
 async def attest(authorization: Annotated[str | None, Header()] = None):
     attestationAuth = parse_app_attest_jwt(authorization, "attest")
-    challenge = b64decode_safe(attestationAuth.challenge_b64, "challenge_b64").decode()
-    if not await validate_challenge(challenge, attestationAuth.key_id_b64):
+    challenge_bytes = b64decode_safe(attestationAuth.challenge_b64, "challenge_b64")
+    if not await validate_challenge(
+        challenge_bytes.decode(), attestationAuth.key_id_b64
+    ):
         raise HTTPException(status_code=401, detail="Invalid or expired challenge")
 
     attestation_obj = b64decode_safe(
@@ -35,7 +37,7 @@ async def attest(authorization: Annotated[str | None, Header()] = None):
     )
     try:
         result = await verify_attest(
-            attestationAuth.key_id_b64, challenge, attestation_obj
+            attestationAuth.key_id_b64, challenge_bytes, attestation_obj
         )
     except ValueError as e:
         logger.error(f"App Attest attestation error: {e}")
@@ -45,8 +47,8 @@ async def attest(authorization: Annotated[str | None, Header()] = None):
 
 # Assert validation
 async def app_attest_auth(assertionAuth: AssertionAuth, chat_request: ChatRequest):
-    challenge = b64decode_safe(assertionAuth.challenge_b64, "challenge_b64").decode()
-    if not await validate_challenge(challenge, assertionAuth.key_id_b64):
+    challenge_bytes = b64decode_safe(assertionAuth.challenge_b64, "challenge_b64")
+    if not await validate_challenge(challenge_bytes.decode(), assertionAuth.key_id_b64):
         raise HTTPException(status_code=401, detail="Invalid or expired challenge")
 
     assertion_obj = b64decode_safe(assertionAuth.assertion_obj_b64, "assertion_obj_b64")
