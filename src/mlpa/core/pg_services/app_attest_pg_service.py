@@ -82,7 +82,7 @@ class AppAttestPGService(PGService):
                 UPDATE public_keys
                 SET counter = $2,
                     updated_at = NOW()
-                WHERE key_id_b64 = $1
+                WHERE key_id_b64 = $1 AND counter < $2
                 """,
                 key_id_b64,
                 counter,
