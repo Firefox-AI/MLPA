@@ -164,7 +164,7 @@ async def verify_assert(key_id_b64: str, assertion: bytes, payload: dict):
         )
         raise HTTPException(status_code=403, detail="Assertion verification failed")
     public_key_pem = key_record["public_key_pem"]
-    last_counter = key_record.get("counter") or 0
+    last_counter = key_record.get("counter", 0)
 
     public_key_obj = serialization.load_pem_public_key(public_key_pem.encode())
 
