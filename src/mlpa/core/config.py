@@ -4,6 +4,7 @@ from pydantic_settings import BaseSettings
 
 class Env(BaseSettings):
     MLPA_DEBUG: bool = False
+    APP_ATTEST_PRODUCTION: bool = False
     PORT: int | None = 8080
 
     # LiteLLM

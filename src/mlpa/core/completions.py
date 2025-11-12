@@ -91,6 +91,7 @@ async def get_completion(authorized_chat_request: AuthorizedChatRequest):
         "top_p": authorized_chat_request.top_p,
         "max_tokens": authorized_chat_request.max_completion_tokens,
         "user": authorized_chat_request.user,
+        "mock_response": authorized_chat_request.mock_response,
         "stream": False,
     }
     result = PrometheusResult.ERROR

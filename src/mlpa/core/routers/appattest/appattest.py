@@ -99,7 +99,7 @@ async def verify_attest(key_id_b64: str, challenge: bytes, attestation_obj: byte
         key_id=key_id,
         app_id=f"{env.APP_DEVELOPMENT_TEAM}.{env.APP_BUNDLE_ID}",
         root_ca=root_ca_pem,
-        production=False,
+        production=env.APP_ATTEST_PRODUCTION,
     )
 
     result = PrometheusResult.ERROR
@@ -111,6 +111,7 @@ async def verify_attest(key_id_b64: str, challenge: bytes, attestation_obj: byte
         verified_data = attestation.data["data"]
         credential_id = verified_data["credential_id"]
         auth_data = verified_data["raw"]["authData"]
+        attestation_counter = int.from_bytes(auth_data[33:37], "big")
         cred_id_len = len(credential_id)
         # Offset = 37 bytes (for rpIdHash, flags, counter) + 16 (aaguid) + 2 (len) + cred_id_len
         public_key_offset = 37 + 16 + 2 + cred_id_len
@@ -145,7 +146,7 @@ async def verify_attest(key_id_b64: str, challenge: bytes, attestation_obj: byte
         )
 
     # save public_key in b64
-    await app_attest_pg.store_key(key_id_b64, public_key_pem)
+    await app_attest_pg.store_key(key_id_b64, public_key_pem, attestation_counter)
 
     return {"status": "success"}
 
@@ -156,12 +157,14 @@ async def verify_assert(key_id_b64: str, assertion: bytes, payload: dict):
     payload_bytes = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
     expected_hash = hashlib.sha256(payload_bytes).digest()
 
-    public_key_pem = await app_attest_pg.get_key(key_id_b64)
-    if not public_key_pem:
+    key_record = await app_attest_pg.get_key(key_id_b64)
+    if not key_record or not key_record.get("public_key_pem"):
         logger.error(
             f"Assertion verification failed: No public key found for key_id_b64: {key_id_b64}"
         )
         raise HTTPException(status_code=403, detail="Assertion verification failed")
+    public_key_pem = key_record["public_key_pem"]
+    last_counter = key_record.get("counter", 0)
 
     public_key_obj = serialization.load_pem_public_key(public_key_pem.encode())
 
@@ -170,13 +173,31 @@ async def verify_assert(key_id_b64: str, assertion: bytes, payload: dict):
         key_id=key_id,
         app_id=f"{env.APP_DEVELOPMENT_TEAM}.{env.APP_BUNDLE_ID}",
         root_ca=root_ca_pem,
-        production=False,
+        production=env.APP_ATTEST_PRODUCTION,
     )
 
     result = PrometheusResult.ERROR
     try:
         assertion_to_test = Assertion(assertion, expected_hash, public_key_obj, config)
         assertion_to_test.verify()
+        try:
+            unpacked_assertion = cbor2.loads(assertion)
+            auth_data = unpacked_assertion["authenticatorData"]
+            current_counter = int.from_bytes(auth_data[33:37], "big")
+        except Exception as counter_error:
+            logger.error(f"Assertion counter parsing failed: {counter_error}")
+            raise HTTPException(
+                status_code=500, detail="Server error during App Attest auth"
+            )
+
+        if current_counter <= last_counter:
+            logger.error(
+                f"Assertion counter replay detected for key_id_b64={key_id_b64}: "
+                f"incoming={current_counter}, stored={last_counter}"
+            )
+            raise HTTPException(status_code=403, detail="Assertion verification failed")
+
+        await app_attest_pg.update_key_counter(key_id_b64, current_counter)
         result = PrometheusResult.SUCCESS
     except Exception as e:
         logger.error(f"Assertion verification failed: {e}")

@@ -57,7 +57,7 @@ async def app_attest_auth(assertionAuth: AssertionAuth, chat_request: ChatReques
         result = await verify_assert(
             assertionAuth.key_id_b64,
             assertion_obj,
-            chat_request.model_dump(),
+            chat_request.model_dump(exclude_unset=True),
         )
     except HTTPException:
         raise HTTPException(status_code=401, detail="Invalid App Attest attestation")
