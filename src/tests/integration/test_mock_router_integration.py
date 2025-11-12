@@ -19,7 +19,7 @@ class TestMockRouterIntegration:
         """Test successful request to /mock/chat/completions endpoint."""
         response = mocked_client_integration.post(
             "/mock/chat/completions",
-            headers={"x-fxa-authorization": f"Bearer {TEST_FXA_TOKEN}"},
+            headers={"authorization": f"Bearer {TEST_FXA_TOKEN}"},
             json=sample_chat_request,
         )
 
@@ -38,7 +38,7 @@ class TestMockRouterIntegration:
         """Test streaming request to /mock/chat/completions endpoint."""
         response = mocked_client_integration.post(
             "/mock/chat/completions",
-            headers={"x-fxa-authorization": f"Bearer {TEST_FXA_TOKEN}"},
+            headers={"authorization": f"Bearer {TEST_FXA_TOKEN}"},
             json={
                 **sample_chat_request,
                 "stream": True,
@@ -61,13 +61,13 @@ class TestMockRouterIntegration:
         )
 
         assert response.status_code == 401
-        assert "Please authenticate with App Attest or FxA" in response.json()["detail"]
+        assert "Missing authorization header" in response.json()["detail"]
 
     def test_mock_chat_completions_invalid_auth(self, mocked_client_integration):
         """Test /mock/chat/completions endpoint with invalid authentication."""
         response = mocked_client_integration.post(
             "/mock/chat/completions",
-            headers={"x-fxa-authorization": "Bearer invalid-token"},
+            headers={"authorization": "Bearer invalid-token"},
             json={
                 "model": MOCK_MODEL_NAME,
                 "messages": [{"role": "user", "content": "Hello"}],
@@ -87,7 +87,7 @@ class TestMockRouterIntegration:
 
             response = mocked_client_integration.post(
                 "/mock/chat/completions_no_auth",
-                headers={"x-fxa-authorization": f"Bearer {TEST_FXA_TOKEN}"},
+                headers={"authorization": f"Bearer {TEST_FXA_TOKEN}"},
                 json=sample_chat_request,
             )
 
@@ -113,7 +113,7 @@ class TestMockRouterIntegration:
 
             response = mocked_client_integration.post(
                 "/mock/chat/completions_no_auth",
-                headers={"x-fxa-authorization": f"Bearer {TEST_FXA_TOKEN}"},
+                headers={"authorization": f"Bearer {TEST_FXA_TOKEN}"},
                 json={
                     "model": MOCK_MODEL_NAME,
                     "messages": [{"role": "user", "content": "Hello"}],
@@ -157,7 +157,7 @@ class TestMockRouterIntegration:
 
             response = mocked_client_integration.post(
                 "/mock/chat/completions_no_auth",
-                headers={"x-fxa-authorization": "Bearer invalid-token"},
+                headers={"authorization": "Bearer invalid-token"},
                 json={
                     "model": MOCK_MODEL_NAME,
                     "messages": [{"role": "user", "content": "Hello"}],
@@ -187,7 +187,7 @@ class TestMockRouterIntegration:
 
             response = mocked_client_integration.post(
                 "/mock/chat/completions_no_auth",
-                headers={"x-fxa-authorization": "Bearer invalid-signature-token"},
+                headers={"authorization": "Bearer invalid-signature-token"},
                 json={
                     "model": MOCK_MODEL_NAME,
                     "messages": [{"role": "user", "content": "Hello"}],
@@ -213,7 +213,7 @@ class TestMockRouterIntegration:
 
             response = mocked_client_integration.post(
                 "/mock/chat/completions_no_auth",
-                headers={"x-fxa-authorization": f"Bearer {TEST_FXA_TOKEN}"},
+                headers={"authorization": f"Bearer {TEST_FXA_TOKEN}"},
                 json={
                     "model": MOCK_MODEL_NAME,
                     "messages": [{"role": "user", "content": "Hello"}],
@@ -249,7 +249,7 @@ class TestMockRouterIntegration:
 
                 response = mocked_client_integration.post(
                     "/mock/chat/completions_no_auth",
-                    headers={"x-fxa-authorization": f"Bearer {TEST_FXA_TOKEN}"},
+                    headers={"authorization": f"Bearer {TEST_FXA_TOKEN}"},
                     json={
                         "model": MOCK_MODEL_NAME,
                         "messages": [{"role": "user", "content": "Hello"}],
@@ -278,7 +278,7 @@ class TestMockRouterIntegration:
                 start_time = time.time()
                 response = mocked_client_integration.post(
                     "/mock/chat/completions_no_auth",
-                    headers={"x-fxa-authorization": f"Bearer {TEST_FXA_TOKEN}"},
+                    headers={"authorization": f"Bearer {TEST_FXA_TOKEN}"},
                     json={
                         "model": MOCK_MODEL_NAME,
                         "messages": [{"role": "user", "content": "Hello"}],

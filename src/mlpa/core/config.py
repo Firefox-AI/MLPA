@@ -24,6 +24,9 @@ class Env(BaseSettings):
     # App Attest
     APP_BUNDLE_ID: str = "org.example.app"
     APP_DEVELOPMENT_TEAM: str = "TEAMID1234"
+    # NOTE: Should be False in production
+    # only use it for local testing
+    APP_ATTEST_QA: bool = False  # Set to True to use QA test certificates
 
     # FxA
     CLIENT_ID: str = "default-client-id"
@@ -38,7 +41,7 @@ class Env(BaseSettings):
     DB_PORT: int = 5432
 
     # LLM request default values
-    MODEL_NAME: str = "gpt-4"
+    MODEL_NAME: str = "openai/gpt-4o"
     TEMPERATURE: float = 0.1
     MAX_COMPLETION_TOKENS: int = 1024
     TOP_P: float = 0.01

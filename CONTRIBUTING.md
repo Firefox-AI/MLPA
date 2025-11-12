@@ -82,7 +82,7 @@ curl --location 'http://0.0.0.0:8080/health/readiness' \
 ```bash
 curl --location 'http://0.0.0.0:8080/v1/chat/completions' \
 --header 'Content-Type: application/json' \
---header 'x-fxa-authorization: Bearer {YOUR_MOZILLA_FXA_TOKEN}' \
+--header 'authorization: Bearer {YOUR_MOZILLA_FXA_TOKEN}' \
 --header 'X-LiteLLM-Key: Bearer {MASTER_KEY}' \
 --data '{
  "model": "openai/gpt-4o",

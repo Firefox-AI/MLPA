@@ -5,13 +5,13 @@ from tests.consts import TEST_FXA_TOKEN, TEST_USER_ID
 def test_user_info_wrong_params(mocked_client_integration):
     response = mocked_client_integration.get(
         "/user/",
-        headers={"x-fxa-authorization": "Bearer " + TEST_FXA_TOKEN},
+        headers={"authorization": "Bearer " + TEST_FXA_TOKEN},
     )
     assert response.status_code == 404
 
     response = mocked_client_integration.get(
         "/user/invalid/user-id",
-        headers={"x-fxa-authorization": "Bearer " + TEST_FXA_TOKEN},
+        headers={"authorization": "Bearer " + TEST_FXA_TOKEN},
     )
     assert response.status_code == 404
 
@@ -26,7 +26,7 @@ def test_user_info_endpoint_for_missing_user(mocked_client_integration, httpx_mo
 
     response = mocked_client_integration.get(
         f"/user/{TEST_USER_ID}",
-        headers={"x-fxa-authorization": "Bearer " + TEST_FXA_TOKEN},
+        headers={"authorization": "Bearer " + TEST_FXA_TOKEN},
     )
     assert response.json() == {"detail": "User not found"}
     assert response.status_code == 200  # litellm returns 200 even if user not found
@@ -50,7 +50,7 @@ def test_user_info_endpoint_for_existing_user(mocked_client_integration, httpx_m
 
     response = mocked_client_integration.get(
         f"/user/{TEST_USER_ID}",
-        headers={"x-fxa-authorization": "Bearer " + TEST_FXA_TOKEN},
+        headers={"authorization": "Bearer " + TEST_FXA_TOKEN},
     )
     assert response.status_code == 200
     assert response.json() == {

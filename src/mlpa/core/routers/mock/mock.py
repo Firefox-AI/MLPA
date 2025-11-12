@@ -6,9 +6,8 @@ import jwt
 from fastapi import APIRouter, Depends, Header, HTTPException
 from fastapi.responses import StreamingResponse
 from fxa.errors import TrustError
-from fxa.oauth import Client
 
-from mlpa.core.auth.fxa_auth import authorize_request
+from mlpa.core.auth.authorize import authorize_request
 from mlpa.core.classes import AuthorizedChatRequest, ChatRequest
 from mlpa.core.config import env
 from mlpa.core.utils import get_fxa_client, get_or_create_user
@@ -18,16 +17,16 @@ router = APIRouter()
 fxa_client = get_fxa_client()
 
 
-def verify_jwt_token_only(x_fxa_authorization: Annotated[str | None, Header()]):
+def verify_jwt_token_only(authorization: Annotated[str | None, Header()]):
     """
     Verify JWT token using pyfxa's _verify_jwt_token method without making POST calls.
     This is useful for load testing where we want to verify token validity locally.
     """
-    if not x_fxa_authorization:
+    if not authorization:
         raise HTTPException(status_code=401, detail="Missing FxA authorization header")
 
     try:
-        token = x_fxa_authorization.removeprefix("Bearer ").split()[0]
+        token = authorization.removeprefix("Bearer ").split()[0]
     except Exception:
         raise HTTPException(
             status_code=401, detail="Invalid authorization header format"
