@@ -72,7 +72,12 @@ def ensure_qa_certificates(force: bool = False) -> None:
 
 
 def _download_certificates(filenames: Iterable[str]) -> None:
-    client = storage.Client(project=env.APP_ATTEST_QA_GCP_PROJECT_ID)
+    try:
+        client = storage.Client(project=env.APP_ATTEST_QA_GCP_PROJECT_ID)
+    except Exception as e:
+        raise QACertificateError(
+            f"Failed to initialize GCS client: Please ensure GCP credentials are properly configured."
+        ) from e
     bucket = client.bucket(env.APP_ATTEST_QA_BUCKET)
     prefix = (env.APP_ATTEST_QA_BUCKET_PREFIX or "").strip("/")
 
@@ -86,14 +91,14 @@ def _download_certificates(filenames: Iterable[str]) -> None:
                 f"Downloaded QA certificate blob '{blob_path}' from bucket "
                 f"'{bucket.name}' to '{destination}'."
             )
-        except NotFound as exc:
+        except NotFound as e:
             raise QACertificateError(
                 f"QA certificate '{blob_path}' not found in bucket '{bucket.name}'."
-            ) from exc
-        except Exception as exc:  # pragma: no cover - defensive logging
+            ) from e
+        except Exception as e:  # pragma: no cover - defensive logging
             raise QACertificateError(
-                f"Failed to download QA certificate '{blob_path}': {exc}"
-            ) from exc
+                f"Failed to download QA certificate '{blob_path}"
+            ) from e
 
 
 def _missing_certificates() -> list[str]:
