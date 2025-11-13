@@ -270,7 +270,10 @@ def submit_attestation(
         httpx.HTTPStatusError: If the HTTP request fails
     """
     jwt_token = create_attestation_jwt(key_id_b64, challenge, attestation_obj_b64)
-    headers = {"authorization": f"Bearer {jwt_token}"}
+    headers = {
+        "authorization": f"Bearer {jwt_token}",
+        "use-qa-certificates": "true",
+    }
     response = httpx.post(url, headers=headers, timeout=30.0)
     response.raise_for_status()
     return response.json()
@@ -323,6 +326,7 @@ def submit_completion(
     headers = {
         "authorization": f"Bearer {jwt_token}",
         "use-app-attest": "true",
+        "use-qa-certificates": "true",
         **LITELLM_HEADERS,
     }
     response = httpx.post(url, json=payload, headers=headers, timeout=30.0)

@@ -24,7 +24,11 @@ from tests.consts import (
 
 
 async def mock_verify_attest(
-    app_attest_pg, key_id_b64: str, challenge: str, attestation_obj: str
+    app_attest_pg,
+    key_id_b64: str,
+    challenge: str,
+    attestation_obj: str,
+    use_qa_certificates: bool,
 ):
     try:
         attestation_data = cbor2.loads(attestation_obj)
@@ -45,7 +49,9 @@ async def mock_verify_attest(
     return {"status": "success"}
 
 
-async def mock_verify_assert(key_id_b64, assertion_obj, payload: ChatRequest):
+async def mock_verify_assert(
+    key_id_b64, assertion_obj, payload: ChatRequest, use_qa_certificates: bool
+):
     # TODO: implement
     return {"status": "success"}
 

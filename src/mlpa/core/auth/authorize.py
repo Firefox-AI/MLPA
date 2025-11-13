@@ -3,6 +3,7 @@ from typing import Annotated
 from fastapi import Header, HTTPException
 
 from mlpa.core.classes import AuthorizedChatRequest, ChatRequest
+from mlpa.core.config import env
 from mlpa.core.routers.appattest import app_attest_auth
 from mlpa.core.routers.fxa import fxa_auth
 from mlpa.core.utils import parse_app_attest_jwt
@@ -12,12 +13,13 @@ async def authorize_request(
     chat_request: ChatRequest,
     authorization: Annotated[str | None, Header()] = None,
     use_app_attest: Annotated[str | None, Header()] = None,
+    use_qa_certificates: Annotated[bool | None, Header()] = None,
 ) -> AuthorizedChatRequest:
     if not authorization:
         raise HTTPException(status_code=401, detail="Missing authorization header")
     if use_app_attest == "true":
         assertionAuth = parse_app_attest_jwt(authorization, "assert")
-        data = await app_attest_auth(assertionAuth, chat_request)
+        data = await app_attest_auth(assertionAuth, chat_request, use_qa_certificates)
         if data:
             if data.get("error"):
                 raise HTTPException(status_code=401, detail=data["error"])

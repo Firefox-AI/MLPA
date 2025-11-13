@@ -21,6 +21,7 @@ from tests.mocks import MockAppAttestPGService
 
 sample_chat_request = SAMPLE_CHAT_REQUEST.model_dump(exclude_unset=True)
 jwt_secret = "secret"
+# TODO: generate keys, certs, attest and assert and pass use-qa-certificates=True for these tests
 
 
 def test_get_challenge(mocked_client_integration):
@@ -82,9 +83,13 @@ def test_invalid_challenge(mocked_client_integration):
         key=jwt_secret,
         algorithm="HS256",
     )
+    headers = {
+        "Authorization": f"Bearer {app_attest_jwt}",
+        "use-app-attest": "true",
+    }
     response = mocked_client_integration.post(
         "/verify/attest",
-        headers={"Authorization": f"Bearer {app_attest_jwt}", "use-app-attest": "true"},
+        headers=headers,
         json=sample_chat_request,
     )
     assert response.json() == {"detail": "Invalid or expired challenge"}
@@ -106,9 +111,14 @@ def test_invalid_attestation_request_missing_fields(mocked_client_integration):
         key=jwt_secret,
         algorithm="HS256",
     )
+    headers = {
+        "Authorization": f"Bearer {app_attest_jwt}",
+        "use-app-attest": "true",
+        "use-qa-certificates": "true",
+    }
     response = mocked_client_integration.post(
         "/verify/attest",
-        headers={"Authorization": f"Bearer {app_attest_jwt}", "use-app-attest": "true"},
+        headers=headers,
         json=sample_chat_request,
     )
     assert response.status_code == 401
@@ -117,9 +127,13 @@ def test_invalid_attestation_request_missing_fields(mocked_client_integration):
 def test_invalid_attestation_request_bad_jwt(mocked_client_integration):
     # Malformed JWT
     bad_jwt = "not.a.valid.jwt"
+    headers = {
+        "Authorization": f"Bearer {bad_jwt}",
+        "use-app-attest": "true",
+    }
     response = mocked_client_integration.post(
         "/verify/attest",
-        headers={"Authorization": f"Bearer {bad_jwt}", "use-app-attest": "true"},
+        headers=headers,
         json=sample_chat_request,
     )
     assert response.status_code == 401 or response.json().get("detail") is not None
@@ -141,9 +155,13 @@ def test_invalid_attestation_request_wrong_key_id(mocked_client_integration):
         key=jwt_secret,
         algorithm="HS256",
     )
+    headers = {
+        "Authorization": f"Bearer {app_attest_jwt}",
+        "use-app-attest": "true",
+    }
     response = mocked_client_integration.post(
         "/verify/attest",
-        headers={"Authorization": f"Bearer {app_attest_jwt}", "use-app-attest": "true"},
+        headers=headers,
         json=sample_chat_request,
     )
     assert response.status_code == 400 or response.json().get("detail") is not None
@@ -169,9 +187,13 @@ def test_successful_attestation_request(mocked_client_integration):
         algorithm="HS256",
     )
 
+    headers = {
+        "authorization": f"Bearer {app_attest_jwt}",
+        "use-app-attest": "true",
+    }
     response = mocked_client_integration.post(
         "/verify/attest",
-        headers={"authorization": f"Bearer {app_attest_jwt}", "use-app-attest": "true"},
+        headers=headers,
         json=sample_chat_request,
     )
     assert response.status_code == 201
@@ -195,9 +217,13 @@ def test_successful_request_with_mocked_app_attest_auth(mocked_client_integratio
         algorithm="HS256",
     )
 
+    headers = {
+        "authorization": f"Bearer {app_attest_jwt}",
+        "use-app-attest": "true",
+    }
     response = mocked_client_integration.post(
         "/v1/chat/completions",
-        headers={"authorization": f"Bearer {app_attest_jwt}", "use-app-attest": "true"},
+        headers=headers,
         json=sample_chat_request,
     )
     assert response.status_code != 401
@@ -230,7 +256,7 @@ async def test_verify_assert_rejects_non_monotonic_counter(mocker):
 
     with pytest.raises(HTTPException) as exc:
         await appattest.verify_assert(
-            TEST_KEY_ID_B64, assertion_bytes, sample_chat_request
+            TEST_KEY_ID_B64, assertion_bytes, sample_chat_request, False
         )
 
     assert exc.value.status_code == 403
@@ -273,7 +299,7 @@ async def test_verify_assert_succeeds_and_updates_counter(mocker):
     )
 
     result = await appattest.verify_assert(
-        TEST_KEY_ID_B64, assertion_bytes, chat_payload
+        TEST_KEY_ID_B64, assertion_bytes, chat_payload, False
     )
     assert result == {"status": "success"}
 
