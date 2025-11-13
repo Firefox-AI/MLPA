@@ -29,7 +29,6 @@ async def attest(
     authorization: Annotated[str | None, Header()] = None,
     use_qa_certificates: Annotated[bool | None, Header()] = None,
 ):
-    print(use_qa_certificates, "wow")
     attestationAuth = parse_app_attest_jwt(authorization, "attest")
     challenge_bytes = b64decode_safe(attestationAuth.challenge_b64, "challenge_b64")
     if not await validate_challenge(
