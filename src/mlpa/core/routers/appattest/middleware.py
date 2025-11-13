@@ -27,8 +27,9 @@ async def get_challenge(key_id_b64: str):
 @router.post("/attest", tags=["App Attest"], status_code=201)
 async def attest(
     authorization: Annotated[str | None, Header()] = None,
-    use_qa_certificates: Annotated[str | None, Header()] = None,
+    use_qa_certificates: Annotated[bool | None, Header()] = None,
 ):
+    print(use_qa_certificates, "wow")
     attestationAuth = parse_app_attest_jwt(authorization, "attest")
     challenge_bytes = b64decode_safe(attestationAuth.challenge_b64, "challenge_b64")
     if not await validate_challenge(
@@ -44,7 +45,7 @@ async def attest(
             attestationAuth.key_id_b64,
             challenge_bytes,
             attestation_obj,
-            use_qa_certificates and use_qa_certificates.lower() == "true",
+            use_qa_certificates,
         )
     except ValueError as e:
         logger.error(f"App Attest attestation error: {e}")
