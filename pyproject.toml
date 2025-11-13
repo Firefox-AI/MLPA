@@ -47,9 +47,10 @@ dependencies = [
 test = [
     "absolufy-imports==0.3.1",
     "pytest==8.4.2",
+    "pytest-asyncio==1.2.0",
+    "pytest-env==1.2.0",
     "pytest-httpx==0.35.0",
     "pytest-mock==3.15.1",
-    "pytest-asyncio==1.2.0",
     "tqdm==4.67.1",
 ]
 lint = ["pre_commit==4.3.0", "ruff==0.14.0"]
@@ -78,3 +79,6 @@ select = ["I"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+
+[tool.pytest_env]
+APP_ATTEST_QA = "true"

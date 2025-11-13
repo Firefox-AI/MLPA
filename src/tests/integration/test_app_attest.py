@@ -21,7 +21,7 @@ from tests.mocks import MockAppAttestPGService
 
 sample_chat_request = SAMPLE_CHAT_REQUEST.model_dump(exclude_unset=True)
 jwt_secret = "secret"
-QA_CERT_HEADER = {"use-qa-certificates": "true"}
+# TODO: generate keys, certs, attest and assert and pass use-qa-certificates=True for these tests
 
 
 def test_get_challenge(mocked_client_integration):
@@ -86,7 +86,6 @@ def test_invalid_challenge(mocked_client_integration):
     headers = {
         "Authorization": f"Bearer {app_attest_jwt}",
         "use-app-attest": "true",
-        **QA_CERT_HEADER,
     }
     response = mocked_client_integration.post(
         "/verify/attest",
@@ -115,7 +114,7 @@ def test_invalid_attestation_request_missing_fields(mocked_client_integration):
     headers = {
         "Authorization": f"Bearer {app_attest_jwt}",
         "use-app-attest": "true",
-        **QA_CERT_HEADER,
+        "use-qa-certificates": "true",
     }
     response = mocked_client_integration.post(
         "/verify/attest",
@@ -131,7 +130,6 @@ def test_invalid_attestation_request_bad_jwt(mocked_client_integration):
     headers = {
         "Authorization": f"Bearer {bad_jwt}",
         "use-app-attest": "true",
-        **QA_CERT_HEADER,
     }
     response = mocked_client_integration.post(
         "/verify/attest",
@@ -160,7 +158,6 @@ def test_invalid_attestation_request_wrong_key_id(mocked_client_integration):
     headers = {
         "Authorization": f"Bearer {app_attest_jwt}",
         "use-app-attest": "true",
-        **QA_CERT_HEADER,
     }
     response = mocked_client_integration.post(
         "/verify/attest",
@@ -193,7 +190,6 @@ def test_successful_attestation_request(mocked_client_integration):
     headers = {
         "authorization": f"Bearer {app_attest_jwt}",
         "use-app-attest": "true",
-        **QA_CERT_HEADER,
     }
     response = mocked_client_integration.post(
         "/verify/attest",
@@ -224,7 +220,6 @@ def test_successful_request_with_mocked_app_attest_auth(mocked_client_integratio
     headers = {
         "authorization": f"Bearer {app_attest_jwt}",
         "use-app-attest": "true",
-        **QA_CERT_HEADER,
     }
     response = mocked_client_integration.post(
         "/v1/chat/completions",
@@ -261,7 +256,7 @@ async def test_verify_assert_rejects_non_monotonic_counter(mocker):
 
     with pytest.raises(HTTPException) as exc:
         await appattest.verify_assert(
-            TEST_KEY_ID_B64, assertion_bytes, sample_chat_request
+            TEST_KEY_ID_B64, assertion_bytes, sample_chat_request, False
         )
 
     assert exc.value.status_code == 403
@@ -304,7 +299,7 @@ async def test_verify_assert_succeeds_and_updates_counter(mocker):
     )
 
     result = await appattest.verify_assert(
-        TEST_KEY_ID_B64, assertion_bytes, chat_payload
+        TEST_KEY_ID_B64, assertion_bytes, chat_payload, False
     )
     assert result == {"status": "success"}
 

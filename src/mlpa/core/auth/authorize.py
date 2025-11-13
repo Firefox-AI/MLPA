@@ -20,7 +20,9 @@ async def authorize_request(
     if use_app_attest == "true":
         assertionAuth = parse_app_attest_jwt(authorization, "assert")
         data = await app_attest_auth(
-            assertionAuth, chat_request, use_qa_certificates.lower() == "true"
+            assertionAuth,
+            chat_request,
+            use_qa_certificates and use_qa_certificates.lower() == "true",
         )
         if data:
             if data.get("error"):

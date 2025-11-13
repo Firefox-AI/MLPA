@@ -44,7 +44,7 @@ async def attest(
             attestationAuth.key_id_b64,
             challenge_bytes,
             attestation_obj,
-            use_qa_certificates.lower() == "true",
+            use_qa_certificates and use_qa_certificates.lower() == "true",
         )
     except ValueError as e:
         logger.error(f"App Attest attestation error: {e}")
