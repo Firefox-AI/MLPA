@@ -43,34 +43,52 @@ class AppAttestPGService(PGService):
             logger.error(f"Error deleting challenge: {e}")
 
     # Keys #
-    async def store_key(self, key_id_b64: str, public_key_pem: str):
+    async def store_key(self, key_id_b64: str, public_key_pem: str, counter: int):
         try:
             await self.pg.execute(
                 """
-                INSERT INTO public_keys (key_id_b64, public_key_pem)
-                VALUES ($1, $2)
+                INSERT INTO public_keys (key_id_b64, public_key_pem, counter, updated_at)
+                VALUES ($1, $2, $3, NOW())
+                ON CONFLICT (key_id_b64) DO UPDATE SET
+                public_key_pem = EXCLUDED.public_key_pem,
+                counter = EXCLUDED.counter,
+                updated_at = NOW()
                 """,
                 key_id_b64,
                 public_key_pem,
+                counter,
             )
         except Exception as e:
             logger.error(f"Error storing key: {e}")
 
-    async def get_key(self, key_id_b64: str) -> str | None:
+    async def get_key(self, key_id_b64: str) -> dict | None:
         try:
             record = await self.pg.fetchrow(
                 """
-                SELECT public_key_pem FROM public_keys
+                SELECT public_key_pem, counter FROM public_keys
                 WHERE key_id_b64 = $1
                 """,
                 key_id_b64,
             )
-            if record:
-                return record["public_key_pem"]
-            return None
+            return record
         except Exception as e:
             logger.error(f"Error retrieving key: {e}")
             return None
+
+    async def update_key_counter(self, key_id_b64: str, counter: int):
+        try:
+            await self.pg.execute(
+                """
+                UPDATE public_keys
+                SET counter = $2,
+                    updated_at = NOW()
+                WHERE key_id_b64 = $1 AND counter < $2
+                """,
+                key_id_b64,
+                counter,
+            )
+        except Exception as e:
+            logger.error(f"Error updating key counter: {e}")
 
     async def delete_key(self, key_id_b64: str):
         try:

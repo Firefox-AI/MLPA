@@ -3,6 +3,7 @@
 Typer CLI for exercising the App Attest QA flow.
 """
 
+import asyncio
 import base64
 import datetime
 import hashlib
@@ -27,6 +28,7 @@ from cryptography.x509.oid import NameOID
 from pyattest.testutils.factories.certificates import key_usage
 
 from mlpa.core.config import LITELLM_HEADERS, env
+from mlpa.core.pg_services.services import app_attest_pg
 
 app = typer.Typer(
     help="Utilities for registering App Attest devices and requesting completions."
@@ -127,7 +129,7 @@ def generate_attestation_object(
     )
 
 
-def generate_assertion_object(
+async def generate_assertion_object(
     app_id: str,
     key_id_bytes: bytes,
     device_private_key: ec.EllipticCurvePrivateKey,
@@ -145,10 +147,17 @@ def generate_assertion_object(
     Returns:
         CBOR-encoded assertion object bytes containing authenticatorData and signature
     """
+    # Get current counter from app attest DB for incrementing
+    await app_attest_pg.connect()
+    key_id_b64 = base64.urlsafe_b64encode(key_id_bytes).decode("utf-8")
+    row = await app_attest_pg.get_key(key_id_b64)
+    counter = row["counter"] if row else 0
+    await app_attest_pg.disconnect()
+
     auth_data = (
         hashlib.sha256(app_id.encode()).digest()
         + b"\x01"
-        + struct.pack("!I", 1)
+        + struct.pack("!I", counter + 1)
         + struct.pack("!H", len(key_id_bytes))
         + key_id_bytes
     )
@@ -261,7 +270,10 @@ def submit_attestation(
         httpx.HTTPStatusError: If the HTTP request fails
     """
     jwt_token = create_attestation_jwt(key_id_b64, challenge, attestation_obj_b64)
-    headers = {"authorization": f"Bearer {jwt_token}"}
+    headers = {
+        "authorization": f"Bearer {jwt_token}",
+        "use-qa-certificates": "true",
+    }
     response = httpx.post(url, headers=headers, timeout=30.0)
     response.raise_for_status()
     return response.json()
@@ -314,6 +326,7 @@ def submit_completion(
     headers = {
         "authorization": f"Bearer {jwt_token}",
         "use-app-attest": "true",
+        "use-qa-certificates": "true",
         **LITELLM_HEADERS,
     }
     response = httpx.post(url, json=payload, headers=headers, timeout=30.0)
@@ -340,6 +353,7 @@ def build_payload() -> dict:
         "temperature": env.TEMPERATURE,
         "max_completion_tokens": env.MAX_COMPLETION_TOKENS,
         "top_p": env.TOP_P,
+        "mock_response": "Ok sure",
     }
 
 
@@ -422,11 +436,12 @@ def request_completion(
 
     payload = build_payload()
     payload_hash = compute_payload_hash(payload)
-    assertion_obj_b64 = base64.urlsafe_b64encode(
+    assertion_obj = asyncio.run(
         generate_assertion_object(
             app_attest_id(), key_id_bytes, device_private_key, payload_hash
         )
-    ).decode("utf-8")
+    )
+    assertion_obj_b64 = base64.urlsafe_b64encode(assertion_obj).decode("utf-8")
 
     typer.echo("Submitting chat completion request...")
     result = submit_completion(

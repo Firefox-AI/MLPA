@@ -43,10 +43,17 @@ def mocked_client_integration(mocker):
     )
 
     async def _mock_verify_attest(
-        key_id_b64: str, challenge: str, attestation_obj: str
+        key_id_b64: str,
+        challenge: str,
+        attestation_obj: str,
+        use_qa_certificates: bool,
     ):
         return await mock_verify_attest(
-            mock_app_attest_pg, key_id_b64, challenge, attestation_obj
+            mock_app_attest_pg,
+            key_id_b64,
+            challenge,
+            attestation_obj,
+            use_qa_certificates,
         )
 
     mocker.patch(

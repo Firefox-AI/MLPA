@@ -16,6 +16,7 @@ from pyattest.assertion import Assertion
 from pyattest.attestation import Attestation
 from pyattest.configs.apple import AppleConfig
 
+from mlpa.core.app_attest import QA_CERT_DIR, ensure_qa_certificates
 from mlpa.core.config import env
 from mlpa.core.pg_services.services import app_attest_pg
 from mlpa.core.prometheus_metrics import PrometheusResult, metrics
@@ -24,17 +25,15 @@ from mlpa.core.utils import b64decode_safe
 challenge_store = {}
 
 
-def _load_root_ca():
+def _load_root_ca(use_qa_certificates: bool) -> bytes:
     """Load the root CA certificate based on APP_ATTEST_QA flag"""
-    current_file = Path(__file__).resolve()
-    project_root = current_file.parent.parent.parent.parent.parent.parent
-
-    if env.APP_ATTEST_QA:
+    if env.APP_ATTEST_QA and use_qa_certificates:
+        ensure_qa_certificates()
         logger.warning(
             "⚠️  APP_ATTEST_QA is set to TRUE - App Attest will use FAKE QA certificates for testing. "
             "DO NOT use in production!"
         )
-        qa_cert_path = project_root / "qa_certificates" / "root_cert.pem"
+        qa_cert_path = QA_CERT_DIR / "root_cert.pem"
         logger.debug(f"Looking for QA certificate at: {qa_cert_path}")
         if qa_cert_path.exists():
             root_ca = load_pem_x509_certificate(qa_cert_path.read_bytes())
@@ -46,7 +45,7 @@ def _load_root_ca():
             )
 
     # Default to production certificate
-    root_ca_path = project_root / "Apple_App_Attestation_Root_CA.pem"
+    root_ca_path = QA_CERT_DIR.parent / "Apple_App_Attestation_Root_CA.pem"
     if not root_ca_path.exists():
         raise FileNotFoundError(
             f"Root CA certificate not found at {root_ca_path}. "
@@ -91,15 +90,20 @@ async def validate_challenge(challenge: str, key_id_b64: str) -> bool:
         metrics.validate_challenge_latency.observe(time.time() - start_time)
 
 
-async def verify_attest(key_id_b64: str, challenge: bytes, attestation_obj: bytes):
+async def verify_attest(
+    key_id_b64: str,
+    challenge: bytes,
+    attestation_obj: bytes,
+    use_qa_certificates: bool,
+):
     start_time = time.time()
     key_id = b64decode_safe(key_id_b64, "key_id_b64")
-    root_ca_pem = _load_root_ca()
+    root_ca_pem = _load_root_ca(use_qa_certificates)
     config = AppleConfig(
         key_id=key_id,
         app_id=f"{env.APP_DEVELOPMENT_TEAM}.{env.APP_BUNDLE_ID}",
         root_ca=root_ca_pem,
-        production=False,
+        production=env.APP_ATTEST_PRODUCTION,
     )
 
     result = PrometheusResult.ERROR
@@ -111,6 +115,7 @@ async def verify_attest(key_id_b64: str, challenge: bytes, attestation_obj: byte
         verified_data = attestation.data["data"]
         credential_id = verified_data["credential_id"]
         auth_data = verified_data["raw"]["authData"]
+        attestation_counter = int.from_bytes(auth_data[33:37], "big")
         cred_id_len = len(credential_id)
         # Offset = 37 bytes (for rpIdHash, flags, counter) + 16 (aaguid) + 2 (len) + cred_id_len
         public_key_offset = 37 + 16 + 2 + cred_id_len
@@ -145,38 +150,60 @@ async def verify_attest(key_id_b64: str, challenge: bytes, attestation_obj: byte
         )
 
     # save public_key in b64
-    await app_attest_pg.store_key(key_id_b64, public_key_pem)
+    await app_attest_pg.store_key(key_id_b64, public_key_pem, attestation_counter)
 
     return {"status": "success"}
 
 
-async def verify_assert(key_id_b64: str, assertion: bytes, payload: dict):
+async def verify_assert(
+    key_id_b64: str, assertion: bytes, payload: dict, use_qa_certificates: bool
+):
     start_time = time.time()
     key_id = b64decode_safe(key_id_b64, "key_id_b64")
     payload_bytes = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
     expected_hash = hashlib.sha256(payload_bytes).digest()
 
-    public_key_pem = await app_attest_pg.get_key(key_id_b64)
-    if not public_key_pem:
+    key_record = await app_attest_pg.get_key(key_id_b64)
+    if not key_record or not key_record.get("public_key_pem"):
         logger.error(
             f"Assertion verification failed: No public key found for key_id_b64: {key_id_b64}"
         )
         raise HTTPException(status_code=403, detail="Assertion verification failed")
+    public_key_pem = key_record["public_key_pem"]
+    last_counter = key_record.get("counter", 0)
 
     public_key_obj = serialization.load_pem_public_key(public_key_pem.encode())
 
-    root_ca_pem = _load_root_ca()
+    root_ca_pem = _load_root_ca(use_qa_certificates)
     config = AppleConfig(
         key_id=key_id,
         app_id=f"{env.APP_DEVELOPMENT_TEAM}.{env.APP_BUNDLE_ID}",
         root_ca=root_ca_pem,
-        production=False,
+        production=env.APP_ATTEST_PRODUCTION,
     )
 
     result = PrometheusResult.ERROR
     try:
         assertion_to_test = Assertion(assertion, expected_hash, public_key_obj, config)
         assertion_to_test.verify()
+        try:
+            unpacked_assertion = cbor2.loads(assertion)
+            auth_data = unpacked_assertion["authenticatorData"]
+            current_counter = int.from_bytes(auth_data[33:37], "big")
+        except Exception as counter_error:
+            logger.error(f"Assertion counter parsing failed: {counter_error}")
+            raise HTTPException(
+                status_code=500, detail="Server error during App Attest auth"
+            )
+
+        if current_counter <= last_counter:
+            logger.error(
+                f"Assertion counter replay detected for key_id_b64={key_id_b64}: "
+                f"incoming={current_counter}, stored={last_counter}"
+            )
+            raise HTTPException(status_code=403, detail="Assertion verification failed")
+
+        await app_attest_pg.update_key_counter(key_id_b64, current_counter)
         result = PrometheusResult.SUCCESS
     except Exception as e:
         logger.error(f"Assertion verification failed: {e}")

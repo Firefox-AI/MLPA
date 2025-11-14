@@ -9,7 +9,7 @@ from tests.consts import (
     TEST_USER_ID,
 )
 
-sample_chat_request = SAMPLE_CHAT_REQUEST.model_dump()
+sample_chat_request = SAMPLE_CHAT_REQUEST.model_dump(exclude_unset=True)
 
 
 class TestMockRouterIntegration:
