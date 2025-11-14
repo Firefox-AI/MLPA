@@ -16,13 +16,17 @@ from pyattest.assertion import Assertion
 from pyattest.attestation import Attestation
 from pyattest.configs.apple import AppleConfig
 
-from mlpa.core.app_attest import QA_CERT_DIR, ensure_qa_certificates
+from mlpa.core.app_attest import (
+    QA_CERT_DIR,
+    ensure_qa_certificates,
+)
 from mlpa.core.config import env
 from mlpa.core.pg_services.services import app_attest_pg
 from mlpa.core.prometheus_metrics import PrometheusResult, metrics
 from mlpa.core.utils import b64decode_safe
 
 challenge_store = {}
+PROJECT_ROOT = Path(__file__).resolve().parents[5]
 
 
 def _load_root_ca(use_qa_certificates: bool) -> bytes:
@@ -45,7 +49,7 @@ def _load_root_ca(use_qa_certificates: bool) -> bytes:
             )
 
     # Default to production certificate
-    root_ca_path = QA_CERT_DIR.parent / "Apple_App_Attestation_Root_CA.pem"
+    root_ca_path = PROJECT_ROOT / "Apple_App_Attestation_Root_CA.pem"
     if not root_ca_path.exists():
         raise FileNotFoundError(
             f"Root CA certificate not found at {root_ca_path}. "
