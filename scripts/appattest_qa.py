@@ -34,8 +34,9 @@ app = typer.Typer(
     help="Utilities for registering App Attest devices and requesting completions."
 )
 
-DEFAULT_KEY_ID_PATH = Path("qa_certificates/key_id.json")
-DEFAULT_BASE_URL = os.getenv("MLPA_URL", f"http://0.0.0.0:{env.PORT or 8080}")
+QA_CERT_DIR = Path(env.APP_ATTEST_QA_CERT_DIR)
+DEFAULT_KEY_ID_PATH = QA_CERT_DIR / "key_id.json"
+DEFAULT_BASE_URL = f"http://0.0.0.0:{env.PORT or 8080}"
 
 
 def generate_attestation_object(
@@ -56,9 +57,8 @@ def generate_attestation_object(
     Returns:
         CBOR-encoded attestation object bytes
     """
-    certs_dir = Path("qa_certificates")
-    root_key = load_pem_private_key((certs_dir / "root_key.pem").read_bytes(), b"123")
-    root_cert = load_pem_x509_certificate((certs_dir / "root_cert.pem").read_bytes())
+    root_key = load_pem_private_key((QA_CERT_DIR / "root_key.pem").read_bytes(), b"123")
+    root_cert = load_pem_x509_certificate((QA_CERT_DIR / "root_cert.pem").read_bytes())
     device_public_key = device_private_key.public_key()
     pubkey_uncompressed = device_public_key.public_bytes(
         encoding=serialization.Encoding.X962,
@@ -384,7 +384,9 @@ def app_attest_id() -> str:
 @app.command("register")
 def register_device(
     key_id_file: Path = typer.Option(
-        DEFAULT_KEY_ID_PATH, "--key-id-file", help="Path to qa_certificates/key_id.json"
+        DEFAULT_KEY_ID_PATH,
+        "--key-id-file",
+        help=f"Path to {env.APP_ATTEST_QA_CERT_DIR}/key_id.json",
     ),
     mlpa_url: Optional[str] = typer.Option(
         None, "--mlpa-url", help="Override MLPA base URL (defaults to env/localhost)"
@@ -417,7 +419,9 @@ def register_device(
 @app.command("completion")
 def request_completion(
     key_id_file: Path = typer.Option(
-        DEFAULT_KEY_ID_PATH, "--key-id-file", help="Path to qa_certificates/key_id.json"
+        DEFAULT_KEY_ID_PATH,
+        "--key-id-file",
+        help=f"Path to {env.APP_ATTEST_QA_CERT_DIR}/key_id.json",
     ),
     mlpa_url: Optional[str] = typer.Option(
         None, "--mlpa-url", help="Override MLPA base URL (defaults to env/localhost)"

@@ -15,6 +15,10 @@ from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric import ec
 from pyattest.testutils.factories.certificates import generate
 
+from mlpa.core.config import env
+
+QA_CERT_DIR = Path(env.APP_ATTEST_QA_CERT_DIR)
+
 
 def generate_key_id_from_ec_public_key(
     public_key: ec.EllipticCurvePublicKey,
@@ -40,8 +44,7 @@ def generate_key_id_from_ec_public_key(
 
 
 def main():
-    certs_dir = Path("qa_certificates")
-    certs_dir.mkdir(exist_ok=True)
+    QA_CERT_DIR.mkdir(exist_ok=True)
 
     # Create both directory structures that generate() expects
     # Note: pyattest library has inconsistent paths:
@@ -60,7 +63,7 @@ def main():
     # Copy root_key.pem from correct path
     root_key_src = correct_fixtures_dir / "root_key.pem"
     if root_key_src.exists():
-        root_key_dst = certs_dir / "root_key.pem"
+        root_key_dst = QA_CERT_DIR / "root_key.pem"
         shutil.copy(root_key_src, root_key_dst)
         print(f"Created: {root_key_dst}")
     else:
@@ -75,7 +78,7 @@ def main():
         print(f"Copied root_cert.pem to correct path: {root_cert_correct}")
 
         # Then copy to qa_certificates
-        root_cert_dst = certs_dir / "root_cert.pem"
+        root_cert_dst = QA_CERT_DIR / "root_cert.pem"
         shutil.copy(root_cert_src, root_cert_dst)
         print(f"Created: {root_cert_dst}")
     else:
@@ -122,15 +125,15 @@ def main():
         ).decode("utf-8"),  # Uncompressed public key
     }
 
-    key_id_json_path = certs_dir / "key_id.json"
+    key_id_json_path = QA_CERT_DIR / "key_id.json"
     with open(key_id_json_path, "w") as f:
         json.dump(key_id_info, f, indent=2)
     print(f"Created: {key_id_json_path}")
 
     print("\n✅ Test certificates generated successfully!")
-    print(f"Root CA certificate: {certs_dir / 'root_cert.pem'}")
-    print(f"Root CA key: {certs_dir / 'root_key.pem'}")
-    print(f"Device key pair and key_id: {certs_dir / 'key_id.json'}")
+    print(f"Root CA certificate: {QA_CERT_DIR / 'root_cert.pem'}")
+    print(f"Root CA key: {QA_CERT_DIR / 'root_key.pem'}")
+    print(f"Device key pair and key_id: {QA_CERT_DIR / 'key_id.json'}")
     print(f"\nTest key_id formats:")
     print(f"  key_id_b64 (for API calls): {key_id_b64}")
     print("\n⚠️  WARNING: These are test certificates only. Do NOT use in production!")

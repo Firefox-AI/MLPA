@@ -10,8 +10,7 @@ from loguru import logger
 
 from mlpa.core.config import env
 
-PROJECT_ROOT = Path(__file__).resolve().parents[4]
-QA_CERT_DIR = PROJECT_ROOT / "qa_certificates"
+QA_CERT_DIR = Path(env.APP_ATTEST_QA_CERT_DIR)
 QA_CERT_FILENAMES: tuple[str, ...] = (
     "root_cert.pem",
     "root_key.pem",
