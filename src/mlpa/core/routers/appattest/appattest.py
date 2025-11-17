@@ -46,7 +46,7 @@ def _load_root_ca(use_qa_certificates: bool) -> bytes:
             )
 
     # Default to production certificate
-    root_ca_path = PROJECT_ROOT.parent / "Apple_App_Attestation_Root_CA.pem"
+    root_ca_path = PROJECT_ROOT / "Apple_App_Attestation_Root_CA.pem"
     if not root_ca_path.exists():
         raise FileNotFoundError(
             f"Root CA certificate not found at {root_ca_path}. "
