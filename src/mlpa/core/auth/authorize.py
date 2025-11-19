@@ -2,7 +2,7 @@ from typing import Annotated
 
 from fastapi import Header, HTTPException
 
-from mlpa.core.classes import AuthorizedChatRequest, ChatRequest
+from mlpa.core.classes import AuthorizedChatRequest, ChatRequest, ServiceType
 from mlpa.core.config import env
 from mlpa.core.routers.appattest import app_attest_auth
 from mlpa.core.routers.fxa import fxa_auth
@@ -11,7 +11,8 @@ from mlpa.core.utils import parse_app_attest_jwt
 
 async def authorize_request(
     chat_request: ChatRequest,
-    authorization: Annotated[str | None, Header()] = None,
+    authorization: Annotated[str, Header()],
+    service_type: Annotated[ServiceType, Header()],
     use_app_attest: Annotated[bool | None, Header()] = None,
     use_qa_certificates: Annotated[bool | None, Header()] = None,
 ) -> AuthorizedChatRequest:
@@ -24,7 +25,7 @@ async def authorize_request(
             if data.get("error"):
                 raise HTTPException(status_code=401, detail=data["error"])
             return AuthorizedChatRequest(
-                user=assertionAuth.key_id_b64,  # "user" is key_id_b64 from app attest
+                user=f"{assertionAuth.key_id_b64}:{service_type}",  # "user" is key_id_b64 from app attest
                 **chat_request.model_dump(exclude_unset=True),
             )
     else:
@@ -34,7 +35,7 @@ async def authorize_request(
             if fxa_user_id.get("error"):
                 raise HTTPException(status_code=401, detail=fxa_user_id["error"])
             return AuthorizedChatRequest(
-                user=fxa_user_id["user"],
+                user=f"{fxa_user_id['user']}:{service_type}",
                 **chat_request.model_dump(exclude_unset=True),
             )
     raise HTTPException(
