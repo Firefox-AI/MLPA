@@ -28,7 +28,7 @@ This script:
 1. Generates a test root CA certificate and private key using `pyattest` testutils
 2. Creates a device EC key pair (SECP256R1)
 3. Derives `key_id` from the device public key: `SHA256(uncompressed_public_key)`
-4. Stores everything in `qa_certificates/`:
+4. Stores everything in `/tmp/qa_certificates/`:
    - `root_cert.pem` - Root CA certificate
    - `root_key.pem` - Root CA private key
    - `key_id.json` - Device key pair and key_id in various formats
@@ -124,7 +124,7 @@ python scripts/appattest_qa.py register
 
 Options:
 
-- `--key-id-file PATH`: Path to `key_id.json` (default: `qa_certificates/key_id.json`)
+- `--key-id-file PATH`: Path to `key_id.json` (default: `/tmp/qa_certificates/key_id.json`)
 - `--mlpa-url URL`: Override MLPA base URL (default: from env or `http://0.0.0.0:8080`)
 
 **What it does**:
@@ -147,7 +147,7 @@ python scripts/appattest_qa.py completion
 
 Options:
 
-- `--key-id-file PATH`: Path to `key_id.json` (default: `qa_certificates/key_id.json`)
+- `--key-id-file PATH`: Path to `key_id.json` (default: `/tmp/qa_certificates/key_id.json`)
 - `--mlpa-url URL`: Override MLPA base URL (default: from env or `http://0.0.0.0:8080`)
 
 **What it does**:

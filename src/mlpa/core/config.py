@@ -28,6 +28,7 @@ class Env(BaseSettings):
     # NOTE: Should be False in production
     # only use it for local testing
     APP_ATTEST_QA: bool = False  # Set to True to use QA test certificates
+    APP_ATTEST_QA_CERT_DIR: str = "./qa_certificates"
     APP_ATTEST_QA_BUCKET: str | None = None
     APP_ATTEST_QA_BUCKET_PREFIX: str | None = None
     APP_ATTEST_QA_GCP_PROJECT_ID: str | None = None
@@ -43,6 +44,8 @@ class Env(BaseSettings):
     DB_PASSWORD: str = "litellm"
     DB_HOST: str = "localhost"
     DB_PORT: int = 5432
+    PG_POOL_MIN_SIZE: int = 1
+    PG_POOL_MAX_SIZE: int = 10
 
     # LLM request default values
     MODEL_NAME: str = "openai/gpt-4o"

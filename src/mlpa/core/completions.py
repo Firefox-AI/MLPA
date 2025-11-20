@@ -63,14 +63,15 @@ async def stream_completion(authorized_chat_request: AuthorizedChatRequest):
                 metrics.chat_tokens.labels(type="completion").inc(num_completion_tokens)
                 result = PrometheusResult.SUCCESS
     except httpx.HTTPStatusError as e:
-        logger.error(
-            f"Upstream service returned an error: {e.response.status_code} - {e.response.text}"
+        logger.error(f"Upstream service returned an error: {e}")
+        raise HTTPException(
+            status_code=502,
+            detail=f"Upstream service returned an error",
         )
-        return
     except Exception as e:
         logger.error(f"Failed to proxy request to {LITELLM_COMPLETIONS_URL}: {e}")
         raise HTTPException(
-            status_code=502,
+            status_code=500,
             detail={"error": f"Failed to proxy request"},
         )
     finally:
