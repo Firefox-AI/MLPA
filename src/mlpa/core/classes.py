@@ -1,3 +1,4 @@
+import enum
 from typing import Optional
 
 from pydantic import BaseModel
@@ -36,3 +37,8 @@ class AssertionAuth(BaseModel):
 
 class AuthorizedChatRequest(ChatRequest):
     user: str
+
+
+class ServiceType(enum.Enum):
+    s2s = "s2s"
+    ai = "ai"

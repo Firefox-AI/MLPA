@@ -19,7 +19,7 @@ class TestMockRouterIntegration:
         """Test successful request to /mock/chat/completions endpoint."""
         response = mocked_client_integration.post(
             "/mock/chat/completions",
-            headers={"authorization": f"Bearer {TEST_FXA_TOKEN}"},
+            headers={"authorization": f"Bearer {TEST_FXA_TOKEN}", "service-type": "ai"},
             json=sample_chat_request,
         )
 
@@ -38,7 +38,7 @@ class TestMockRouterIntegration:
         """Test streaming request to /mock/chat/completions endpoint."""
         response = mocked_client_integration.post(
             "/mock/chat/completions",
-            headers={"authorization": f"Bearer {TEST_FXA_TOKEN}"},
+            headers={"authorization": f"Bearer {TEST_FXA_TOKEN}", "service-type": "ai"},
             json={
                 **sample_chat_request,
                 "stream": True,
@@ -57,17 +57,17 @@ class TestMockRouterIntegration:
         """Test /mock/chat/completions endpoint with missing authentication."""
         response = mocked_client_integration.post(
             "/mock/chat/completions",
+            headers={"service-type": "ai"},
             json=sample_chat_request,
         )
 
-        assert response.status_code == 401
-        assert "Missing authorization header" in response.json()["detail"]
+        assert response.status_code == 422
 
     def test_mock_chat_completions_invalid_auth(self, mocked_client_integration):
         """Test /mock/chat/completions endpoint with invalid authentication."""
         response = mocked_client_integration.post(
             "/mock/chat/completions",
-            headers={"authorization": "Bearer invalid-token"},
+            headers={"authorization": "Bearer invalid-token", "service-type": "ai"},
             json={
                 "model": MOCK_MODEL_NAME,
                 "messages": [{"role": "user", "content": "Hello"}],
@@ -75,6 +75,24 @@ class TestMockRouterIntegration:
         )
 
         assert response.status_code == 401
+
+    def test_mock_chat_completions_invalid_service_type(
+        self, mocked_client_integration
+    ):
+        """Test /mock/chat/completions endpoint with invalid service type."""
+        response = mocked_client_integration.post(
+            "/mock/chat/completions",
+            headers={
+                "authorization": "Bearer " + TEST_FXA_TOKEN,
+                "service-type": "invalid",
+            },
+            json={
+                "model": MOCK_MODEL_NAME,
+                "messages": [{"role": "user", "content": "Hello"}],
+            },
+        )
+
+        assert response.status_code == 422
 
     def test_mock_chat_completions_no_auth_success(self, mocked_client_integration):
         """Test successful request to /mock/chat/completions_no_auth endpoint."""
@@ -87,7 +105,10 @@ class TestMockRouterIntegration:
 
             response = mocked_client_integration.post(
                 "/mock/chat/completions_no_auth",
-                headers={"authorization": f"Bearer {TEST_FXA_TOKEN}"},
+                headers={
+                    "authorization": f"Bearer {TEST_FXA_TOKEN}",
+                    "service-type": "ai",
+                },
                 json=sample_chat_request,
             )
 
@@ -113,7 +134,10 @@ class TestMockRouterIntegration:
 
             response = mocked_client_integration.post(
                 "/mock/chat/completions_no_auth",
-                headers={"authorization": f"Bearer {TEST_FXA_TOKEN}"},
+                headers={
+                    "authorization": f"Bearer {TEST_FXA_TOKEN}",
+                    "service-type": "ai",
+                },
                 json={
                     "model": MOCK_MODEL_NAME,
                     "messages": [{"role": "user", "content": "Hello"}],

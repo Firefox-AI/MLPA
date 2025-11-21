@@ -86,6 +86,7 @@ def test_invalid_challenge(mocked_client_integration):
     headers = {
         "Authorization": f"Bearer {app_attest_jwt}",
         "use-app-attest": "true",
+        "service-type": "ai",
     }
     response = mocked_client_integration.post(
         "/verify/attest",
@@ -114,6 +115,7 @@ def test_invalid_attestation_request_missing_fields(mocked_client_integration):
     headers = {
         "Authorization": f"Bearer {app_attest_jwt}",
         "use-app-attest": "true",
+        "service-type": "ai",
         "use-qa-certificates": "true",
     }
     response = mocked_client_integration.post(
@@ -130,6 +132,7 @@ def test_invalid_attestation_request_bad_jwt(mocked_client_integration):
     headers = {
         "Authorization": f"Bearer {bad_jwt}",
         "use-app-attest": "true",
+        "service-type": "ai",
     }
     response = mocked_client_integration.post(
         "/verify/attest",
@@ -158,6 +161,7 @@ def test_invalid_attestation_request_wrong_key_id(mocked_client_integration):
     headers = {
         "Authorization": f"Bearer {app_attest_jwt}",
         "use-app-attest": "true",
+        "service-type": "ai",
     }
     response = mocked_client_integration.post(
         "/verify/attest",
@@ -190,6 +194,7 @@ def test_successful_attestation_request(mocked_client_integration):
     headers = {
         "authorization": f"Bearer {app_attest_jwt}",
         "use-app-attest": "true",
+        "service-type": "ai",
     }
     response = mocked_client_integration.post(
         "/verify/attest",
@@ -220,6 +225,7 @@ def test_successful_request_with_mocked_app_attest_auth(mocked_client_integratio
     headers = {
         "authorization": f"Bearer {app_attest_jwt}",
         "use-app-attest": "true",
+        "service-type": "ai",
     }
     response = mocked_client_integration.post(
         "/v1/chat/completions",
