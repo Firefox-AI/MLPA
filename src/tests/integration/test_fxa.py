@@ -6,13 +6,25 @@ def test_missing_auth(mocked_client_integration):
         "/v1/chat/completions",
         json={},
     )
-    assert response.json() == {"detail": "Missing authorization header"}
+    assert response.status_code == 422
+
+
+def test_missing_service_type(mocked_client_integration):
+    response = mocked_client_integration.post(
+        "/v1/chat/completions",
+        headers={"authorization": f"Bearer {TEST_FXA_TOKEN}"},
+        json={},
+    )
+    assert response.status_code == 422
 
 
 def test_invalid_fxa_auth(mocked_client_integration):
     response = mocked_client_integration.post(
         "/v1/chat/completions",
-        headers={"authorization": "Bearer " + TEST_FXA_TOKEN + "invalid"},
+        headers={
+            "authorization": "Bearer " + TEST_FXA_TOKEN + "invalid",
+            "service-type": "ai",
+        },
         json={},
     )
     assert response.status_code == 401
@@ -21,7 +33,7 @@ def test_invalid_fxa_auth(mocked_client_integration):
 def test_successful_request_with_mocked_fxa_auth(mocked_client_integration):
     response = mocked_client_integration.post(
         "/v1/chat/completions",
-        headers={"authorization": "Bearer " + TEST_FXA_TOKEN},
+        headers={"authorization": "Bearer " + TEST_FXA_TOKEN, "service-type": "ai"},
         json={},
     )
     assert response.status_code != 401

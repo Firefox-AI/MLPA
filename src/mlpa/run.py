@@ -65,10 +65,12 @@ async def instrument_requests(request: Request, call_next):
     start_time = time.time()
     metrics.in_progress_requests.inc()
 
-    # Forward session-id and user-agent headers to log metadata if present
+    # Forward non-auth headers to log metadata
     with logger.contextualize(
+        service_type=request.headers.get("service-type", "N/A"),
         session_id=request.headers.get("session-id", "N/A"),
         user_agent=request.headers.get("user-agent", "N/A"),
+        use_app_attest=request.headers.get("use-app-attest", "N/A"),
     ):
         try:
             response = await call_next(request)
