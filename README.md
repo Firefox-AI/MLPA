@@ -16,6 +16,12 @@ This creates a virtual environment in `.venv/`, installs dependencies, and insta
 
 `docker compose -f litellm_docker_compose.yaml up -d`
 
+### Create app_attest database
+docker exec -it litellm_postgres psql -U litellm -c "CREATE DATABASE app_attest;"
+
+### Set MLPA_DEBUG=true in the .env file
+This makes sure we verfiy the fxa against staging endpoint
+
 ### Run MLPA
 
 1. install it as a library
