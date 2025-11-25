@@ -17,7 +17,9 @@ This creates a virtual environment in `.venv/`, installs dependencies, and insta
 `docker compose -f litellm_docker_compose.yaml up -d`
 
 ### Create and migrate appattest database
-docker exec -it litellm_postgres psql -U litellm -c "CREATE DATABASE app_attest;"
+`sh ./scripts/create-app-attest-database.sh`
+
+`alembic upgrade head`
 
 ### Set MLPA_DEBUG=true in the .env file
 Verify FxA requests against staging URL
