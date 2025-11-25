@@ -16,7 +16,7 @@ This creates a virtual environment in `.venv/`, installs dependencies, and insta
 
 `docker compose -f litellm_docker_compose.yaml up -d`
 
-### Create app_attest database
+### Create and migrate appattest database
 docker exec -it litellm_postgres psql -U litellm -c "CREATE DATABASE app_attest;"
 
 ### Set MLPA_DEBUG=true in the .env file
