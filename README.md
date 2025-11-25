@@ -20,7 +20,7 @@ This creates a virtual environment in `.venv/`, installs dependencies, and insta
 docker exec -it litellm_postgres psql -U litellm -c "CREATE DATABASE app_attest;"
 
 ### Set MLPA_DEBUG=true in the .env file
-This makes sure we verfiy the fxa against staging endpoint
+Verify FxA requests against staging URL
 
 ### Run MLPA
 
