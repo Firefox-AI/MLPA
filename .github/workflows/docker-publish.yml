@@ -4,6 +4,8 @@ on:
   push:
     branches:
       - main
+    tags:
+      - "v**"
 
 env:
   GCP_PROJECT_ID: moz-fx-llm-proxy-prod-b0b8
@@ -43,11 +45,21 @@ jobs:
 
       - name: Build and Tag Container Image
         run: |
-          docker build -t ${{ env.GAR_LOCATION }}-docker.pkg.dev/${{ env.GCP_PROJECT_ID }}/${{ env.GAR_REPOSITORY }}/${{ env.GAR_NAME }}:${{ github.sha }} .
-          docker tag ${{ env.GAR_LOCATION }}-docker.pkg.dev/${{ env.GCP_PROJECT_ID }}/${{ env.GAR_REPOSITORY }}/${{ env.GAR_NAME }}:${{ github.sha }} \
-            ${{ env.GAR_LOCATION }}-docker.pkg.dev/${{ env.GCP_PROJECT_ID }}/${{ env.GAR_REPOSITORY }}/${{ env.GAR_NAME }}:latest
+          IMAGE_REPO=${{ env.GAR_LOCATION }}-docker.pkg.dev/${{ env.GCP_PROJECT_ID }}/${{ env.GAR_REPOSITORY }}/${{ env.GAR_NAME }}
+          SHA_TAG=$IMAGE_REPO:${{ github.sha }}
+
+          docker build -t $SHA_TAG .
+          docker tag $SHA_TAG $IMAGE_REPO:latest
+          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
+            docker tag $SHA_TAG $IMAGE_REPO:${{ github.ref_name }}
+          fi
 
       - name: Push Container Image to GAR
         run: |
-          docker push ${{ env.GAR_LOCATION }}-docker.pkg.dev/${{ env.GCP_PROJECT_ID }}/${{ env.GAR_REPOSITORY }}/${{ env.GAR_NAME }}:${{ github.sha }}
-          docker push ${{ env.GAR_LOCATION }}-docker.pkg.dev/${{ env.GCP_PROJECT_ID }}/${{ env.GAR_REPOSITORY }}/${{ env.GAR_NAME }}:latest
+          IMAGE_REPO=${{ env.GAR_LOCATION }}-docker.pkg.dev/${{ env.GCP_PROJECT_ID }}/${{ env.GAR_REPOSITORY }}/${{ env.GAR_NAME }}
+
+          docker push $IMAGE_REPO:${{ github.sha }}
+          docker push $IMAGE_REPO:latest
+          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
+            docker push $IMAGE_REPO:${{ github.ref_name }}
+          fi
