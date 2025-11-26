@@ -1,7 +1,7 @@
 import httpx
 from fastapi import APIRouter
 
-from mlpa.core.config import LITELLM_HEADERS, LITELLM_READINESS_URL
+from mlpa.core.config import LITELLM_MASTER_AUTH_HEADERS, LITELLM_READINESS_URL
 from mlpa.core.pg_services.services import app_attest_pg, litellm_pg
 
 router = APIRouter()
@@ -20,7 +20,7 @@ async def readiness_probe():
     litellm_status = {}
     async with httpx.AsyncClient() as client:
         response = await client.get(
-            LITELLM_READINESS_URL, headers=LITELLM_HEADERS, timeout=3
+            LITELLM_READINESS_URL, headers=LITELLM_MASTER_AUTH_HEADERS, timeout=3
         )
         data = response.json()
         litellm_status = data

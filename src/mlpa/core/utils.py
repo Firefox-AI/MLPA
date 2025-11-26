@@ -7,7 +7,7 @@ from fxa.oauth import Client
 from loguru import logger
 
 from mlpa.core.classes import AssertionAuth, AttestationAuth
-from mlpa.core.config import LITELLM_HEADERS, env
+from mlpa.core.config import LITELLM_MASTER_AUTH_HEADERS, env
 
 
 async def get_or_create_user(user_id: str):
@@ -24,7 +24,7 @@ async def get_or_create_user(user_id: str):
             response = await client.get(
                 f"{env.LITELLM_API_BASE}/customer/info",
                 params=params,
-                headers=LITELLM_HEADERS,
+                headers=LITELLM_MASTER_AUTH_HEADERS,
             )
             user = response.json()
             if not user.get("user_id"):
@@ -32,12 +32,12 @@ async def get_or_create_user(user_id: str):
                 await client.post(
                     f"{env.LITELLM_API_BASE}/customer/new",
                     json={"user_id": user_id},
-                    headers=LITELLM_HEADERS,
+                    headers=LITELLM_MASTER_AUTH_HEADERS,
                 )
                 response = await client.get(
                     f"{env.LITELLM_API_BASE}/customer/info",
                     params=params,
-                    headers=LITELLM_HEADERS,
+                    headers=LITELLM_MASTER_AUTH_HEADERS,
                 )
                 return [response.json(), True]
             return [user, False]

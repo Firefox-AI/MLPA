@@ -27,7 +27,7 @@ from cryptography.x509.extensions import UnrecognizedExtension
 from cryptography.x509.oid import NameOID
 from pyattest.testutils.factories.certificates import key_usage
 
-from mlpa.core.config import LITELLM_HEADERS, env
+from mlpa.core.config import LITELLM_MASTER_AUTH_HEADERS, env
 from mlpa.core.pg_services.services import app_attest_pg
 
 app = typer.Typer(
@@ -327,7 +327,7 @@ def submit_completion(
         "authorization": f"Bearer {jwt_token}",
         "use-app-attest": "true",
         "use-qa-certificates": "true",
-        **LITELLM_HEADERS,
+        **LITELLM_MASTER_AUTH_HEADERS,
     }
     response = httpx.post(url, json=payload, headers=headers, timeout=30.0)
     response.raise_for_status()
