@@ -6,7 +6,11 @@ from fastapi import HTTPException
 from loguru import logger
 
 from mlpa.core.classes import AuthorizedChatRequest
-from mlpa.core.config import LITELLM_COMPLETIONS_URL, LITELLM_HEADERS, env
+from mlpa.core.config import (
+    LITELLM_COMPLETION_AUTH_HEADERS,
+    LITELLM_COMPLETIONS_URL,
+    env,
+)
 from mlpa.core.prometheus_metrics import PrometheusResult, metrics
 
 
@@ -36,7 +40,7 @@ async def stream_completion(authorized_chat_request: AuthorizedChatRequest):
             async with client.stream(
                 "POST",
                 LITELLM_COMPLETIONS_URL,
-                headers=LITELLM_HEADERS,
+                headers=LITELLM_COMPLETION_AUTH_HEADERS,
                 json=body,
                 timeout=30,
             ) as response:
@@ -102,7 +106,10 @@ async def get_completion(authorized_chat_request: AuthorizedChatRequest):
     try:
         async with httpx.AsyncClient() as client:
             response = await client.post(
-                LITELLM_COMPLETIONS_URL, headers=LITELLM_HEADERS, json=body, timeout=10
+                LITELLM_COMPLETIONS_URL,
+                headers=LITELLM_COMPLETION_AUTH_HEADERS,
+                json=body,
+                timeout=10,
             )
             data = response.json()
             try:
