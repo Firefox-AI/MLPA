@@ -8,7 +8,8 @@ class Env(BaseSettings):
     PORT: int | None = 8080
 
     # LiteLLM
-    MASTER_KEY: str = "sk-default"
+    MASTER_KEY: str = "sk-default"  # Bypasses LiteLLM.max_budget, use MLPA_VIRTUAL_KEY (virtual key) for completion requests
+    MLPA_VIRTUAL_KEY: str = "sk-virtual"  # Enforces LiteLLM.max_budget
     OPENAI_API_KEY: str = "sk-add-your-key"
     LITELLM_API_BASE: str = "http://localhost:4000"
     CHALLENGE_EXPIRY_SECONDS: int = 300  # 5 minutes
@@ -74,7 +75,12 @@ env = Env()
 
 LITELLM_READINESS_URL = f"{env.LITELLM_API_BASE}/health/readiness"
 LITELLM_COMPLETIONS_URL = f"{env.LITELLM_API_BASE}/v1/chat/completions"
-LITELLM_HEADERS = {
+LITELLM_MASTER_AUTH_HEADERS = {
     "Content-Type": "application/json",
     "Authorization": f"Bearer {env.MASTER_KEY}",
+}
+
+LITELLM_COMPLETION_AUTH_HEADERS = {
+    "Content-Type": "application/json",
+    "Authorization": f"Bearer {env.MLPA_VIRTUAL_KEY}",
 }
