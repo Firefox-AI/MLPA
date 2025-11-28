@@ -25,6 +25,8 @@ litellm_settings:
   cache: true
   cache_params:
     type: redis
+    # With this value supported_call_types: [] the messages will not be cached
+    # but redis will be used for rate limiting and other purposes
     supported_call_types: []
     host: redis
     port: 6379
