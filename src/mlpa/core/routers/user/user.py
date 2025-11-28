@@ -1,7 +1,7 @@
 import httpx
 from fastapi import APIRouter, HTTPException
 
-from mlpa.core.config import LITELLM_HEADERS, env
+from mlpa.core.config import LITELLM_MASTER_AUTH_HEADERS, env
 
 router = APIRouter()
 
@@ -16,7 +16,7 @@ async def user_info(user_id: str):
         response = await client.get(
             f"{env.LITELLM_API_BASE}/customer/info",
             params=params,
-            headers=LITELLM_HEADERS,
+            headers=LITELLM_MASTER_AUTH_HEADERS,
         )
         user = response.json()
 
