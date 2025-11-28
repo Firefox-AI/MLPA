@@ -20,3 +20,12 @@ general_settings:
   master_key: os.environ/MASTER_KEY
   database_url: os.environ/PG_DB_URL
   litellm_key_header_name: Authorization
+
+litellm_settings:
+  cache: true
+  cache_params:
+    type: redis
+    supported_call_types: []
+    host: redis
+    port: 6379
+    ttl: 3600
