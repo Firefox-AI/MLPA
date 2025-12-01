@@ -31,7 +31,7 @@ class LiteLLMPGService(PGService):
 
         for service_type, budget_config in user_feature_budgets.items():
             try:
-                budget_record = await self.pg.fetchrow(
+                await self.pg.fetchrow(
                     """
                     INSERT INTO "LiteLLM_BudgetTable"
                     (budget_id, max_budget, rpm_limit, tpm_limit, budget_duration, created_at, updated_at, created_by, updated_by)
@@ -52,18 +52,14 @@ class LiteLLMPGService(PGService):
                     budget_config["budget_duration"],
                     "default_user_id",
                 )
-                if budget_record:
-                    budgets_created.append(dict(budget_record))
-                    logger.info(
-                        f"Budget created/updated: budget_id={budget_config['budget_id']}, "
-                        f"service_type={service_type}, max_budget={budget_config['max_budget']}"
-                    )
+                logger.info(
+                    f"Budget created/updated: budget_id={budget_config['budget_id']}, "
+                    f"service_type={service_type}, max_budget={budget_config['max_budget']}"
+                )
             except Exception as e:
                 logger.error(
                     f"Error creating budget for service_type={service_type}, budget_id={budget_config.get('budget_id', 'unknown')}: {e}"
                 )
-
-        return budgets_created
 
     async def update_user(
         self, request: UserUpdatePayload, master_key: str = Header(...)
