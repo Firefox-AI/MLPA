@@ -1,0 +1,36 @@
+model_list:
+  - model_name: mozilla/insights-v1.0
+    litellm_params:
+      model: openai/gpt-4o
+      api_key: os.environ/OPENAI_API_KEY
+      max_budget: 0.025
+      budget_duration: 1d
+  - model_name: mozilla/chat-v1.0
+    litellm_params:
+      model: openai/gpt-4o
+      api_key: os.environ/OPENAI_API_KEY
+      max_budget: 0.025
+      budget_duration: 1d
+
+
+# router_settings:
+#   model_group_alias: {"mozilla/insights-v1.0": "openai/gpt-4o", "mozilla/chat-v1.0": "openai/gpt-4o"}
+
+general_settings:
+  store_model_in_db: true
+  master_key: os.environ/MASTER_KEY
+  database_url: os.environ/PG_DB_URL
+  litellm_key_header_name: Authorization
+  max_budget: 0.05
+
+litellm_settings:
+  cache: true
+  max_end_user_budget_id: "foo"
+  cache_params:
+    type: redis
+    # With this value supported_call_types: [] the messages will not be cached
+    # but redis will be used for rate limiting and other purposes
+    supported_call_types: []
+    host: redis
+    port: 6379
+    ttl: 3600

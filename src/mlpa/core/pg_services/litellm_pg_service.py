@@ -19,6 +19,52 @@ class LiteLLMPGService(PGService):
         user = await self.pg.fetchrow(query, user_id)
         return dict(user) if user else None
 
+    async def create_budget(self):
+        """
+        Create end user budgets from configuration.
+        Loops through all service types in user_feature_budget config and creates/updates each budget.
+        If a budget already exists, it will be overwritten with the new values.
+        Returns a list of created/updated budget records.
+        """
+        budgets_created = []
+        user_feature_budgets = env.user_feature_budget
+
+        for service_type, budget_config in user_feature_budgets.items():
+            try:
+                budget_record = await self.pg.fetchrow(
+                    """
+                    INSERT INTO "LiteLLM_BudgetTable"
+                    (budget_id, max_budget, rpm_limit, tpm_limit, budget_duration, created_at, updated_at, created_by, updated_by)
+                    VALUES ($1, $2, $3, $4, $5, NOW(), NOW(), $6, $6)
+                    ON CONFLICT (budget_id) DO UPDATE SET
+                    max_budget = EXCLUDED.max_budget,
+                    rpm_limit = EXCLUDED.rpm_limit,
+                    tpm_limit = EXCLUDED.tpm_limit,
+                    budget_duration = EXCLUDED.budget_duration,
+                    updated_at = NOW(),
+                    updated_by = EXCLUDED.updated_by
+                    RETURNING *
+                    """,
+                    budget_config["budget_id"],
+                    budget_config["max_budget"],
+                    budget_config["rpm_limit"],
+                    budget_config["tpm_limit"],
+                    budget_config["budget_duration"],
+                    "default_user_id",
+                )
+                if budget_record:
+                    budgets_created.append(dict(budget_record))
+                    logger.info(
+                        f"Budget created/updated: budget_id={budget_config['budget_id']}, "
+                        f"service_type={service_type}, max_budget={budget_config['max_budget']}"
+                    )
+            except Exception as e:
+                logger.error(
+                    f"Error creating budget for service_type={service_type}, budget_id={budget_config.get('budget_id', 'unknown')}: {e}"
+                )
+
+        return budgets_created
+
     async def update_user(
         self, request: UserUpdatePayload, master_key: str = Header(...)
     ):

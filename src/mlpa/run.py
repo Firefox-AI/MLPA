@@ -39,6 +39,7 @@ tags_metadata = [
 async def lifespan(app: FastAPI):
     await litellm_pg.connect()
     await app_attest_pg.connect()
+    await litellm_pg.create_budget()
     yield
     await litellm_pg.disconnect()
     await app_attest_pg.disconnect()
