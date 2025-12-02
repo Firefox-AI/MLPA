@@ -13,10 +13,15 @@ from mlpa.core.config import LITELLM_MASTER_AUTH_HEADERS, env
 async def get_or_create_user(user_id: str):
     """Returns user info from LiteLLM, creating the user if they don't exist.
     Args:
-        user_id (str): The user ID to look up or create.
+        user_id (str): The user ID to look up or create. Format: "user_id:service_type" (e.g., "user123:ai")
     Returns:
         [user_info: dict, was_created: bool]
     """
+    service_type = user_id.split(":")[1]
+
+    # Get the appropriate budget_id from config based on service_type
+    user_feature_budgets = env.user_feature_budget
+    budget_id = user_feature_budgets[service_type]["budget_id"]
 
     async with httpx.AsyncClient() as client:
         try:
@@ -27,11 +32,11 @@ async def get_or_create_user(user_id: str):
                 headers=LITELLM_MASTER_AUTH_HEADERS,
             )
             user = response.json()
+
             if not user.get("user_id"):
-                # add budget details or budget_id if necessary
                 await client.post(
                     f"{env.LITELLM_API_BASE}/customer/new",
-                    json={"user_id": user_id},
+                    json={"user_id": user_id, "budget_id": budget_id},
                     headers=LITELLM_MASTER_AUTH_HEADERS,
                 )
                 response = await client.get(

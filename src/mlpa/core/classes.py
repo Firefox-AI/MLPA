@@ -39,6 +39,5 @@ class AuthorizedChatRequest(ChatRequest):
     user: str
 
 
-class ServiceType(enum.Enum):
-    s2s = "s2s"
-    ai = "ai"
+# Dynamically create ServiceType enum from config
+ServiceType = enum.Enum("ServiceType", [(st, st) for st in env.valid_service_types])

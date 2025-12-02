@@ -159,6 +159,11 @@ class MockLiteLLMPGService:
         )
         self.users[user_id] = data
 
+    async def create_budget(self):
+        """Mock create_budget method for testing."""
+        logger.debug("mock create_budget called")
+        return []
+
 
 class MockFxAService:
     def __init__(self, client_id: str, client_secret: str, fxa_url: str):

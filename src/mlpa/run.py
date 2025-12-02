@@ -37,11 +37,21 @@ tags_metadata = [
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    await litellm_pg.connect()
-    await app_attest_pg.connect()
-    yield
-    await litellm_pg.disconnect()
-    await app_attest_pg.disconnect()
+    try:
+        await litellm_pg.connect()
+        litellm_connected = True
+
+        await app_attest_pg.connect()
+        app_attest_connected = True
+
+        await litellm_pg.create_budget()
+
+        yield
+    finally:
+        if app_attest_connected:
+            await app_attest_pg.disconnect()
+        if litellm_connected:
+            await litellm_pg.disconnect()
 
 
 sentry_sdk.init(dsn=env.SENTRY_DSN, send_default_pii=True)
