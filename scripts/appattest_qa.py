@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """
 Typer CLI for exercising the App Attest QA flow.
+Before running run mlpa with APP_ATTEST_QA=true and generate QA certificates.
 """
 
 import asyncio
@@ -327,7 +328,7 @@ def submit_completion(
         "authorization": f"Bearer {jwt_token}",
         "use-app-attest": "true",
         "use-qa-certificates": "true",
-        **LITELLM_MASTER_AUTH_HEADERS,
+        "service-type": "ai",
     }
     response = httpx.post(url, json=payload, headers=headers, timeout=30.0)
     response.raise_for_status()
