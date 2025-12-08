@@ -19,12 +19,29 @@ services:
       timeout: 5s
       retries: 5
 
+  redis:
+    image: redis:7-alpine
+    container_name: litellm_redis
+    restart: always
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+    command: redis-server --appendonly yes
+
   litellm:
     image: ghcr.io/berriai/litellm:v1.77.3-stable
     container_name: litellm
     platform: linux/amd64
     depends_on:
       postgres:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     ports:
       - "4000:4000"
@@ -35,8 +52,11 @@ services:
       - .env
     environment:
       PG_DB_URL: postgresql://litellm:litellm@postgres:5432/litellm
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
       PORT: 4000
     command: ["--config", "/app/config.yaml"]
 
 volumes:
   pg_data:
+  redis_data:

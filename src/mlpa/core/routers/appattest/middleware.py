@@ -20,6 +20,8 @@ router = APIRouter()
 async def get_challenge(key_id_b64: str):
     if not key_id_b64:
         raise HTTPException(status_code=400, detail="Bad Request: missing key_id_b64")
+    # iOS key id generation not urlsafe workaround
+    key_id_b64 = key_id_b64.replace(" ", "+")
     return {"challenge": await generate_client_challenge(key_id_b64)}
 
 

@@ -171,7 +171,7 @@ async def test_stream_completion_success(httpx_mock: HTTPXMock, mocker):
     assert request is not None
     request_body = json.loads(request.content)
     assert request_body["stream"] is True
-    assert request_body["user"] == "test-user-123"
+    assert request_body["user"] == "test-user-123:ai"
     assert request_body["model"] == "test-model"
 
     # 3. Verify TTFT metric was observed

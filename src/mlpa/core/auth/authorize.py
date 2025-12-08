@@ -25,7 +25,7 @@ async def authorize_request(
             if data.get("error"):
                 raise HTTPException(status_code=401, detail=data["error"])
             return AuthorizedChatRequest(
-                user=f"{assertionAuth.key_id_b64}:{service_type}",  # "user" is key_id_b64 from app attest
+                user=f"{assertionAuth.key_id_b64}:{service_type.value}",  # "user" is key_id_b64 from app attest
                 **chat_request.model_dump(exclude_unset=True),
             )
     else:
@@ -35,7 +35,7 @@ async def authorize_request(
             if fxa_user_id.get("error"):
                 raise HTTPException(status_code=401, detail=fxa_user_id["error"])
             return AuthorizedChatRequest(
-                user=f"{fxa_user_id['user']}:{service_type}",
+                user=f"{fxa_user_id['user']}:{service_type.value}",
                 **chat_request.model_dump(exclude_unset=True),
             )
     raise HTTPException(

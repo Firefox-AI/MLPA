@@ -14,6 +14,51 @@ class Env(BaseSettings):
     LITELLM_API_BASE: str = "http://localhost:4000"
     CHALLENGE_EXPIRY_SECONDS: int = 300  # 5 minutes
 
+    # User Feature Budget - AI service type
+    USER_FEATURE_BUDGET_AI_BUDGET_ID: str = "end-user-budget-ai"
+    USER_FEATURE_BUDGET_AI_MAX_BUDGET: float = 0.1
+    USER_FEATURE_BUDGET_AI_RPM_LIMIT: int = 40
+    USER_FEATURE_BUDGET_AI_TPM_LIMIT: int = 2000
+    USER_FEATURE_BUDGET_AI_BUDGET_DURATION: str = "1d"
+
+    # User Feature Budget - S2S service type
+    USER_FEATURE_BUDGET_S2S_BUDGET_ID: str = "end-user-budget-s2s"
+    USER_FEATURE_BUDGET_S2S_MAX_BUDGET: float = 0.1
+    USER_FEATURE_BUDGET_S2S_RPM_LIMIT: int = 40
+    USER_FEATURE_BUDGET_S2S_TPM_LIMIT: int = 2000
+    USER_FEATURE_BUDGET_S2S_BUDGET_DURATION: str = "1d"
+
+    @property
+    def user_feature_budget(self) -> dict[str, dict]:
+        """
+        User feature budget configuration by service type.
+        Returns a nested dictionary with service types (ai, s2s) as keys.
+        Constructed from individual environment variables.
+        """
+        return {
+            "ai": {
+                "budget_id": self.USER_FEATURE_BUDGET_AI_BUDGET_ID,
+                "max_budget": self.USER_FEATURE_BUDGET_AI_MAX_BUDGET,
+                "rpm_limit": self.USER_FEATURE_BUDGET_AI_RPM_LIMIT,
+                "tpm_limit": self.USER_FEATURE_BUDGET_AI_TPM_LIMIT,
+                "budget_duration": self.USER_FEATURE_BUDGET_AI_BUDGET_DURATION,
+            },
+            "s2s": {
+                "budget_id": self.USER_FEATURE_BUDGET_S2S_BUDGET_ID,
+                "max_budget": self.USER_FEATURE_BUDGET_S2S_MAX_BUDGET,
+                "rpm_limit": self.USER_FEATURE_BUDGET_S2S_RPM_LIMIT,
+                "tpm_limit": self.USER_FEATURE_BUDGET_S2S_TPM_LIMIT,
+                "budget_duration": self.USER_FEATURE_BUDGET_S2S_BUDGET_DURATION,
+            },
+        }
+
+    @property
+    def valid_service_types(self) -> list[str]:
+        """
+        Returns a list of valid service types from user_feature_budget configuration.
+        """
+        return list(self.user_feature_budget.keys())
+
     # Logging
     LOG_JSON: bool = False  # Set to True for GKE deployment
     LOGURU_LEVEL: str = "INFO"
