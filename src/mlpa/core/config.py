@@ -19,7 +19,7 @@ class Env(BaseSettings):
     USER_FEATURE_BUDGET_AI_MAX_BUDGET: float = 0.1
     USER_FEATURE_BUDGET_AI_RPM_LIMIT: int = 40
     USER_FEATURE_BUDGET_AI_TPM_LIMIT: int = 2000
-    USER_FEATURE_BUDGET_AI_BUDGET_DURATION: str = "1m"
+    USER_FEATURE_BUDGET_AI_BUDGET_DURATION: str = "1d"
 
     # User Feature Budget - S2S service type
     USER_FEATURE_BUDGET_S2S_BUDGET_ID: str = "end-user-budget-s2s"
