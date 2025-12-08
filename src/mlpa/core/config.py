@@ -16,14 +16,14 @@ class Env(BaseSettings):
 
     # User Feature Budget - AI service type
     USER_FEATURE_BUDGET_AI_BUDGET_ID: str = "end-user-budget-ai"
-    USER_FEATURE_BUDGET_AI_MAX_BUDGET: float = 0.1
+    USER_FEATURE_BUDGET_AI_MAX_BUDGET: float = 0.001
     USER_FEATURE_BUDGET_AI_RPM_LIMIT: int = 40
     USER_FEATURE_BUDGET_AI_TPM_LIMIT: int = 2000
-    USER_FEATURE_BUDGET_AI_BUDGET_DURATION: str = "1d"
+    USER_FEATURE_BUDGET_AI_BUDGET_DURATION: str = "1m"
 
     # User Feature Budget - S2S service type
     USER_FEATURE_BUDGET_S2S_BUDGET_ID: str = "end-user-budget-s2s"
-    USER_FEATURE_BUDGET_S2S_MAX_BUDGET: float = 0.1
+    USER_FEATURE_BUDGET_S2S_MAX_BUDGET: float = 0.001
     USER_FEATURE_BUDGET_S2S_RPM_LIMIT: int = 40
     USER_FEATURE_BUDGET_S2S_TPM_LIMIT: int = 2000
     USER_FEATURE_BUDGET_S2S_BUDGET_DURATION: str = "1d"
@@ -128,4 +128,45 @@ LITELLM_MASTER_AUTH_HEADERS = {
 LITELLM_COMPLETION_AUTH_HEADERS = {
     "Content-Type": "application/json",
     "Authorization": f"Bearer {env.MLPA_VIRTUAL_KEY}",
+}
+
+ERROR_CODE_BUDGET_LIMIT_EXCEEDED: int = 1
+ERROR_CODE_RATE_LIMIT_EXCEEDED: int = 2
+
+RATE_LIMIT_ERROR_RESPONSE = {
+    429: {
+        "description": "Too Many Requests - Budget or rate limit exceeded",
+        "content": {
+            "application/json": {
+                "schema": {
+                    "type": "object",
+                    "properties": {
+                        "error": {
+                            "type": "integer",
+                            "description": "Error code: 1 for budget limit exceeded, 2 for rate limit exceeded",
+                        }
+                    },
+                    "required": ["error"],
+                },
+                "examples": {
+                    "budget_exceeded": {
+                        "summary": "Budget limit exceeded",
+                        "value": {"error": ERROR_CODE_BUDGET_LIMIT_EXCEEDED},
+                        "description": "Budget limit exceeded. Check Retry-After header (86400 seconds = 1 day).",
+                    },
+                    "rate_limit_exceeded": {
+                        "summary": "Rate limit exceeded",
+                        "value": {"error": ERROR_CODE_RATE_LIMIT_EXCEEDED},
+                        "description": "Rate limit exceeded (TPM/RPM). Check Retry-After header (60 seconds).",
+                    },
+                },
+            }
+        },
+        "headers": {
+            "Retry-After": {
+                "description": "Number of seconds to wait before retrying",
+                "schema": {"type": "string", "example": "86400"},
+            }
+        },
+    }
 }

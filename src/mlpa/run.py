@@ -12,7 +12,10 @@ from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from mlpa.core.auth.authorize import authorize_request
 from mlpa.core.classes import AuthorizedChatRequest
 from mlpa.core.completions import get_completion, stream_completion
-from mlpa.core.config import env
+from mlpa.core.config import (
+    RATE_LIMIT_ERROR_RESPONSE,
+    env,
+)
 from mlpa.core.logger import logger, setup_logger
 from mlpa.core.pg_services.services import app_attest_pg, litellm_pg
 from mlpa.core.prometheus_metrics import metrics
@@ -116,6 +119,7 @@ app.include_router(mock_router, prefix="/mock")
     "/v1/chat/completions",
     tags=["LiteLLM"],
     description="Authorize first using App Attest or FxA. Pass the authorization header containing either the FxA token or the App Attest data JWT",
+    responses=RATE_LIMIT_ERROR_RESPONSE,
 )
 async def chat_completion(
     authorized_chat_request: Annotated[
@@ -144,9 +148,10 @@ async def chat_completion(
 @app.exception_handler(HTTPException)
 async def log_and_handle_http_exception(request: Request, exc: HTTPException):
     """Logs HTTPExceptions"""
-    logger.error(
-        f"HTTPException for {request.method} {request.url.path} -> status={exc.status_code} detail={exc.detail}",
-    )
+    if exc.status_code != 429:
+        logger.error(
+            f"HTTPException for {request.method} {request.url.path} -> status={exc.status_code} detail={exc.detail}",
+        )
     return await http_exception_handler(request, exc)
 
 

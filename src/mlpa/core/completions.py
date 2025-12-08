@@ -1,3 +1,4 @@
+import json
 import time
 
 import httpx
@@ -7,11 +8,36 @@ from loguru import logger
 
 from mlpa.core.classes import AuthorizedChatRequest
 from mlpa.core.config import (
+    ERROR_CODE_BUDGET_LIMIT_EXCEEDED,
+    ERROR_CODE_RATE_LIMIT_EXCEEDED,
     LITELLM_COMPLETION_AUTH_HEADERS,
     LITELLM_COMPLETIONS_URL,
-    env,
 )
 from mlpa.core.prometheus_metrics import PrometheusResult, metrics
+from mlpa.core.utils import is_rate_limit_error
+
+
+async def _handle_rate_limit_error(e: httpx.HTTPStatusError) -> None:
+    try:
+        error_text = e.response.text
+        if error_text:
+            error_data = json.loads(error_text)
+            if is_rate_limit_error(error_data, ["budget"]):
+                logger.warning(f"Budget limit exceeded: {e}")
+                raise HTTPException(
+                    status_code=429,
+                    detail={"error": ERROR_CODE_BUDGET_LIMIT_EXCEEDED},
+                    headers={"Retry-After": "86400"},
+                )
+            elif is_rate_limit_error(error_data, ["rate"]):
+                logger.warning(f"Rate limit exceeded: {e}")
+                raise HTTPException(
+                    status_code=429,
+                    detail={"error": ERROR_CODE_RATE_LIMIT_EXCEEDED},
+                    headers={"Retry-After": "60"},
+                )
+    except (json.JSONDecodeError, AttributeError, UnicodeDecodeError):
+        pass
 
 
 async def stream_completion(authorized_chat_request: AuthorizedChatRequest):
@@ -115,6 +141,15 @@ async def get_completion(authorized_chat_request: AuthorizedChatRequest):
             try:
                 response.raise_for_status()
             except httpx.HTTPStatusError as e:
+                if e.response.status_code == 429 or e.response.status_code == 400:
+                    try:
+                        await _handle_rate_limit_error(e)
+                    except HTTPException:
+                        raise
+                    raise HTTPException(
+                        status_code=429,
+                        detail=f"Upstream service returned an error",
+                    )
                 logger.error(
                     f"Upstream service returned an error: {e.response.status_code} - {e.response.text}"
                 )
@@ -131,6 +166,8 @@ async def get_completion(authorized_chat_request: AuthorizedChatRequest):
 
             result = PrometheusResult.SUCCESS
             return data
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Failed to proxy request to {LITELLM_COMPLETIONS_URL}: {e}")
         raise HTTPException(
