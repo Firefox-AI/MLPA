@@ -147,6 +147,7 @@ fxa_token: str = get_bearer_token(
 ```
 
 ## How to update static docs/index.html from redoc
+
 Make  sure you have Node installed
 
 1. `make install`
