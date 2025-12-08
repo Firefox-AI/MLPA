@@ -16,14 +16,14 @@ class Env(BaseSettings):
 
     # User Feature Budget - AI service type
     USER_FEATURE_BUDGET_AI_BUDGET_ID: str = "end-user-budget-ai"
-    USER_FEATURE_BUDGET_AI_MAX_BUDGET: float = 0.001
+    USER_FEATURE_BUDGET_AI_MAX_BUDGET: float = 0.1
     USER_FEATURE_BUDGET_AI_RPM_LIMIT: int = 40
     USER_FEATURE_BUDGET_AI_TPM_LIMIT: int = 2000
     USER_FEATURE_BUDGET_AI_BUDGET_DURATION: str = "1m"
 
     # User Feature Budget - S2S service type
     USER_FEATURE_BUDGET_S2S_BUDGET_ID: str = "end-user-budget-s2s"
-    USER_FEATURE_BUDGET_S2S_MAX_BUDGET: float = 0.001
+    USER_FEATURE_BUDGET_S2S_MAX_BUDGET: float = 0.1
     USER_FEATURE_BUDGET_S2S_RPM_LIMIT: int = 40
     USER_FEATURE_BUDGET_S2S_TPM_LIMIT: int = 2000
     USER_FEATURE_BUDGET_S2S_BUDGET_DURATION: str = "1d"
