@@ -70,6 +70,13 @@ def get_fxa_client():
     return Client(env.CLIENT_ID, env.CLIENT_SECRET, fxa_url)
 
 
+def is_rate_limit_error(error_response: dict, keywords: list[str]) -> bool:
+    """Check if the error response indicates a budget or rate limit exceeded error."""
+    error = error_response.get("error", {})
+    error_text = f"{error.get('type', '')} {error.get('message', '')}".lower()
+    return any(indicator in error_text for indicator in keywords)
+
+
 def parse_app_attest_jwt(authorization: str, type: str):
     # Parse App Attest/Assert authorization JWT
     try:

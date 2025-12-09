@@ -11,3 +11,4 @@ uv.lock
 .secrets
 logs/
 qa_certificates/
+litellm_config_experimental.yaml
