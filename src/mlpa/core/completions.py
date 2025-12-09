@@ -17,20 +17,20 @@ from mlpa.core.prometheus_metrics import PrometheusResult, metrics
 from mlpa.core.utils import is_rate_limit_error
 
 
-async def _handle_rate_limit_error(e: httpx.HTTPStatusError) -> None:
+async def _handle_rate_limit_error(e: httpx.HTTPStatusError, user: str) -> None:
     try:
         error_text = e.response.text
         if error_text:
             error_data = json.loads(error_text)
             if is_rate_limit_error(error_data, ["budget"]):
-                logger.warning(f"Budget limit exceeded: {e}")
+                logger.warning(f"Budget limit exceeded for user {user}: {error_text}")
                 raise HTTPException(
                     status_code=429,
                     detail={"error": ERROR_CODE_BUDGET_LIMIT_EXCEEDED},
                     headers={"Retry-After": "86400"},
                 )
             elif is_rate_limit_error(error_data, ["rate"]):
-                logger.warning(f"Rate limit exceeded: {e}")
+                logger.warning(f"Rate limit exceeded for user {user}: {error_text}")
                 raise HTTPException(
                     status_code=429,
                     detail={"error": ERROR_CODE_RATE_LIMIT_EXCEEDED},
@@ -143,7 +143,7 @@ async def get_completion(authorized_chat_request: AuthorizedChatRequest):
             except httpx.HTTPStatusError as e:
                 if e.response.status_code == 429 or e.response.status_code == 400:
                     try:
-                        await _handle_rate_limit_error(e)
+                        await _handle_rate_limit_error(e, authorized_chat_request.user)
                     except HTTPException:
                         raise
                     raise HTTPException(
