@@ -145,3 +145,12 @@ fxa_token: str = get_bearer_token(
     oauth_server_url="https://oauth.accounts.firefox.com",
 )
 ```
+
+## How to update static docs/index.html from redoc
+
+Make  sure you have Node installed
+
+1. `make install`
+2. `mlpa`
+3. `curl http://localhost:8080/openapi.json -o /tmp/openapi.json`
+4. `npx @redocly/cli build-docs /tmp/openapi.json -o docs/index.html`
