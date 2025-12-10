@@ -414,3 +414,36 @@ async def test_get_completion_429_invalid_json(mocker):
 
     assert exc_info.value.status_code == 429
     assert exc_info.value.detail == "Upstream service returned an error"
+
+
+async def test_stream_completion_exception_after_streaming_started(
+    httpx_mock: HTTPXMock, mocker
+):
+    """
+    Tests that exceptions after streaming starts are handled gracefully without raising HTTPException.
+    """
+    mock_chunks = [b"data: chunk1", b"data: chunk2"]
+    httpx_mock.add_response(
+        method="POST",
+        url=LITELLM_COMPLETIONS_URL,
+        stream=IteratorStream(mock_chunks),
+        status_code=200,
+    )
+
+    mock_metrics = mocker.patch("mlpa.core.completions.metrics")
+    mock_logger = mocker.patch("mlpa.core.completions.logger")
+    mock_tiktoken = mocker.patch("mlpa.core.completions.tiktoken")
+    mock_tiktoken.encoding_for_model.side_effect = Exception("Token counting failed")
+    mock_tiktoken.get_encoding.side_effect = Exception("Token counting failed")
+
+    received_chunks = []
+    async for chunk in stream_completion(SAMPLE_REQUEST):
+        received_chunks.append(chunk)
+
+    assert len(received_chunks) == len(mock_chunks)
+    assert received_chunks == mock_chunks
+    mock_logger.error.assert_called()
+    mock_metrics.chat_completion_latency.labels.assert_called_once_with(
+        result=PrometheusResult.ERROR
+    )
+    mock_metrics.chat_completion_latency.labels().observe.assert_called_once()

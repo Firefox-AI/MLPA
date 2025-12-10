@@ -58,6 +58,7 @@ async def stream_completion(authorized_chat_request: AuthorizedChatRequest):
     result = PrometheusResult.ERROR
     is_first_token = True
     num_completion_tokens = 0
+    streaming_started = False
     logger.debug(
         f"Starting a stream completion using {authorized_chat_request.model}, for user {authorized_chat_request.user}",
     )
@@ -76,9 +77,11 @@ async def stream_completion(authorized_chat_request: AuthorizedChatRequest):
                     if is_first_token:
                         metrics.chat_completion_ttft.observe(time.time() - start_time)
                         is_first_token = False
+                        streaming_started = True
                     yield chunk
 
-                # Update token metrics after streaming is complete
+                # TODO: The tokenizer probably should be initialized once at startup and cached.
+                # TODO: Once we will start using model's aliases, the try will always fail. So we will need to use the universal encoding.
                 try:
                     tokenizer = tiktoken.encoding_for_model(
                         authorized_chat_request.model
@@ -94,16 +97,12 @@ async def stream_completion(authorized_chat_request: AuthorizedChatRequest):
                 result = PrometheusResult.SUCCESS
     except httpx.HTTPStatusError as e:
         logger.error(f"Upstream service returned an error: {e}")
-        raise HTTPException(
-            status_code=502,
-            detail=f"Upstream service returned an error",
-        )
+        if not streaming_started:
+            yield f'data: {{"error": "Upstream service returned an error"}}\n\n'.encode()
     except Exception as e:
         logger.error(f"Failed to proxy request to {LITELLM_COMPLETIONS_URL}: {e}")
-        raise HTTPException(
-            status_code=500,
-            detail={"error": f"Failed to proxy request"},
-        )
+        if not streaming_started:
+            yield f'data: {{"error": "Failed to proxy request"}}\n\n'.encode()
     finally:
         metrics.chat_completion_latency.labels(result=result).observe(
             time.time() - start_time
