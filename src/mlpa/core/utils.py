@@ -2,10 +2,10 @@ import base64
 
 import httpx
 from fastapi import HTTPException
-from fxa.oauth import Client
 from jwtoxide import DecodingKey, ValidationOptions, decode
 from loguru import logger
 
+from fxa.oauth import Client
 from mlpa.core.classes import AssertionAuth, AttestationAuth
 from mlpa.core.config import LITELLM_MASTER_AUTH_HEADERS, env
 
