@@ -77,14 +77,17 @@ async def stream_completion(authorized_chat_request: AuthorizedChatRequest):
                     if is_first_token:
                         metrics.chat_completion_ttft.observe(time.time() - start_time)
                         is_first_token = False
-                    streaming_started = True
+                        streaming_started = True
                     yield chunk
 
-                # Update token metrics after streaming is complete
-                # NOTE: cl100k_base is a reasonable approximation for most modern models (Mistral, Qwen, OpenAI) which use BPE tokenization.
-                # Model names may be aliases (e.g., "vertex_ai/qwen/...") which won't be recognized by tiktoken, so we use a universal encoding for metrics.
                 # TODO: The tokenizer probably should be initialized once at startup and cached.
-                tokenizer = tiktoken.get_encoding("cl100k_base")
+                # TODO: Once we will start using model's aliases, the try will always fail. So we will need to use the universal encoding.
+                try:
+                    tokenizer = tiktoken.encoding_for_model(
+                        authorized_chat_request.model
+                    )
+                except KeyError:
+                    tokenizer = tiktoken.get_encoding("cl100k_base")
                 prompt_text = "".join(
                     message["content"] for message in authorized_chat_request.messages
                 )
