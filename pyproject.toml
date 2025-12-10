@@ -30,7 +30,6 @@ dependencies = [
     "pyattest==1.0.2",
     "pydantic==2.11.7",
     "pydantic_settings==2.10.1",
-    "PyFxA==0.8.1",
     "PyJWT==2.10.1",
     "pyhanko==0.16.0",
     "psycopg2-binary==2.9.11",
