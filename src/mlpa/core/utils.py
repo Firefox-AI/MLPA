@@ -1,9 +1,9 @@
 import base64
 
 import httpx
-import jwt
 from fastapi import HTTPException
 from fxa.oauth import Client
+from jwtoxide import DecodingKey, ValidationOptions, decode
 from loguru import logger
 
 from mlpa.core.classes import AssertionAuth, AttestationAuth
@@ -82,7 +82,21 @@ def parse_app_attest_jwt(authorization: str, type: str):
     try:
         # Remove "Bearer " prefix if present
         token = authorization.removeprefix("Bearer ").strip()
-        value = jwt.decode(token, options={"verify_signature": False})
+        value = decode(
+            token,
+            DecodingKey.from_secret(b""),
+            ValidationOptions(
+                required_spec_claims={"iat"},
+                aud=None,
+                iss=None,
+                # Validation is not necessary here since we only need to parse the payload
+                # Authorization is done later in the attestation/assertion verification process
+                validate_aud=False,
+                validate_exp=False,
+                validate_nbf=False,
+                verify_signature=False,
+            ),
+        )
         if type == "attest":
             appAuth = AttestationAuth(**value)
         elif type == "assert":
