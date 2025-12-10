@@ -3,8 +3,8 @@ from unittest.mock import MagicMock, patch
 import jwt
 import pytest
 from fastapi import HTTPException
-from fxa.errors import TrustError
 
+from fxa.errors import TrustError
 from mlpa.core.routers.mock.mock import verify_jwt_token_only
 from tests.consts import (
     MOCK_FXA_USER_DATA,
