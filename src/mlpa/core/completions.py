@@ -17,27 +17,43 @@ from mlpa.core.prometheus_metrics import PrometheusResult, metrics
 from mlpa.core.utils import is_rate_limit_error
 
 
-async def _handle_rate_limit_error(e: httpx.HTTPStatusError, user: str) -> None:
+def _parse_rate_limit_error(error_text: str, user: str) -> int | None:
+    """
+    Parse error response to detect budget or rate limit errors.
+    Returns the error code if a rate limit error is detected, None otherwise.
+    """
+    if not error_text:
+        return None
+
     try:
-        error_text = e.response.text
-        if error_text:
-            error_data = json.loads(error_text)
-            if is_rate_limit_error(error_data, ["budget"]):
-                logger.warning(f"Budget limit exceeded for user {user}: {error_text}")
-                raise HTTPException(
-                    status_code=429,
-                    detail={"error": ERROR_CODE_BUDGET_LIMIT_EXCEEDED},
-                    headers={"Retry-After": "86400"},
-                )
-            elif is_rate_limit_error(error_data, ["rate"]):
-                logger.warning(f"Rate limit exceeded for user {user}: {error_text}")
-                raise HTTPException(
-                    status_code=429,
-                    detail={"error": ERROR_CODE_RATE_LIMIT_EXCEEDED},
-                    headers={"Retry-After": "60"},
-                )
+        error_data = json.loads(error_text)
+        if is_rate_limit_error(error_data, ["budget"]):
+            logger.warning(f"Budget limit exceeded for user {user}: {error_text}")
+            return ERROR_CODE_BUDGET_LIMIT_EXCEEDED
+        elif is_rate_limit_error(error_data, ["rate"]):
+            logger.warning(f"Rate limit exceeded for user {user}: {error_text}")
+            return ERROR_CODE_RATE_LIMIT_EXCEEDED
     except (json.JSONDecodeError, AttributeError, UnicodeDecodeError):
         pass
+
+    return None
+
+
+async def _handle_rate_limit_error(e: httpx.HTTPStatusError, user: str) -> None:
+    error_text = e.response.text
+    error_code = _parse_rate_limit_error(error_text, user)
+    if error_code == ERROR_CODE_BUDGET_LIMIT_EXCEEDED:
+        raise HTTPException(
+            status_code=429,
+            detail={"error": ERROR_CODE_BUDGET_LIMIT_EXCEEDED},
+            headers={"Retry-After": "86400"},
+        )
+    elif error_code == ERROR_CODE_RATE_LIMIT_EXCEEDED:
+        raise HTTPException(
+            status_code=429,
+            detail={"error": ERROR_CODE_RATE_LIMIT_EXCEEDED},
+            headers={"Retry-After": "60"},
+        )
 
 
 async def stream_completion(authorized_chat_request: AuthorizedChatRequest):
@@ -71,7 +87,35 @@ async def stream_completion(authorized_chat_request: AuthorizedChatRequest):
                 json=body,
                 timeout=30,
             ) as response:
-                response.raise_for_status()
+                try:
+                    response.raise_for_status()
+                except httpx.HTTPStatusError as e:
+                    # Read the error response content for streaming responses
+                    error_text_str = ""
+                    try:
+                        error_bytes = await e.response.aread()
+                        error_text_str = (
+                            error_bytes.decode("utf-8") if error_bytes else ""
+                        )
+                    except Exception:
+                        pass
+
+                    if e.response.status_code == 429 or e.response.status_code == 400:
+                        # Check for budget or rate limit errors
+                        error_code = _parse_rate_limit_error(
+                            error_text_str, authorized_chat_request.user
+                        )
+                        if error_code is not None:
+                            yield f'data: {{"error": {error_code}}}\n\n'.encode()
+                            return
+
+                    # For other errors or if we couldn't parse the error
+                    logger.error(
+                        f"Upstream service returned an error: {e.response.status_code} - {error_text_str}"
+                    )
+                    yield f'data: {{"error": "Upstream service returned an error"}}\n\n'.encode()
+                    return
+
                 async for chunk in response.aiter_bytes():
                     num_completion_tokens += 1
                     if is_first_token:
