@@ -78,6 +78,8 @@ async def instrument_requests(request: Request, call_next):
     start_time = time.time()
     metrics.in_progress_requests.inc()
 
+    metrics.request_count_total.labels(method=request.method).inc()
+
     # Forward non-auth headers to log metadata
     with logger.contextualize(
         service_type=request.headers.get("service-type", "N/A"),
@@ -86,19 +88,34 @@ async def instrument_requests(request: Request, call_next):
         use_app_attest=request.headers.get("use-app-attest", "N/A"),
     ):
         try:
+            # Capture request size if available
+            content_length = request.headers.get("content-length")
+            if content_length:
+                metrics.request_size_bytes.observe(int(content_length))
+
             response = await call_next(request)
 
+            duration = time.time() - start_time
             route = request.scope.get("route")
             endpoint = route.path if route else request.url.path
 
-            metrics.request_latency.labels(
-                method=request.method, endpoint=endpoint
-            ).observe(time.time() - start_time)
-            metrics.requests_total.labels(
-                method=request.method, endpoint=endpoint
-            ).inc()
+            metrics.request_latency.labels(method=request.method).observe(duration)
+            metrics.requests_total.labels(method=request.method).inc()
             metrics.response_status_codes.labels(status_code=response.status_code).inc()
+
+            metrics.request_duration_seconds.labels(method=request.method).observe(
+                duration
+            )
+
+            # Capture response size
+            res_content_length = response.headers.get("content-length")
+            if res_content_length:
+                metrics.response_size_bytes.observe(int(res_content_length))
+
             return response
+        except Exception as e:
+            metrics.error_count_total.labels(error_type=type(e).__name__).inc()
+            raise e
         finally:
             metrics.in_progress_requests.dec()
 
@@ -126,14 +143,20 @@ async def chat_completion(
         Optional[AuthorizedChatRequest], Depends(authorize_request)
     ],
 ):
+    start_time = time.time()
+    if authorized_chat_request is None:
+        None
+
     user_id = authorized_chat_request.user
     if not user_id:
+        metrics.error_count_total.labels(error_type=f"UserNotFound").inc()
         raise HTTPException(
             status_code=400,
             detail={"error": "User not found from authorization response."},
         )
     user, _ = await get_or_create_user(user_id)
     if user.get("blocked"):
+        metrics.inference_blocked_total.labels(backend="internal_policy").inc()
         raise HTTPException(status_code=403, detail={"error": "User is blocked."})
 
     if authorized_chat_request.stream:
@@ -148,9 +171,13 @@ async def chat_completion(
 @app.exception_handler(HTTPException)
 async def log_and_handle_http_exception(request: Request, exc: HTTPException):
     """Logs HTTPExceptions"""
-    if exc.status_code != 429:
+    metrics.error_count_total.labels(error_type=f"HTTP_{exc.status_code}").inc()
+
+    if exc.status_code == 429:
+        metrics.auth_rate_limit_dropped_total.inc()
+    else:
         logger.error(
-            f"HTTPException for {request.method} {request.url.path} -> status={exc.status_code} detail={exc.detail}",
+            f"HTTPException for {request.method} {request.url.path} -> status={exc.status_code}"
         )
     return await http_exception_handler(request, exc)
 
