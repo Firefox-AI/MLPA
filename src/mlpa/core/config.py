@@ -28,6 +28,13 @@ class Env(BaseSettings):
     USER_FEATURE_BUDGET_S2S_TPM_LIMIT: int = 2000
     USER_FEATURE_BUDGET_S2S_BUDGET_DURATION: str = "1d"
 
+    # User Feature Budget - insights service type
+    USER_FEATURE_BUDGET_INSIGHTS_BUDGET_ID: str = "end-user-budget-insights"
+    USER_FEATURE_BUDGET_INSIGHTS_MAX_BUDGET: float = 0.1
+    USER_FEATURE_BUDGET_INSIGHTS_RPM_LIMIT: int = 10
+    USER_FEATURE_BUDGET_INSIGHTS_TPM_LIMIT: int = 2000
+    USER_FEATURE_BUDGET_INSIGHTS_BUDGET_DURATION: str = "1d"
+
     @property
     def user_feature_budget(self) -> dict[str, dict]:
         """
@@ -49,6 +56,13 @@ class Env(BaseSettings):
                 "rpm_limit": self.USER_FEATURE_BUDGET_S2S_RPM_LIMIT,
                 "tpm_limit": self.USER_FEATURE_BUDGET_S2S_TPM_LIMIT,
                 "budget_duration": self.USER_FEATURE_BUDGET_S2S_BUDGET_DURATION,
+            },
+            "insights": {
+                "budget_id": self.USER_FEATURE_BUDGET_INSIGHTS_BUDGET_ID,
+                "max_budget": self.USER_FEATURE_BUDGET_INSIGHTS_MAX_BUDGET,
+                "rpm_limit": self.USER_FEATURE_BUDGET_INSIGHTS_RPM_LIMIT,
+                "tpm_limit": self.USER_FEATURE_BUDGET_INSIGHTS_TPM_LIMIT,
+                "budget_duration": self.USER_FEATURE_BUDGET_INSIGHTS_BUDGET_DURATION,
             },
         }
 
