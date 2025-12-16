@@ -27,6 +27,7 @@ dependencies = [
     "jwtoxide==0.2.0",
     "mako==1.3.10",
     "markupsafe==3.0.3",
+    "pyfxa @ git+https://github.com/noahpodgurski/PyFxA-Oxide.git@v0.9.0",
     "prometheus_client==0.23.1",
     "pyattest==1.0.2",
     "pydantic==2.11.7",
