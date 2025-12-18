@@ -57,7 +57,7 @@ async def lifespan(app: FastAPI):
             await litellm_pg.disconnect()
 
 
-sentry_sdk.init(dsn=env.SENTRY_DSN, send_default_pii=True)
+sentry_sdk.init(dsn=env.SENTRY_DSN, send_default_pii=False)
 
 app = FastAPI(
     title="MLPA",
