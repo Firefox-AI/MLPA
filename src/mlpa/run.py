@@ -18,6 +18,7 @@ from mlpa.core.config import (
     env,
 )
 from mlpa.core.logger import logger, setup_logger
+from mlpa.core.middleware import register_middleware
 from mlpa.core.pg_services.services import app_attest_pg, litellm_pg
 from mlpa.core.prometheus_metrics import metrics
 from mlpa.core.routers.appattest import appattest_router
@@ -69,65 +70,9 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-
-# Run before all requests
-@app.middleware("http")
-async def check_request_size(request: Request, call_next):
-    """
-    Checks request body size for /v1/chat/completions endpoint to prevent oversized requests.
-    Validates Content-Length header before processing the request body.
-    """
-    if request.url.path == "/v1/chat/completions" and request.method == "POST":
-        content_length = request.headers.get("content-length")
-        if content_length:
-            try:
-                size = int(content_length)
-                if size > env.MAX_REQUEST_SIZE_BYTES:
-                    logger.warning(
-                        f"Request size {size} bytes exceeds maximum {env.MAX_REQUEST_SIZE_BYTES} bytes"
-                    )
-                    return JSONResponse(
-                        status_code=413,
-                        content={"error": "Request body too large."},
-                    )
-            except ValueError:
-                pass
-
-    return await call_next(request)
-
-
-# Run before all requests
-@app.middleware("http")
-async def instrument_requests(request: Request, call_next):
-    """
-    Measures request latency, counts total requests, and tracks requests in progress.
-    """
-    start_time = time.time()
-    metrics.in_progress_requests.inc()
-
-    # Forward non-auth headers to log metadata
-    with logger.contextualize(
-        service_type=request.headers.get("service-type", "N/A"),
-        session_id=request.headers.get("session-id", "N/A"),
-        user_agent=request.headers.get("user-agent", "N/A"),
-        use_app_attest=request.headers.get("use-app-attest", "N/A"),
-    ):
-        try:
-            response = await call_next(request)
-
-            route = request.scope.get("route")
-            endpoint = route.path if route else request.url.path
-
-            metrics.request_latency.labels(
-                method=request.method, endpoint=endpoint
-            ).observe(time.time() - start_time)
-            metrics.requests_total.labels(
-                method=request.method, endpoint=endpoint
-            ).inc()
-            metrics.response_status_codes.labels(status_code=response.status_code).inc()
-            return response
-        finally:
-            metrics.in_progress_requests.dec()
+# Register all middleware in explicit execution order
+# See mlpa.core.middleware.__init__.py for execution order documentation
+register_middleware(app)
 
 
 @app.get("/metrics", tags=["Metrics"])
