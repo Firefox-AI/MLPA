@@ -91,21 +91,20 @@ async def instrument_requests(request: Request, call_next):
             # Capture request size if available
             content_length = request.headers.get("content-length")
             if content_length:
-                metrics.request_size_bytes.observe(int(content_length))
+                metrics.request_size_bytes.labels(method=request.method).observe(
+                    int(content_length)
+                )
 
             response = await call_next(request)
 
             duration = time.time() - start_time
-            route = request.scope.get("route")
-            endpoint = route.path if route else request.url.path
-
-            metrics.request_latency.labels(method=request.method).observe(duration)
-            metrics.requests_total.labels(method=request.method).inc()
-            metrics.response_status_codes.labels(status_code=response.status_code).inc()
+            # route = request.scope.get("route")
+            # endpoint = route.path if route else request.url.path
 
             metrics.request_duration_seconds.labels(method=request.method).observe(
                 duration
             )
+            metrics.response_status_codes.labels(status_code=response.status_code).inc()
 
             # Capture response size
             res_content_length = response.headers.get("content-length")
@@ -114,7 +113,9 @@ async def instrument_requests(request: Request, call_next):
 
             return response
         except Exception as e:
-            metrics.error_count_total.labels(error_type=type(e).__name__).inc()
+            metrics.request_error_count_total.labels(
+                method=request.method, error_type=type(e).__name__
+            ).inc()
             raise e
         finally:
             metrics.in_progress_requests.dec()
@@ -144,19 +145,22 @@ async def chat_completion(
     ],
 ):
     start_time = time.time()
-    if authorized_chat_request is None:
-        None
-
     user_id = authorized_chat_request.user
+    model = authorized_chat_request.model
+
     if not user_id:
-        metrics.error_count_total.labels(error_type=f"UserNotFound").inc()
+        metrics.ai_error_count_total.labels(
+            model_name=model, error=f"UserNotFound"
+        ).inc()
         raise HTTPException(
             status_code=400,
             detail={"error": "User not found from authorization response."},
         )
     user, _ = await get_or_create_user(user_id)
     if user.get("blocked"):
-        metrics.inference_blocked_total.labels(backend="internal_policy").inc()
+        metrics.ai_error_count_total.labels(
+            model_name=model, error=f"UserBlocked"
+        ).inc()
         raise HTTPException(status_code=403, detail={"error": "User is blocked."})
 
     if authorized_chat_request.stream:
@@ -171,11 +175,12 @@ async def chat_completion(
 @app.exception_handler(HTTPException)
 async def log_and_handle_http_exception(request: Request, exc: HTTPException):
     """Logs HTTPExceptions"""
-    metrics.error_count_total.labels(error_type=f"HTTP_{exc.status_code}").inc()
+    metrics.request_error_count_total.labels(
+        method=request.method, error_type=f"HTTPError"
+    ).inc()
+    metrics.response_status_codes.labels(status_code=exc.status_code).inc()
 
-    if exc.status_code == 429:
-        metrics.auth_rate_limit_dropped_total.inc()
-    else:
+    if exc.status_code != 429:
         logger.error(
             f"HTTPException for {request.method} {request.url.path} -> status={exc.status_code}"
         )

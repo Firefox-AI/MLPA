@@ -88,7 +88,12 @@ async def validate_challenge(challenge: str, key_id_b64: str) -> bool:
             return False
         return challenge == stored_challenge["challenge"]
     finally:
-        metrics.validate_challenge_latency.observe(time.time() - start_time)
+        metrics.auth_response_count_total.labels(
+            method="appatest_challenge", result=result
+        ).inc()
+        metrics.auth_duration_seconds.labels(
+            method="appatest_challenge", result=result
+        ).observe(time.time() - start_time)
 
 
 async def verify_attest(
@@ -146,9 +151,12 @@ async def verify_attest(
         logger.error(f"Attestation verification failed: {e}")
         raise HTTPException(status_code=403, detail="Attestation verification failed")
     finally:
-        metrics.validate_app_attest_latency.labels(result=result).observe(
-            time.time() - start_time
-        )
+        metrics.auth_response_count_total.labels(
+            method="appatest_attest", result=result
+        ).inc()
+        metrics.auth_duration_seconds.labels(
+            method="appatest_attest", result=result
+        ).observe(time.time() - start_time)
 
     # save public_key in b64
     await app_attest_pg.store_key(key_id_b64, public_key_pem, attestation_counter)
@@ -210,8 +218,11 @@ async def verify_assert(
         logger.error(f"Assertion verification failed: {e}")
         raise HTTPException(status_code=403, detail=f"Assertion verification failed")
     finally:
-        metrics.validate_app_assert_latency.labels(result=result).observe(
-            time.time() - start_time
-        )
+        metrics.auth_response_count_total.labels(
+            method="appatest_assert", result=result
+        ).inc()
+        metrics.auth_duration_seconds.labels(
+            method="appatest_assert", result=result
+        ).observe(time.time() - start_time)
 
     return {"status": "success"}

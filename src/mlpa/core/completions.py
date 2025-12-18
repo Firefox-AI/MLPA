@@ -18,14 +18,12 @@ from mlpa.core.utils import is_rate_limit_error
 
 
 async def _handle_rate_limit_error(e: httpx.HTTPStatusError, user: str) -> None:
-    metrics.auth_throttled_requests_total.inc()
-
     try:
         error_text = e.response.text
         if error_text:
             error_data = json.loads(error_text)
             if is_rate_limit_error(error_data, ["budget"]):
-                metrics.auth_rate_limit_dropped_total.inc()
+                metrics.auth_error_count_total.labels(error="BudgetExceeded").inc()
                 logger.warning(f"Budget limit exceeded for user {user}: {error_text}")
                 raise HTTPException(
                     status_code=429,
@@ -33,7 +31,7 @@ async def _handle_rate_limit_error(e: httpx.HTTPStatusError, user: str) -> None:
                     headers={"Retry-After": "86400"},
                 )
             elif is_rate_limit_error(error_data, ["rate"]):
-                metrics.auth_rate_limit_dropped_total.inc()
+                metrics.auth_error_count_total.labels(error="RateLimitExceeded").inc()
                 logger.warning(f"Rate limit exceeded for user {user}: {error_text}")
                 raise HTTPException(
                     status_code=429,
@@ -41,6 +39,7 @@ async def _handle_rate_limit_error(e: httpx.HTTPStatusError, user: str) -> None:
                     headers={"Retry-After": "60"},
                 )
     except (json.JSONDecodeError, AttributeError, UnicodeDecodeError):
+        metrics.auth_error_count_total.labels(error="UserThrottled").inc()
         pass
 
 
@@ -57,8 +56,7 @@ async def stream_completion(authorized_chat_request: AuthorizedChatRequest):
         "stream": True,
     }
 
-    metrics.router_requests_total.labels(model_name=model).inc()
-    metrics.ai_backend_requests_total.labels(model_name=model).inc()
+    metrics.ai_request_count_total.labels(model_name=model).inc()
 
     result = PrometheusResult.ERROR
     is_first_token = True
@@ -80,13 +78,16 @@ async def stream_completion(authorized_chat_request: AuthorizedChatRequest):
                     response.raise_for_status()
                 except httpx.HTTPStatusError as e:
                     if e.response.status_code == 408:
-                        metrics.ai_backend_timeouts_total.labels(model_name=model).inc()
+                        metrics.ai_error_count_total.labels(
+                            model_name=model, error="BackendTimeout"
+                        ).inc()
                     raise e
-
                 async for chunk in response.aiter_bytes():
                     num_completion_tokens += 1
                     if is_first_token:
-                        metrics.chat_completion_ttft.observe(time.time() - start_time)
+                        metrics.ai_time_to_first_token.labels(
+                            model_name=authorized_chat_request.model
+                        ).observe(time.time() - start_time)
                         is_first_token = False
                         streaming_started = True
                     yield chunk
@@ -101,36 +102,29 @@ async def stream_completion(authorized_chat_request: AuthorizedChatRequest):
                     message["content"] for message in authorized_chat_request.messages
                 )
                 prompt_tokens = len(tokenizer.encode(prompt_text))
-                metrics.chat_tokens.labels(type="prompt").inc(prompt_tokens)
-                metrics.chat_tokens.labels(type="completion").inc(num_completion_tokens)
-
-                metrics.ai_prompt_tokens_total.labels(model_name=model).inc(
-                    prompt_tokens
-                )
-                metrics.ai_completion_tokens_total.labels(model_name=model).inc(
-                    num_completion_tokens
-                )
-                metrics.ai_total_tokens_total.labels(model_name=model).inc(
-                    prompt_tokens + num_completion_tokens
-                )
+                metrics.ai_token_count_total.labels(
+                    model_name=model, type="prompt"
+                ).inc(prompt_tokens)
+                metrics.ai_token_count_total.labels(
+                    model_name=model, type="completion"
+                ).inc(num_completion_tokens)
 
                 result = PrometheusResult.SUCCESS
     except httpx.HTTPStatusError as e:
-        metrics.error_count_total.labels(
-            error_type=f"HTTP_{e.response.status_code}"
+        metrics.ai_error_count_total.labels(
+            model_name=model, error=f"HTTP_{e.response.status_code}"
         ).inc()
         if not streaming_started:
             yield f'data: {{"error": "Upstream service returned an error"}}\n\n'.encode()
     except Exception as e:
-        metrics.error_count_total.labels(error_type=type(e).__name__).inc()
+        metrics.ai_error_count_total.labels(error_type=type(e).__name__).inc()
         if not streaming_started:
             yield f'data: {{"error": "Failed to proxy request"}}\n\n'.encode()
     finally:
         duration = time.time() - start_time
-        metrics.chat_completion_latency.labels(result=result).observe(duration)
-        metrics.ai_backend_request_duration_seconds.labels(model_name=model).observe(
-            duration
-        )
+        metrics.ai_request_duration_seconds.labels(
+            model_name=model, streaming=True
+        ).observe(duration)
 
 
 async def get_completion(authorized_chat_request: AuthorizedChatRequest):
@@ -154,8 +148,7 @@ async def get_completion(authorized_chat_request: AuthorizedChatRequest):
         f"Starting a non-stream completion using {authorized_chat_request.model}, for user {authorized_chat_request.user}",
     )
 
-    metrics.router_requests_total.labels(model_name=model).inc()
-    metrics.ai_backend_requests_total.labels(model_name=model).inc()
+    metrics.ai_request_count_total.labels(model_name=model).inc()
 
     try:
         async with httpx.AsyncClient() as client:
@@ -172,10 +165,13 @@ async def get_completion(authorized_chat_request: AuthorizedChatRequest):
                 if e.response.status_code == 429 or e.response.status_code == 400:
                     await _handle_rate_limit_error(e, authorized_chat_request.user)
                 elif e.response.status_code == 408:
-                    metrics.ai_backend_timeouts_total.labels(model_name=model).inc()
-                metrics.error_count_total.labels(
-                    error_type=f"HTTP_{e.response.status_code}"
-                ).inc()
+                    metrics.ai_error_count_total.labels(
+                        model_name=model, error="Timeout"
+                    ).inc()
+                else:
+                    metrics.ai_error_count_total.labels(
+                        model_name=model, error=f"HTTP_{e.response.status_code}"
+                    ).inc()
                 logger.error(
                     f"Upstream service returned an error: {e.response.status_code} - {e.response.text}"
                 )
@@ -187,23 +183,21 @@ async def get_completion(authorized_chat_request: AuthorizedChatRequest):
             prompt_tokens = usage.get("prompt_tokens", 0)
             completion_tokens = usage.get("completion_tokens", 0)
 
-            metrics.chat_tokens.labels(type="prompt").inc(prompt_tokens)
-            metrics.chat_tokens.labels(type="completion").inc(completion_tokens)
-
-            metrics.ai_prompt_tokens_total.labels(model_name=model).inc(prompt_tokens)
-            metrics.ai_completion_tokens_total.labels(model_name=model).inc(
-                completion_tokens
+            metrics.ai_token_count_total.labels(model_name=model, type="prompt").inc(
+                prompt_tokens
             )
-            metrics.ai_total_tokens_total.labels(model_name=model).inc(
-                prompt_tokens + completion_tokens
-            )
+            metrics.ai_token_count_total.labels(
+                model_name=model, type="completion"
+            ).inc(completion_tokens)
 
             result = PrometheusResult.SUCCESS
             return data
     except HTTPException:
         raise
     except Exception as e:
-        metrics.error_count_total.labels(error_type=type(e).__name__).inc()
+        metrics.ai_error_count_total.labels(
+            model_name=model, error=type(e).__name__
+        ).inc()
         logger.error(f"Failed to proxy request to {LITELLM_COMPLETIONS_URL}: {e}")
         raise HTTPException(
             status_code=502,
@@ -211,7 +205,6 @@ async def get_completion(authorized_chat_request: AuthorizedChatRequest):
         )
     finally:
         duration = time.time() - start_time
-        metrics.chat_completion_latency.labels(result=result).observe(duration)
-        metrics.ai_backend_request_duration_seconds.labels(model_name=model).observe(
-            duration
-        )
+        metrics.ai_request_duration_seconds.labels(
+            model_name=model, streaming=False
+        ).observe(duration)

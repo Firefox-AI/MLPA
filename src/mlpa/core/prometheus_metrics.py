@@ -12,179 +12,126 @@ class PrometheusResult(Enum):
 @dataclass
 class PrometheusMetrics:
     in_progress_requests: Gauge
-    requests_total: Counter
-    response_status_codes: Counter
-    request_latency: Histogram
-    validate_challenge_latency: Histogram
-    validate_app_attest_latency: Histogram
-    validate_app_assert_latency: Histogram
-    validate_fxa_latency: Histogram
-    chat_completion_latency: Histogram
-    chat_completion_ttft: Histogram  # time to first token (when stream=True)
-    chat_tokens: Counter
 
-    # 3.3 Standard Service Metrics
-    request_count_total: Counter
-    request_duration_seconds: Histogram
-    request_size_bytes: Histogram
+    # Standard
+    request_count_total: Counter  # method(Get, Put, Update, Delete, )
+    request_duration_seconds: Histogram  # method(Get, Put, Update, Delete, )
+    request_size_bytes: Histogram  # method(Get, Put, Update, Delete, )
     response_size_bytes: Histogram
-    error_count_total: Counter
+    response_status_codes: Counter  # method(Get, Put, Update, Delete, )
+    request_error_count_total: Counter  # method, error_type
 
-    # 4.1 Authorization Service Metrics
-    auth_requests_total: Counter
-    auth_request_duration_seconds: Histogram
-    idp_request_duration_seconds: Histogram
-    idp_request_errors_total: Counter
-    auth_rate_limit_dropped_total: Counter
-    auth_throttled_requests_total: Counter
+    # Auth
+    auth_request_count_total: Counter
+    auth_response_count_total: (
+        Counter  # labels: method(fxa, appatest, ...), result (allow, deny, error)
+    )
+    auth_duration_seconds: Histogram  # labels: method(fxa, appatest, ...)
+    auth_error_count_total: Counter  # labels: method(fxa, appatest, ...), error(rate limited, throttled, ...)
 
-    # 5.1 Routing Service Metrics
-    router_requests_total: Counter
-    router_decision_total: Counter
-    router_request_duration_seconds: Histogram
-    ai_backend_requests_total: Counter
-    ai_backend_request_duration_seconds: Histogram
-    ai_backend_timeouts_total: Counter
-    ai_backend_retries_total: Counter
-    ai_prompt_tokens_total: Counter
-    ai_completion_tokens_total: Counter
-    ai_total_tokens_total: Counter
-    ai_cost_estimate_usd_total: Counter
-    router_fallback_total: Counter
+    # Router Metrics
+    router_request_count_total: Counter  # labels: model_name
+    router_decision_count_total: Counter  # labels: decision_model_name,
+    router_request_duration_seconds: Histogram  # labels: model_name
 
-    # 6.1 AI Service Metrics
-    inference_blocked_total: Counter
+    # AI Metrics
+    ai_request_count_total: Counter  # labels: model_name
+    ai_time_to_first_token: (
+        Histogram  #  time to first token (when stream=True) labels: model_name
+    )
+    ai_request_duration_seconds: Histogram  # labels: model_name, streaming
+    ai_error_count_total: (
+        Counter  # labels: model_name, error(timeout, retry, blocked, ...)
+    )
+    ai_token_count_total: Counter  # labels: model_name, type
 
 
 metrics = PrometheusMetrics(
     in_progress_requests=Gauge(
         "in_progress_requests", "Number of requests currently in progress."
     ),
-    requests_total=Counter(
-        "requests_total",
-        "Total number of requests handled by the proxy.",
+    # Standard
+    request_count_total=Counter(
+        "request_count_total",
+        "Total number of requests received handled by the proxy.",
         ["method"],
+    ),
+    request_duration_seconds=Histogram(
+        "request_duration_seconds",
+        "Total roundtrip request duration distribution.",
+        ["method"],
+    ),
+    request_size_bytes=Histogram(
+        "request_size_bytes", "Size of requests in bytes.", ["method"]
+    ),
+    response_size_bytes=Histogram(
+        "response_size_bytes",
+        "Size of responses in bytes.",
     ),
     response_status_codes=Counter(
         "response_status_codes_total",
         "Total number of response status codes.",
         ["status_code"],
     ),
-    request_latency=Histogram(
-        "request_latency_seconds", "Request latency in seconds.", ["method"]
+    request_error_count_total=Counter(
+        "request_error_count_total",
+        "Total number of errors encountered.",
+        ["method", "error_type"],
     ),
-    validate_challenge_latency=Histogram(
-        "validate_challenge_latency_seconds", "Challenge validation latency in seconds."
+    # Auth
+    auth_request_count_total=Counter(
+        "auth_request_count_total",
+        "Total authorization requests.",
     ),
-    validate_app_attest_latency=Histogram(
-        "validate_app_attest_latency_seconds",
-        "App Attest authentication latency in seconds.",
-        ["result"],
+    auth_response_count_total=Counter(
+        "auth_response_count_total",
+        "Total authorization responses.",
+        ["method", "result"],
     ),
-    validate_app_assert_latency=Histogram(
-        "validate_app_assert_latency_seconds",
-        "App Assert authentication latency in seconds.",
-        ["result"],
-    ),
-    validate_fxa_latency=Histogram(
-        "validate_fxa_latency_seconds",
-        "FxA authentication latency in seconds.",
-        ["result"],
-    ),
-    chat_completion_latency=Histogram(
-        "chat_completion_latency_seconds",
-        "Chat completion latency in seconds.",
-        ["result"],
-    ),
-    chat_completion_ttft=Histogram(
-        "chat_completion_ttft_seconds",
-        "Time to first token for streaming chat completions in seconds.",
-    ),
-    chat_tokens=Counter(
-        "chat_tokens",
-        "Number of tokens for chat completions.",
-        ["type"],
-    ),
-    # 3.3 Standard Service Metrics
-    request_count_total=Counter(
-        "request_count_total", "Total number of requests received.", ["method"]
-    ),
-    request_duration_seconds=Histogram(
-        "request_duration_seconds", "Request duration distribution.", ["method"]
-    ),
-    request_size_bytes=Histogram("request_size_bytes", "Size of requests in bytes."),
-    response_size_bytes=Histogram("response_size_bytes", "Size of responses in bytes."),
-    error_count_total=Counter(
-        "error_count_total", "Total number of errors encountered.", ["error_type"]
-    ),
-    # 4.1 Authorization Service Metrics
-    auth_requests_total=Counter(
-        "auth_requests_total", "Total authorization requests.", ["result"]
-    ),
-    auth_request_duration_seconds=Histogram(
-        "auth_request_duration_seconds",
+    auth_duration_seconds=Histogram(
+        "auth_duration_seconds",
         "Latency of authorization requests.",
-        ["auth_method"],
+        ["method", "result"],
     ),
-    idp_request_duration_seconds=Histogram(
-        "idp_request_duration_seconds",
-        "Latency of requests to Identity Provider.",
-        ["provider"],
+    auth_error_count_total=Counter(
+        "auth_error_count_total", "Total authorization errors.", ["error"]
     ),
-    idp_request_errors_total=Counter(
-        "idp_request_errors_total", "Total errors from Identity Provider.", ["provider"]
+    # Router Metrics
+    router_request_count_total=Counter(
+        "router_request_count_total",
+        "Volume of routed requests.",
+        ["model_name", "streaming"],
     ),
-    auth_rate_limit_dropped_total=Counter(
-        "auth_rate_limit_dropped_total",
-        "Requests dropped due to rate limiting.",
+    router_decision_count_total=Counter(
+        "router_decision_count_total",
+        "Total routing decisions made.",
+        ["decision_model_name", "streaming"],
     ),
-    auth_throttled_requests_total=Counter(
-        "auth_throttled_requests_total",
-        "Requests throttled.",
-    ),
-    # 5.1 Routing Service Metrics
-    router_requests_total=Counter(
-        "router_requests_total", "Volume of routed requests.", ["model_name"]
-    ),
-    router_decision_total=Counter("router_decision_total", "Routing decisions made."),
     router_request_duration_seconds=Histogram(
-        "router_request_duration_seconds", "Routing logic latency.", ["model_name"]
+        "router_request_duration_seconds",
+        "Routing logic latency.",
+        ["model_name", "streaming"],
     ),
-    ai_backend_requests_total=Counter(
-        "ai_backend_requests_total", "Requests sent to AI backends.", ["model_name"]
+    # AI Metrics
+    ai_request_count_total=Counter(
+        "ai_request_count_total", "Total requests sent to AI backends.", ["model_name"]
     ),
-    ai_backend_request_duration_seconds=Histogram(
-        "ai_backend_request_duration_seconds",
+    ai_time_to_first_token=Histogram(
+        "ai_time_to_first_token_seconds",
+        "Time to first token for streaming completions.",
+        ["model_name"],
+    ),
+    ai_request_duration_seconds=Histogram(
+        "ai_request_duration_seconds",
         "Latency of AI backend requests.",
-        ["model_name"],
+        ["model_name", "streaming"],
     ),
-    ai_backend_timeouts_total=Counter(
-        "ai_backend_timeouts_total",
-        "Total timeouts communicating with AI backends.",
-        ["model_name"],
+    ai_error_count_total=Counter(
+        "ai_error_count_total",
+        "Total errors communicating with AI backends.",
+        ["model_name", "error"],
     ),
-    ai_backend_retries_total=Counter(
-        "ai_backend_retries_total", "Total retries to AI backends.", ["model_name"]
-    ),
-    ai_prompt_tokens_total=Counter(
-        "ai_prompt_tokens_total", "Total prompt tokens consumed.", ["model_name"]
-    ),
-    ai_completion_tokens_total=Counter(
-        "ai_completion_tokens_total",
-        "Total completion tokens generated.",
-        ["model_name"],
-    ),
-    ai_total_tokens_total=Counter(
-        "ai_total_tokens_total", "Total tokens (prompt + completion).", ["model_name"]
-    ),
-    ai_cost_estimate_usd_total=Counter(
-        "ai_cost_estimate_usd_total", "Estimated cost in USD.", ["model_name"]
-    ),
-    router_fallback_total=Counter(
-        "router_fallback_total", "Total routing fallbacks triggered."
-    ),
-    # 6.1 AI Service Metrics
-    inference_blocked_total=Counter(
-        "inference_blocked_total", "Inferences blocked by safety filters.", ["backend"]
+    ai_token_count_total=Counter(
+        "ai_token_count_total", "Total tokens consumed.", ["model_name", "type"]
     ),
 )
