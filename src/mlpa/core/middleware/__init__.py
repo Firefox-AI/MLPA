@@ -36,8 +36,8 @@ __all__ = [
 # This is the DESIRED execution order from request to handler
 # register_middleware() will reverse this for registration
 MIDDLEWARE_EXECUTION_ORDER = [
-    check_request_size_middleware,  # Runs FIRST (early rejection before metrics)
-    instrument_requests_middleware,  # Runs SECOND (wraps everything for metrics)
+    check_request_size_middleware,
+    instrument_requests_middleware,
 ]
 
 
