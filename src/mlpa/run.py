@@ -1,3 +1,4 @@
+import json
 import time
 from contextlib import asynccontextmanager
 from typing import Annotated, Optional
@@ -6,7 +7,7 @@ import sentry_sdk
 import uvicorn
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.exception_handlers import http_exception_handler
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
 from mlpa.core.auth.authorize import authorize_request
@@ -67,6 +68,32 @@ app = FastAPI(
     openapi_tags=tags_metadata,
     lifespan=lifespan,
 )
+
+
+# Run before all requests
+@app.middleware("http")
+async def check_request_size(request: Request, call_next):
+    """
+    Checks request body size for /v1/chat/completions endpoint to prevent oversized requests.
+    Validates Content-Length header before processing the request body.
+    """
+    if request.url.path == "/v1/chat/completions" and request.method == "POST":
+        content_length = request.headers.get("content-length")
+        if content_length:
+            try:
+                size = int(content_length)
+                if size > env.MAX_REQUEST_SIZE_BYTES:
+                    logger.warning(
+                        f"Request size {size} bytes exceeds maximum {env.MAX_REQUEST_SIZE_BYTES} bytes"
+                    )
+                    return JSONResponse(
+                        status_code=413,
+                        content={"error": "Request body too large."},
+                    )
+            except ValueError:
+                pass
+
+    return await call_next(request)
 
 
 # Run before all requests
