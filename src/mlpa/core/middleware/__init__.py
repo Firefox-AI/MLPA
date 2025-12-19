@@ -28,14 +28,6 @@ from mlpa.core.middleware.instrumentation import instrument_requests_middleware
 from mlpa.core.middleware.request_size import check_request_size_middleware
 from mlpa.core.middleware.security_headers import security_headers_middleware
 
-__all__ = [
-    "check_request_size_middleware",
-    "instrument_requests_middleware",
-    "register_middleware",
-    "MIDDLEWARE_EXECUTION_ORDER",
-    "security_headers_middleware",
-]
-
 # Define middleware execution order explicitly (innermost to outermost)
 # This is the DESIRED execution order from request to handler
 # register_middleware() will reverse this for registration
@@ -43,6 +35,11 @@ MIDDLEWARE_EXECUTION_ORDER = [
     check_request_size_middleware,
     instrument_requests_middleware,
     security_headers_middleware,
+]
+
+__all__ = [func.__name__ for func in MIDDLEWARE_EXECUTION_ORDER] + [
+    "register_middleware",
+    "MIDDLEWARE_EXECUTION_ORDER",
 ]
 
 
