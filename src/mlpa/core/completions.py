@@ -12,6 +12,7 @@ from mlpa.core.config import (
     ERROR_CODE_RATE_LIMIT_EXCEEDED,
     LITELLM_COMPLETION_AUTH_HEADERS,
     LITELLM_COMPLETIONS_URL,
+    env,
 )
 from mlpa.core.prometheus_metrics import PrometheusResult, metrics
 from mlpa.core.utils import is_rate_limit_error
@@ -85,7 +86,7 @@ async def stream_completion(authorized_chat_request: AuthorizedChatRequest):
                 LITELLM_COMPLETIONS_URL,
                 headers=LITELLM_COMPLETION_AUTH_HEADERS,
                 json=body,
-                timeout=30,
+                timeout=env.STREAMING_TIMEOUT_SECONDS,
             ) as response:
                 try:
                     response.raise_for_status()
@@ -178,7 +179,7 @@ async def get_completion(authorized_chat_request: AuthorizedChatRequest):
                 LITELLM_COMPLETIONS_URL,
                 headers=LITELLM_COMPLETION_AUTH_HEADERS,
                 json=body,
-                timeout=10,
+                timeout=env.UPSTREAM_TIMEOUT_SECONDS,
             )
             data = response.json()
             try:

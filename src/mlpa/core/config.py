@@ -114,6 +114,10 @@ class Env(BaseSettings):
     TOP_P: float = 0.01
     MAX_REQUEST_SIZE_BYTES: int = 10 * 1024 * 1024  # 10 MB default
 
+    # Request Timeouts (in seconds)
+    STREAMING_TIMEOUT_SECONDS: int = 300
+    UPSTREAM_TIMEOUT_SECONDS: int = 30
+
     # Sentry
     SENTRY_DSN: str = ""
 
