@@ -118,6 +118,11 @@ class Env(BaseSettings):
     STREAMING_TIMEOUT_SECONDS: int = 300
     UPSTREAM_TIMEOUT_SECONDS: int = 30
 
+    # Security Headers
+    SECURITY_HEADERS_ENABLED: bool = True
+    HSTS_MAX_AGE: int = 31536000  # 1 year in seconds - a standard value
+    HSTS_INCLUDE_SUBDOMAINS: bool = True
+
     # Sentry
     SENTRY_DSN: str = ""
 
