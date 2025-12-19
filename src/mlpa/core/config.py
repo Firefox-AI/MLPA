@@ -112,6 +112,7 @@ class Env(BaseSettings):
     TEMPERATURE: float = 0.1
     MAX_COMPLETION_TOKENS: int = 1024
     TOP_P: float = 0.01
+    MAX_REQUEST_SIZE_BYTES: int = 10 * 1024 * 1024  # 10 MB default
 
     # Sentry
     SENTRY_DSN: str = ""
