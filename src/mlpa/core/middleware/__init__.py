@@ -17,19 +17,23 @@ To ensure correct execution order:
 CURRENT EXECUTION ORDER (request -> response):
 1. check_request_size_middleware - Early rejection of oversized requests
 2. instrument_requests_middleware - Wraps everything for metrics/logging
-3. [Request Handler]
-4. instrument_requests_middleware - Records metrics
-5. check_request_size_middleware - Returns response
+3. security_headers_middleware - Adds security headers to responses
+4. [Request Handler]
+5. security_headers_middleware - Adds security headers
+6. instrument_requests_middleware - Records metrics
+7. check_request_size_middleware - Returns response
 """
 
 from mlpa.core.middleware.instrumentation import instrument_requests_middleware
 from mlpa.core.middleware.request_size import check_request_size_middleware
+from mlpa.core.middleware.security_headers import security_headers_middleware
 
 __all__ = [
     "check_request_size_middleware",
     "instrument_requests_middleware",
     "register_middleware",
     "MIDDLEWARE_EXECUTION_ORDER",
+    "security_headers_middleware",
 ]
 
 # Define middleware execution order explicitly (innermost to outermost)
@@ -38,6 +42,7 @@ __all__ = [
 MIDDLEWARE_EXECUTION_ORDER = [
     check_request_size_middleware,
     instrument_requests_middleware,
+    security_headers_middleware,
 ]
 
 
