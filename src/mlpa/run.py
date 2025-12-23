@@ -86,7 +86,9 @@ async def instrument_requests(request: Request, call_next):
         session_id=request.headers.get("session-id", "N/A"),
         user_agent=request.headers.get("user-agent", "N/A"),
         use_app_attest=request.headers.get("use-app-attest", "N/A"),
+        request_source=request.headers.get("x-request-source", "N/A"),
     ):
+        path = request.url.path
         try:
             # Capture request size if available
             content_length = request.headers.get("content-length")
@@ -95,11 +97,20 @@ async def instrument_requests(request: Request, call_next):
                     int(content_length)
                 )
 
+                logger.info(
+                    f"Request {request.method} to {path} has size of {content_length}B",
+                    extra={
+                        "request_method": request.method,
+                        "content_length": int(content_length) if content_length else 0,
+                        "path": path,
+                    },
+                )
+
             response = await call_next(request)
 
             duration = time.time() - start_time
-            # route = request.scope.get("route")
-            # endpoint = route.path if route else request.url.path
+            route = request.scope.get("route")
+            endpoint = route.path if route else request.url.path
 
             metrics.request_duration_seconds.labels(method=request.method).observe(
                 duration
@@ -110,12 +121,44 @@ async def instrument_requests(request: Request, call_next):
             res_content_length = response.headers.get("content-length")
             if res_content_length:
                 metrics.response_size_bytes.observe(int(res_content_length))
+                logger.info(
+                    f"Request {request.method} to {endpoint} response content length {res_content_length}B",
+                    extra={
+                        "request_method": request.method,
+                        "endpoint": endpoint,
+                        "path": path,
+                        "response_size_bytes": res_content_length,
+                        "status_code": response.status_code,
+                        "latency_ms": duration,
+                    },
+                )
+            logger.info(
+                f"Request {request.method} to {endpoint} finished: {response.status_code} in {duration}s",
+                extra={
+                    "request_method": request.method,
+                    "endpoint": endpoint,
+                    "path": path,
+                    "response_size_bytes": res_content_length,
+                    "status_code": response.status_code,
+                    "latency_ms": duration,
+                },
+            )
 
             return response
         except Exception as e:
             metrics.request_error_count_total.labels(
                 method=request.method, error_type=type(e).__name__
             ).inc()
+            logger.error(
+                f"Exception {type(e).__name__} for request {request.method} to {request.url.path}",
+                extra={
+                    "request_method": request.method,
+                    "path": request.url.path,
+                    "latency_ms": (time.time() - start_time) * 1000,
+                    "error": str(e),
+                },
+                exc_info=True,  # Provides the stack trace for SRE debugging
+            )
             raise e
         finally:
             metrics.in_progress_requests.dec()
@@ -148,10 +191,19 @@ async def chat_completion(
     user_id = authorized_chat_request.user
     model = authorized_chat_request.model
 
+    logger.info(
+        f"Processing chat completion for user {user_id} requesting model {model}",
+        extra={"user_id": user_id, "model": model},
+    )
+
     if not user_id:
         metrics.ai_error_count_total.labels(
             model_name=model, error=f"UserNotFound"
         ).inc()
+        logger.info(
+            f"Chat completion failed: User {user_id} not found",
+            extra={"user_id": user_id, "model": model},
+        )
         raise HTTPException(
             status_code=400,
             detail={"error": "User not found from authorization response."},
@@ -161,6 +213,10 @@ async def chat_completion(
         metrics.ai_error_count_total.labels(
             model_name=model, error=f"UserBlocked"
         ).inc()
+        logger.info(
+            f"Chat completion failed: User {user_id} blocked",
+            extra={"user_id": user_id, "model": model},
+        )
         raise HTTPException(status_code=403, detail={"error": "User is blocked."})
 
     if authorized_chat_request.stream:
@@ -182,7 +238,12 @@ async def log_and_handle_http_exception(request: Request, exc: HTTPException):
 
     if exc.status_code != 429:
         logger.error(
-            f"HTTPException for {request.method} {request.url.path} -> status={exc.status_code}"
+            f"HTTPException for {request.method} {request.url.path} -> status={exc.status_code}",
+            extra={
+                "path": request.url.path,
+                "method": request.method,
+                "status_code": exc.status_code,
+            },
         )
     return await http_exception_handler(request, exc)
 

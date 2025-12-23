@@ -24,7 +24,10 @@ async def _handle_rate_limit_error(e: httpx.HTTPStatusError, user: str) -> None:
             error_data = json.loads(error_text)
             if is_rate_limit_error(error_data, ["budget"]):
                 metrics.auth_error_count_total.labels(error="BudgetExceeded").inc()
-                logger.warning(f"Budget limit exceeded for user {user}: {error_text}")
+                logger.warning(
+                    f"Budget limit exceeded for user {user}: {error_text}",
+                    extra={"user": user, "error": error_text},
+                )
                 raise HTTPException(
                     status_code=429,
                     detail={"error": ERROR_CODE_BUDGET_LIMIT_EXCEEDED},
@@ -32,7 +35,10 @@ async def _handle_rate_limit_error(e: httpx.HTTPStatusError, user: str) -> None:
                 )
             elif is_rate_limit_error(error_data, ["rate"]):
                 metrics.auth_error_count_total.labels(error="RateLimitExceeded").inc()
-                logger.warning(f"Rate limit exceeded for user {user}: {error_text}")
+                logger.warning(
+                    f"Rate limit exceeded for user {user}: {error_text}",
+                    extra={"user": user, "error": error_text},
+                )
                 raise HTTPException(
                     status_code=429,
                     detail={"error": ERROR_CODE_RATE_LIMIT_EXCEEDED},

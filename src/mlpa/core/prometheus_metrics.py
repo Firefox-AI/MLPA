@@ -29,10 +29,10 @@ class PrometheusMetrics:
     auth_duration_seconds: Histogram  # labels: method(fxa, appatest, ...)
     auth_error_count_total: Counter  # labels: method(fxa, appatest, ...), error(rate limited, throttled, ...)
 
-    # Router Metrics
-    router_request_count_total: Counter  # labels: model_name
-    router_decision_count_total: Counter  # labels: decision_model_name,
-    router_request_duration_seconds: Histogram  # labels: model_name
+    # # Router Metrics
+    # router_request_count_total: Counter  # labels: model_name
+    # router_decision_count_total: Counter  # labels: decision_model_name,
+    # router_request_duration_seconds: Histogram  # labels: model_name
 
     # AI Metrics
     ai_request_count_total: Counter  # labels: model_name
@@ -95,22 +95,6 @@ metrics = PrometheusMetrics(
     ),
     auth_error_count_total=Counter(
         "auth_error_count_total", "Total authorization errors.", ["error"]
-    ),
-    # Router Metrics
-    router_request_count_total=Counter(
-        "router_request_count_total",
-        "Volume of routed requests.",
-        ["model_name", "streaming"],
-    ),
-    router_decision_count_total=Counter(
-        "router_decision_count_total",
-        "Total routing decisions made.",
-        ["decision_model_name", "streaming"],
-    ),
-    router_request_duration_seconds=Histogram(
-        "router_request_duration_seconds",
-        "Routing logic latency.",
-        ["model_name", "streaming"],
     ),
     # AI Metrics
     ai_request_count_total=Counter(
