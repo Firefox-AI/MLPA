@@ -643,9 +643,17 @@ async def test_stream_completion_exception_after_streaming_started(
 
     mock_metrics = mocker.patch("mlpa.core.completions.metrics")
     mock_logger = mocker.patch("mlpa.core.completions.logger")
-    mock_tiktoken = mocker.patch("mlpa.core.completions.tiktoken")
-    mock_tiktoken.encoding_for_model.side_effect = Exception("Token counting failed")
-    mock_tiktoken.get_encoding.side_effect = Exception("Token counting failed")
+
+    # Reset the global tokenizer to ensure it's not already initialized
+    import mlpa.core.completions as completions_module
+
+    completions_module._global_default_tokenizer = None
+
+    # Mock get_default_tokenizer to return a tokenizer whose encode method raises an exception
+    mock_tokenizer = MagicMock()
+    mock_tokenizer.encode.side_effect = Exception("Token counting failed")
+    mock_get_tokenizer = mocker.patch("mlpa.core.completions.get_default_tokenizer")
+    mock_get_tokenizer.return_value = mock_tokenizer
 
     received_chunks = []
     async for chunk in stream_completion(SAMPLE_REQUEST):
