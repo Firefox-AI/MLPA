@@ -1,5 +1,6 @@
 import json
 import time
+from typing import Optional
 
 import httpx
 import tiktoken
@@ -16,6 +17,22 @@ from mlpa.core.config import (
 )
 from mlpa.core.prometheus_metrics import PrometheusResult, metrics
 from mlpa.core.utils import is_rate_limit_error
+
+# Global default tokenizer - initialized once at module load time
+_global_default_tokenizer: Optional[tiktoken.Encoding] = None
+
+
+def get_default_tokenizer() -> tiktoken.Encoding:
+    """
+    Get or create the global default tokenizer.
+    """
+    global _global_default_tokenizer
+    if _global_default_tokenizer is None:
+        try:
+            _global_default_tokenizer = tiktoken.encoding_for_model(env.MODEL_NAME)
+        except KeyError:
+            _global_default_tokenizer = tiktoken.get_encoding("cl100k_base")
+    return _global_default_tokenizer
 
 
 def _parse_rate_limit_error(error_text: str, user: str) -> int | None:
@@ -125,14 +142,7 @@ async def stream_completion(authorized_chat_request: AuthorizedChatRequest):
                         streaming_started = True
                     yield chunk
 
-                # TODO: The tokenizer probably should be initialized once at startup and cached.
-                # TODO: Once we will start using model's aliases, the try will always fail. So we will need to use the universal encoding.
-                try:
-                    tokenizer = tiktoken.encoding_for_model(
-                        authorized_chat_request.model
-                    )
-                except KeyError:
-                    tokenizer = tiktoken.get_encoding("cl100k_base")
+                tokenizer = get_default_tokenizer()
                 prompt_text = "".join(
                     message["content"] for message in authorized_chat_request.messages
                 )
