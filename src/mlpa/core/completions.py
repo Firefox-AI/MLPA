@@ -25,8 +25,8 @@ async def _handle_rate_limit_error(e: httpx.HTTPStatusError, user: str) -> None:
             if is_rate_limit_error(error_data, ["budget"]):
                 metrics.auth_error_count_total.labels(error="BudgetExceeded").inc()
                 logger.warning(
-                    f"Budget limit exceeded for user: {error_text}",
-                    extra={"error": error_text},
+                    "Budget limit exceeded",
+                    extra={"error_type": "BudgetExceeded"},
                 )
                 raise HTTPException(
                     status_code=429,
@@ -36,8 +36,8 @@ async def _handle_rate_limit_error(e: httpx.HTTPStatusError, user: str) -> None:
             elif is_rate_limit_error(error_data, ["rate"]):
                 metrics.auth_error_count_total.labels(error="RateLimitExceeded").inc()
                 logger.warning(
-                    f"Rate limit exceeded for user: {error_text}",
-                    extra={"error": error_text},
+                    "Rate limit exceeded",
+                    extra={"error_type": "RateLimitExceeded"},
                 )
                 raise HTTPException(
                     status_code=429,
@@ -47,8 +47,8 @@ async def _handle_rate_limit_error(e: httpx.HTTPStatusError, user: str) -> None:
     except (json.JSONDecodeError, AttributeError, UnicodeDecodeError):
         metrics.auth_error_count_total.labels(error="UserThrottled").inc()
         logger.warning(
-            f"User throttled",
-            extra={"error": "UserThrottled"},
+            "User throttled",
+            extra={"error_type": "UserThrottled"},
         )
         pass
 
@@ -68,7 +68,7 @@ async def stream_completion(authorized_chat_request: AuthorizedChatRequest):
 
     metrics.ai_request_count_total.labels(model_name=model).inc()
     logger.info(
-        f"Requesting completion using {model}",
+        "Completion request initiated",
         extra={
             "model": model,
             "stream": True,
@@ -83,7 +83,8 @@ async def stream_completion(authorized_chat_request: AuthorizedChatRequest):
     num_completion_tokens = 0
     streaming_started = False
     logger.debug(
-        f"Starting a stream completion using {authorized_chat_request.model}",
+        "Stream completion loop started",
+        extra={"model": authorized_chat_request.model},
     )
     try:
         async with httpx.AsyncClient() as client:
@@ -101,8 +102,8 @@ async def stream_completion(authorized_chat_request: AuthorizedChatRequest):
                         metrics.ai_error_count_total.labels(
                             model_name=model, error="BackendTimeout"
                         ).inc()
-                        logger.info(
-                            f"BackendTimeout for {model}",
+                        logger.error(
+                            "Upstream backend timeout",
                             extra={
                                 "model": model,
                                 "stream": True,
@@ -120,7 +121,7 @@ async def stream_completion(authorized_chat_request: AuthorizedChatRequest):
                             model_name=authorized_chat_request.model
                         ).observe(duration)
                         logger.info(
-                            f"First token generated for {model} in {duration}s",
+                            "First token generated",
                             extra={
                                 "model": model,
                                 "stream": True,
@@ -151,7 +152,7 @@ async def stream_completion(authorized_chat_request: AuthorizedChatRequest):
                     model_name=model, type="completion"
                 ).inc(num_completion_tokens)
                 logger.info(
-                    f"Generated {num_completion_tokens} tokens from {prompt_tokens} tokens for {model}",
+                    "Token generation summary",
                     extra={
                         "model": model,
                         "stream": True,
@@ -168,8 +169,8 @@ async def stream_completion(authorized_chat_request: AuthorizedChatRequest):
         metrics.ai_error_count_total.labels(
             model_name=model, error=f"HTTP_{e.response.status_code}"
         ).inc()
-        logger.info(
-            f"Upstream service returned an HTTP Error {e.response.status_code} for {model}",
+        logger.error(
+            "Upstream HTTP error",
             extra={
                 "model": model,
                 "stream": True,
@@ -183,14 +184,15 @@ async def stream_completion(authorized_chat_request: AuthorizedChatRequest):
             yield f'data: {{"error": "Upstream service returned an error"}}\n\n'.encode()
     except Exception as e:
         metrics.ai_error_count_total.labels(error_type=type(e).__name__).inc()
-        logger.info(
-            f"Failed to proxy request for {model}",
+        logger.error(
+            "Stream completion proxy failed",
             extra={
                 "model": model,
                 "stream": True,
                 "temperature": authorized_chat_request.temperature,
                 "top_p": authorized_chat_request.top_p,
                 "max_tokens": authorized_chat_request.max_completion_tokens,
+                "error_type": type(e).__name__,
             },
         )
         if not streaming_started:
@@ -201,7 +203,7 @@ async def stream_completion(authorized_chat_request: AuthorizedChatRequest):
             model_name=model, streaming=True
         ).observe(duration)
         logger.info(
-            f"Finished generation for {model} in {duration}s",
+            "Stream request finished",
             extra={
                 "model": model,
                 "stream": True,
@@ -231,7 +233,7 @@ async def get_completion(authorized_chat_request: AuthorizedChatRequest):
     }
     result = PrometheusResult.ERROR
     logger.debug(
-        f"Starting a non-stream completion using {authorized_chat_request.model}",
+        "Non-stream completion initiated",
         extra={
             "model": model,
             "stream": False,
@@ -256,14 +258,15 @@ async def get_completion(authorized_chat_request: AuthorizedChatRequest):
                 response.raise_for_status()
             except httpx.HTTPStatusError as e:
                 if e.response.status_code == 429 or e.response.status_code == 400:
-                    logger.info(
-                        f"Rate Limited for {model}",
+                    logger.warning(
+                        "Upstream rate limit or bad request",
                         extra={
                             "model": model,
                             "stream": False,
                             "temperature": authorized_chat_request.temperature,
                             "top_p": authorized_chat_request.top_p,
                             "max_tokens": authorized_chat_request.max_completion_tokens,
+                            "status_code": e.response.status_code,
                         },
                     )
                     await _handle_rate_limit_error(e, authorized_chat_request.user)
@@ -271,8 +274,8 @@ async def get_completion(authorized_chat_request: AuthorizedChatRequest):
                     metrics.ai_error_count_total.labels(
                         model_name=model, error="Timeout"
                     ).inc()
-                    logger.info(
-                        f"BackendTimeout for {model}",
+                    logger.error(
+                        "Upstream backend timeout",
                         extra={
                             "model": model,
                             "stream": False,
@@ -285,8 +288,8 @@ async def get_completion(authorized_chat_request: AuthorizedChatRequest):
                     metrics.ai_error_count_total.labels(
                         model_name=model, error=f"HTTP_{e.response.status_code}"
                     ).inc()
-                    logger.info(
-                        f"Upstream service returned an HTTP Error {e.response.status_code} for {model}",
+                    logger.error(
+                        "Upstream HTTP error",
                         extra={
                             "model": model,
                             "stream": False,
@@ -311,7 +314,7 @@ async def get_completion(authorized_chat_request: AuthorizedChatRequest):
                 model_name=model, type="completion"
             ).inc(completion_tokens)
             logger.info(
-                f"Generated {completion_tokens} tokens from {prompt_tokens} tokens for {model}",
+                "Token generation summary",
                 extra={
                     "model": model,
                     "stream": False,
@@ -327,7 +330,7 @@ async def get_completion(authorized_chat_request: AuthorizedChatRequest):
             return data
     except HTTPException as e:
         logger.error(
-            f"Upstream service returned an HTTP Error {e.status_code} for {model}",
+            "Upstream service HTTP exception",
             extra={
                 "model": model,
                 "stream": False,
@@ -343,13 +346,15 @@ async def get_completion(authorized_chat_request: AuthorizedChatRequest):
             model_name=model, error=type(e).__name__
         ).inc()
         logger.error(
-            f"Failed to proxy request for {model} to {LITELLM_COMPLETIONS_URL}: {e}",
+            "Proxy request failed",
             extra={
                 "model": model,
                 "stream": False,
                 "temperature": authorized_chat_request.temperature,
                 "top_p": authorized_chat_request.top_p,
                 "max_tokens": authorized_chat_request.max_completion_tokens,
+                "error_message": str(e),
+                "error_type": type(e).__name__,
             },
         )
         raise HTTPException(
@@ -362,7 +367,7 @@ async def get_completion(authorized_chat_request: AuthorizedChatRequest):
             model_name=model, streaming=False
         ).observe(duration)
         logger.info(
-            f"Finished generation for {model} in {duration}s",
+            "Request finished",
             extra={
                 "model": model,
                 "stream": True,

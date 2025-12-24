@@ -98,7 +98,7 @@ async def instrument_requests(request: Request, call_next):
                 )
 
                 logger.info(
-                    f"Request {request.method} to {path} has size of {content_length}B",
+                    "Incoming request size captured",
                     extra={
                         "request_method": request.method,
                         "content_length": int(content_length) if content_length else 0,
@@ -122,7 +122,7 @@ async def instrument_requests(request: Request, call_next):
             if res_content_length:
                 metrics.response_size_bytes.observe(int(res_content_length))
                 logger.info(
-                    f"Request {request.method} to {endpoint} response content length {res_content_length}B",
+                    "Response content length captured",
                     extra={
                         "request_method": request.method,
                         "endpoint": endpoint,
@@ -133,7 +133,7 @@ async def instrument_requests(request: Request, call_next):
                     },
                 )
             logger.info(
-                f"Request {request.method} to {endpoint} finished: {response.status_code} in {duration}s",
+                "Request finished",
                 extra={
                     "request_method": request.method,
                     "endpoint": endpoint,
@@ -150,12 +150,12 @@ async def instrument_requests(request: Request, call_next):
                 method=request.method, error_type=type(e).__name__
             ).inc()
             logger.error(
-                f"Exception {type(e).__name__} for request {request.method} to {request.url.path}",
+                "Request failed with exception",
                 extra={
                     "request_method": request.method,
                     "path": request.url.path,
                     "latency_ms": (time.time() - start_time) * 1000,
-                    "error": str(e),
+                    "error_type": type(e).__name__,
                 },
                 exc_info=True,  # Provides the stack trace for SRE debugging
             )
@@ -192,7 +192,7 @@ async def chat_completion(
     model = authorized_chat_request.model
 
     logger.info(
-        f"Processing chat completion for user {user_id} requesting model {model}",
+        "Chat completion request initiated",
         extra={"user_id": user_id, "model": model},
     )
 
@@ -200,8 +200,8 @@ async def chat_completion(
         metrics.ai_error_count_total.labels(
             model_name=model, error=f"UserNotFound"
         ).inc()
-        logger.info(
-            f"Chat completion failed: User {user_id} not found",
+        logger.warning(
+            "Chat completion failed: User not found",
             extra={"user_id": user_id, "model": model},
         )
         raise HTTPException(
@@ -213,8 +213,8 @@ async def chat_completion(
         metrics.ai_error_count_total.labels(
             model_name=model, error=f"UserBlocked"
         ).inc()
-        logger.info(
-            f"Chat completion failed: User {user_id} blocked",
+        logger.warning(
+            "Chat completion failed: User blocked",
             extra={"user_id": user_id, "model": model},
         )
         raise HTTPException(status_code=403, detail={"error": "User is blocked."})
@@ -238,7 +238,7 @@ async def log_and_handle_http_exception(request: Request, exc: HTTPException):
 
     if exc.status_code != 429:
         logger.error(
-            f"HTTPException for {request.method} {request.url.path} -> status={exc.status_code}",
+            "HTTPException occurred",
             extra={
                 "path": request.url.path,
                 "method": request.method,
