@@ -1,4 +1,3 @@
-import os
 import sys
 
 import asyncpg
@@ -12,7 +11,7 @@ class PGService:
 
     def __init__(self, db_name: str):
         self.db_name = db_name
-        self.db_url = os.path.join(env.PG_DB_URL, db_name)
+        self.db_url = f"{env.PG_DB_URL.rstrip('/')}/{db_name}"
         self.connected = False
         self.pg = None
 
