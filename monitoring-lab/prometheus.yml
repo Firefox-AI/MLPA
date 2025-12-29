@@ -2,7 +2,7 @@ global:
   scrape_interval: 5s # How often to fetch metrics
 
 scrape_configs:
-  - job_name: 'my-local-service'
+  - job_name: 'MLPA_local'
     metrics_path: '/metrics'
     static_configs:
       - targets: ['host.docker.internal:8080']
