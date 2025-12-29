@@ -78,8 +78,6 @@ async def instrument_requests(request: Request, call_next):
     start_time = time.time()
     metrics.in_progress_requests.inc()
 
-    metrics.request_count_total.labels(method=request.method).inc()
-
     # Forward non-auth headers to log metadata
     with logger.contextualize(
         service_type=request.headers.get("service-type", "N/A"),
@@ -111,11 +109,6 @@ async def instrument_requests(request: Request, call_next):
             duration = time.time() - start_time
             route = request.scope.get("route")
             endpoint = route.path if route else request.url.path
-
-            metrics.request_duration_seconds.labels(method=request.method).observe(
-                duration
-            )
-            metrics.response_status_codes.labels(status_code=response.status_code).inc()
 
             # Capture response size
             res_content_length = response.headers.get("content-length")

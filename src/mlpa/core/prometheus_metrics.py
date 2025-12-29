@@ -14,11 +14,8 @@ class PrometheusMetrics:
     in_progress_requests: Gauge
 
     # Standard
-    request_count_total: Counter  # method(Get, Put, Update, Delete, )
-    request_duration_seconds: Histogram  # method(Get, Put, Update, Delete, )
     request_size_bytes: Histogram  # method(Get, Put, Update, Delete, )
     response_size_bytes: Histogram
-    response_status_codes: Counter  # method(Get, Put, Update, Delete, )
     request_error_count_total: Counter  # method, error_type
 
     # Auth
@@ -51,27 +48,12 @@ metrics = PrometheusMetrics(
         "in_progress_requests", "Number of requests currently in progress."
     ),
     # Standard
-    request_count_total=Counter(
-        "request_count_total",
-        "Total number of requests received handled by the proxy.",
-        ["method"],
-    ),
-    request_duration_seconds=Histogram(
-        "request_duration_seconds",
-        "Total roundtrip request duration distribution.",
-        ["method"],
-    ),
     request_size_bytes=Histogram(
         "request_size_bytes", "Size of requests in bytes.", ["method"]
     ),
     response_size_bytes=Histogram(
         "response_size_bytes",
         "Size of responses in bytes.",
-    ),
-    response_status_codes=Counter(
-        "response_status_codes_total",
-        "Total number of response status codes.",
-        ["status_code"],
     ),
     request_error_count_total=Counter(
         "request_error_count_total",
