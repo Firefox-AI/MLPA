@@ -188,7 +188,6 @@ async def get_completion(authorized_chat_request: AuthorizedChatRequest):
             LITELLM_COMPLETIONS_URL,
             headers=LITELLM_COMPLETION_AUTH_HEADERS,
             json=body,
-            timeout=env.UPSTREAM_TIMEOUT_SECONDS,
         )
         data = response.json()
         try:
