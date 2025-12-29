@@ -16,6 +16,15 @@ class PGService:
         self.connected = False
         self.pg = None
 
+    async def _get_prepared_statement(self, conn: asyncpg.Connection, query: str):
+        stmt_cache = getattr(conn, "_mlpa_stmt_cache", None)
+        if stmt_cache is None:
+            stmt_cache = {}
+            conn._mlpa_stmt_cache = stmt_cache
+        if query not in stmt_cache:
+            stmt_cache[query] = await conn.prepare(query)
+        return stmt_cache[query]
+
     async def connect(self):
         try:
             self.pg = await asyncpg.create_pool(
