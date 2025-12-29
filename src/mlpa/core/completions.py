@@ -15,6 +15,7 @@ from mlpa.core.config import (
     LITELLM_COMPLETIONS_URL,
     env,
 )
+from mlpa.core.http_client import get_http_client
 from mlpa.core.prometheus_metrics import PrometheusResult, metrics
 from mlpa.core.utils import is_rate_limit_error
 
@@ -97,59 +98,57 @@ async def stream_completion(authorized_chat_request: AuthorizedChatRequest):
         f"Starting a stream completion using {authorized_chat_request.model}, for user {authorized_chat_request.user}",
     )
     try:
-        async with httpx.AsyncClient() as client:
-            async with client.stream(
-                "POST",
-                LITELLM_COMPLETIONS_URL,
-                headers=LITELLM_COMPLETION_AUTH_HEADERS,
-                json=body,
-                timeout=env.STREAMING_TIMEOUT_SECONDS,
-            ) as response:
+        client = get_http_client()
+        async with client.stream(
+            "POST",
+            LITELLM_COMPLETIONS_URL,
+            headers=LITELLM_COMPLETION_AUTH_HEADERS,
+            json=body,
+            timeout=env.STREAMING_TIMEOUT_SECONDS,
+        ) as response:
+            try:
+                response.raise_for_status()
+            except httpx.HTTPStatusError as e:
+                # Read the error response content for streaming responses
+                error_text_str = ""
                 try:
-                    response.raise_for_status()
-                except httpx.HTTPStatusError as e:
-                    # Read the error response content for streaming responses
-                    error_text_str = ""
-                    try:
-                        error_bytes = await e.response.aread()
-                        error_text_str = (
-                            error_bytes.decode("utf-8") if error_bytes else ""
-                        )
-                    except Exception:
-                        pass
+                    error_bytes = await e.response.aread()
+                    error_text_str = error_bytes.decode("utf-8") if error_bytes else ""
+                except Exception:
+                    pass
 
-                    if e.response.status_code == 429 or e.response.status_code == 400:
-                        # Check for budget or rate limit errors
-                        error_code = _parse_rate_limit_error(
-                            error_text_str, authorized_chat_request.user
-                        )
-                        if error_code is not None:
-                            yield f'data: {{"error": {error_code}}}\n\n'.encode()
-                            return
-
-                    # For other errors or if we couldn't parse the error
-                    logger.error(
-                        f"Upstream service returned an error: {e.response.status_code} - {error_text_str}"
+                if e.response.status_code == 429 or e.response.status_code == 400:
+                    # Check for budget or rate limit errors
+                    error_code = _parse_rate_limit_error(
+                        error_text_str, authorized_chat_request.user
                     )
-                    yield f'data: {{"error": "Upstream service returned an error"}}\n\n'.encode()
-                    return
+                    if error_code is not None:
+                        yield f'data: {{"error": {error_code}}}\n\n'.encode()
+                        return
 
-                async for chunk in response.aiter_bytes():
-                    num_completion_tokens += 1
-                    if is_first_token:
-                        metrics.chat_completion_ttft.observe(time.time() - start_time)
-                        is_first_token = False
-                        streaming_started = True
-                    yield chunk
-
-                tokenizer = get_default_tokenizer()
-                prompt_text = "".join(
-                    message["content"] for message in authorized_chat_request.messages
+                # For other errors or if we couldn't parse the error
+                logger.error(
+                    f"Upstream service returned an error: {e.response.status_code} - {error_text_str}"
                 )
-                prompt_tokens = len(tokenizer.encode(prompt_text))
-                metrics.chat_tokens.labels(type="prompt").inc(prompt_tokens)
-                metrics.chat_tokens.labels(type="completion").inc(num_completion_tokens)
-                result = PrometheusResult.SUCCESS
+                yield f'data: {{"error": "Upstream service returned an error"}}\n\n'.encode()
+                return
+
+            async for chunk in response.aiter_bytes():
+                num_completion_tokens += 1
+                if is_first_token:
+                    metrics.chat_completion_ttft.observe(time.time() - start_time)
+                    is_first_token = False
+                    streaming_started = True
+                yield chunk
+
+            tokenizer = get_default_tokenizer()
+            prompt_text = "".join(
+                message["content"] for message in authorized_chat_request.messages
+            )
+            prompt_tokens = len(tokenizer.encode(prompt_text))
+            metrics.chat_tokens.labels(type="prompt").inc(prompt_tokens)
+            metrics.chat_tokens.labels(type="completion").inc(num_completion_tokens)
+            result = PrometheusResult.SUCCESS
     except httpx.HTTPStatusError as e:
         logger.error(f"Upstream service returned an error: {e}")
         if not streaming_started:
@@ -184,42 +183,41 @@ async def get_completion(authorized_chat_request: AuthorizedChatRequest):
         f"Starting a non-stream completion using {authorized_chat_request.model}, for user {authorized_chat_request.user}",
     )
     try:
-        async with httpx.AsyncClient() as client:
-            response = await client.post(
-                LITELLM_COMPLETIONS_URL,
-                headers=LITELLM_COMPLETION_AUTH_HEADERS,
-                json=body,
-                timeout=env.UPSTREAM_TIMEOUT_SECONDS,
-            )
-            data = response.json()
-            try:
-                response.raise_for_status()
-            except httpx.HTTPStatusError as e:
-                if e.response.status_code == 429 or e.response.status_code == 400:
-                    try:
-                        await _handle_rate_limit_error(e, authorized_chat_request.user)
-                    except HTTPException:
-                        raise
-                    raise HTTPException(
-                        status_code=429,
-                        detail=f"Upstream service returned an error",
-                    )
-                logger.error(
-                    f"Upstream service returned an error: {e.response.status_code} - {e.response.text}"
-                )
+        client = get_http_client()
+        response = await client.post(
+            LITELLM_COMPLETIONS_URL,
+            headers=LITELLM_COMPLETION_AUTH_HEADERS,
+            json=body,
+        )
+        data = response.json()
+        try:
+            response.raise_for_status()
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code == 429 or e.response.status_code == 400:
+                try:
+                    await _handle_rate_limit_error(e, authorized_chat_request.user)
+                except HTTPException:
+                    raise
                 raise HTTPException(
-                    status_code=e.response.status_code,
+                    status_code=429,
                     detail=f"Upstream service returned an error",
                 )
-            usage = data.get("usage", {})
-            prompt_tokens = usage.get("prompt_tokens", 0)
-            completion_tokens = usage.get("completion_tokens", 0)
+            logger.error(
+                f"Upstream service returned an error: {e.response.status_code} - {e.response.text}"
+            )
+            raise HTTPException(
+                status_code=e.response.status_code,
+                detail=f"Upstream service returned an error",
+            )
+        usage = data.get("usage", {})
+        prompt_tokens = usage.get("prompt_tokens", 0)
+        completion_tokens = usage.get("completion_tokens", 0)
 
-            metrics.chat_tokens.labels(type="prompt").inc(prompt_tokens)
-            metrics.chat_tokens.labels(type="completion").inc(completion_tokens)
+        metrics.chat_tokens.labels(type="prompt").inc(prompt_tokens)
+        metrics.chat_tokens.labels(type="completion").inc(completion_tokens)
 
-            result = PrometheusResult.SUCCESS
-            return data
+        result = PrometheusResult.SUCCESS
+        return data
     except HTTPException:
         raise
     except Exception as e:

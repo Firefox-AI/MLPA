@@ -17,6 +17,7 @@ from mlpa.core.config import (
     RATE_LIMIT_ERROR_RESPONSE,
     env,
 )
+from mlpa.core.http_client import close_http_client, get_http_client
 from mlpa.core.logger import logger, setup_logger
 from mlpa.core.middleware import register_middleware
 from mlpa.core.pg_services.services import app_attest_pg, litellm_pg
@@ -43,6 +44,7 @@ tags_metadata = [
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     try:
+        get_http_client()
         await litellm_pg.connect()
         litellm_connected = True
 
@@ -57,6 +59,7 @@ async def lifespan(app: FastAPI):
             await app_attest_pg.disconnect()
         if litellm_connected:
             await litellm_pg.disconnect()
+        await close_http_client()
 
 
 sentry_sdk.init(dsn=env.SENTRY_DSN, send_default_pii=False)
