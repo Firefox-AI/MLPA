@@ -5,8 +5,8 @@ from typing import Annotated, Optional
 import jwt
 from fastapi import APIRouter, Depends, Header, HTTPException
 from fastapi.responses import StreamingResponse
-
 from fxa.errors import TrustError
+
 from mlpa.core.auth.authorize import authorize_request
 from mlpa.core.classes import AuthorizedChatRequest, ChatRequest
 from mlpa.core.config import env
