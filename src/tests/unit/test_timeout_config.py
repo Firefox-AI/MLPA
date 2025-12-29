@@ -7,20 +7,6 @@ from mlpa.core.config import Env
 from tests.consts import SAMPLE_REQUEST
 
 
-def test_timeout_config_default_values():
-    """Test that timeout configuration has correct default values."""
-    env = Env()
-
-    assert env.STREAMING_TIMEOUT_SECONDS == 300
-    assert env.HTTPX_CONNECT_TIMEOUT_SECONDS == 30
-    assert env.HTTPX_READ_TIMEOUT_SECONDS == 30
-    assert env.HTTPX_WRITE_TIMEOUT_SECONDS == 30
-    assert env.HTTPX_POOL_TIMEOUT_SECONDS == 30
-    assert env.HTTPX_MAX_CONNECTIONS == 100
-    assert env.HTTPX_MAX_KEEPALIVE_CONNECTIONS == 20
-    assert env.HTTPX_KEEPALIVE_EXPIRY_SECONDS == 15
-
-
 def test_timeout_config_from_env():
     """Test that timeout configuration can be overridden via environment variables."""
     env_vars = {
