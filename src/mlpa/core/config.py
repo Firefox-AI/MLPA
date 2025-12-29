@@ -28,11 +28,18 @@ class Env(BaseSettings):
     USER_FEATURE_BUDGET_S2S_TPM_LIMIT: int = 2000
     USER_FEATURE_BUDGET_S2S_BUDGET_DURATION: str = "1d"
 
+    # User Feature Budget - memories service type
+    USER_FEATURE_BUDGET_MEMORIES_BUDGET_ID: str = "end-user-budget-memories"
+    USER_FEATURE_BUDGET_MEMORIES_MAX_BUDGET: float = 0.1
+    USER_FEATURE_BUDGET_MEMORIES_RPM_LIMIT: int = 10
+    USER_FEATURE_BUDGET_MEMORIES_TPM_LIMIT: int = 2000
+    USER_FEATURE_BUDGET_MEMORIES_BUDGET_DURATION: str = "1d"
+
     @property
     def user_feature_budget(self) -> dict[str, dict]:
         """
         User feature budget configuration by service type.
-        Returns a nested dictionary with service types (ai, s2s) as keys.
+        Returns a nested dictionary with service types (ai, s2s, memories) as keys.
         Constructed from individual environment variables.
         """
         return {
@@ -49,6 +56,13 @@ class Env(BaseSettings):
                 "rpm_limit": self.USER_FEATURE_BUDGET_S2S_RPM_LIMIT,
                 "tpm_limit": self.USER_FEATURE_BUDGET_S2S_TPM_LIMIT,
                 "budget_duration": self.USER_FEATURE_BUDGET_S2S_BUDGET_DURATION,
+            },
+            "memories": {
+                "budget_id": self.USER_FEATURE_BUDGET_MEMORIES_BUDGET_ID,
+                "max_budget": self.USER_FEATURE_BUDGET_MEMORIES_MAX_BUDGET,
+                "rpm_limit": self.USER_FEATURE_BUDGET_MEMORIES_RPM_LIMIT,
+                "tpm_limit": self.USER_FEATURE_BUDGET_MEMORIES_TPM_LIMIT,
+                "budget_duration": self.USER_FEATURE_BUDGET_MEMORIES_BUDGET_DURATION,
             },
         }
 
@@ -98,6 +112,22 @@ class Env(BaseSettings):
     TEMPERATURE: float = 0.1
     MAX_COMPLETION_TOKENS: int = 1024
     TOP_P: float = 0.01
+    MAX_REQUEST_SIZE_BYTES: int = 10 * 1024 * 1024  # 10 MB default
+
+    # Request Timeouts (in seconds)
+    STREAMING_TIMEOUT_SECONDS: int = 300
+    HTTPX_CONNECT_TIMEOUT_SECONDS: int = 30
+    HTTPX_READ_TIMEOUT_SECONDS: int = 30
+    HTTPX_WRITE_TIMEOUT_SECONDS: int = 30
+    HTTPX_POOL_TIMEOUT_SECONDS: int = 5
+    HTTPX_MAX_CONNECTIONS: int = 200
+    HTTPX_MAX_KEEPALIVE_CONNECTIONS: int = 50
+    HTTPX_KEEPALIVE_EXPIRY_SECONDS: int = 15
+
+    # Security Headers
+    SECURITY_HEADERS_ENABLED: bool = True
+    HSTS_MAX_AGE: int = 31536000  # 1 year in seconds - a standard value
+    HSTS_INCLUDE_SUBDOMAINS: bool = True
 
     # Sentry
     SENTRY_DSN: str = ""

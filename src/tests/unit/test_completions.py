@@ -33,10 +33,9 @@ async def test_get_completion_success(mocker):
     mock_client = AsyncMock()
     mock_client.post.return_value = mock_response
 
-    # Patch the AsyncClient class where it's used
-    mock_async_client_class = mocker.patch("mlpa.core.completions.httpx.AsyncClient")
-    # Configure the mock class's context manager to return our client
-    mock_async_client_class.return_value.__aenter__.return_value = mock_client
+    # Patch the shared HTTP client accessor to return our mock client
+    mock_get_client = mocker.patch("mlpa.core.completions.get_http_client")
+    mock_get_client.return_value = mock_client
 
     # Mock the metrics to check if they are called
     mock_metrics = mocker.patch("mlpa.core.completions.metrics")
@@ -91,8 +90,8 @@ async def test_get_completion_http_error(mocker):
 
     mock_client = AsyncMock()
     mock_client.post.return_value = mock_response
-    mock_async_client_class = mocker.patch("mlpa.core.completions.httpx.AsyncClient")
-    mock_async_client_class.return_value.__aenter__.return_value = mock_client
+    mock_get_client = mocker.patch("mlpa.core.completions.get_http_client")
+    mock_get_client.return_value = mock_client
 
     mock_metrics = mocker.patch("mlpa.core.completions.metrics")
 
@@ -121,8 +120,8 @@ async def test_get_completion_network_error(mocker):
     # Arrange: Mock httpx to raise a network error
     mock_client = AsyncMock()
     mock_client.post.side_effect = httpx.TimeoutException("Connection timed out")
-    mock_async_client_class = mocker.patch("mlpa.core.completions.httpx.AsyncClient")
-    mock_async_client_class.return_value.__aenter__.return_value = mock_client
+    mock_get_client = mocker.patch("mlpa.core.completions.get_http_client")
+    mock_get_client.return_value = mock_client
 
     mock_metrics = mocker.patch("mlpa.core.completions.metrics")
 
@@ -222,8 +221,8 @@ async def test_get_completion_budget_limit_exceeded_429(mocker):
 
     mock_client = AsyncMock()
     mock_client.post.return_value = mock_response
-    mock_async_client_class = mocker.patch("mlpa.core.completions.httpx.AsyncClient")
-    mock_async_client_class.return_value.__aenter__.return_value = mock_client
+    mock_get_client = mocker.patch("mlpa.core.completions.get_http_client")
+    mock_get_client.return_value = mock_client
 
     mock_metrics = mocker.patch("mlpa.core.completions.metrics")
 
@@ -265,8 +264,8 @@ async def test_get_completion_budget_limit_exceeded_400(mocker):
 
     mock_client = AsyncMock()
     mock_client.post.return_value = mock_response
-    mock_async_client_class = mocker.patch("mlpa.core.completions.httpx.AsyncClient")
-    mock_async_client_class.return_value.__aenter__.return_value = mock_client
+    mock_get_client = mocker.patch("mlpa.core.completions.get_http_client")
+    mock_get_client.return_value = mock_client
 
     mock_metrics = mocker.patch("mlpa.core.completions.metrics")
 
@@ -303,8 +302,8 @@ async def test_get_completion_rate_limit_exceeded(mocker):
 
     mock_client = AsyncMock()
     mock_client.post.return_value = mock_response
-    mock_async_client_class = mocker.patch("mlpa.core.completions.httpx.AsyncClient")
-    mock_async_client_class.return_value.__aenter__.return_value = mock_client
+    mock_get_client = mocker.patch("mlpa.core.completions.get_http_client")
+    mock_get_client.return_value = mock_client
 
     mock_metrics = mocker.patch("mlpa.core.completions.metrics")
 
@@ -341,8 +340,8 @@ async def test_get_completion_400_non_rate_limit_error(mocker):
 
     mock_client = AsyncMock()
     mock_client.post.return_value = mock_response
-    mock_async_client_class = mocker.patch("mlpa.core.completions.httpx.AsyncClient")
-    mock_async_client_class.return_value.__aenter__.return_value = mock_client
+    mock_get_client = mocker.patch("mlpa.core.completions.get_http_client")
+    mock_get_client.return_value = mock_client
 
     mock_metrics = mocker.patch("mlpa.core.completions.metrics")
     mock_logger = mocker.patch("mlpa.core.completions.logger")
@@ -374,8 +373,8 @@ async def test_get_completion_429_non_rate_limit_error(mocker):
 
     mock_client = AsyncMock()
     mock_client.post.return_value = mock_response
-    mock_async_client_class = mocker.patch("mlpa.core.completions.httpx.AsyncClient")
-    mock_async_client_class.return_value.__aenter__.return_value = mock_client
+    mock_get_client = mocker.patch("mlpa.core.completions.get_http_client")
+    mock_get_client.return_value = mock_client
 
     mock_metrics = mocker.patch("mlpa.core.completions.metrics")
 
@@ -403,8 +402,8 @@ async def test_get_completion_429_invalid_json(mocker):
 
     mock_client = AsyncMock()
     mock_client.post.return_value = mock_response
-    mock_async_client_class = mocker.patch("mlpa.core.completions.httpx.AsyncClient")
-    mock_async_client_class.return_value.__aenter__.return_value = mock_client
+    mock_get_client = mocker.patch("mlpa.core.completions.get_http_client")
+    mock_get_client.return_value = mock_client
 
     mock_metrics = mocker.patch("mlpa.core.completions.metrics")
 
@@ -414,6 +413,217 @@ async def test_get_completion_429_invalid_json(mocker):
 
     assert exc_info.value.status_code == 429
     assert exc_info.value.detail == "Upstream service returned an error"
+
+
+async def test_stream_completion_budget_limit_exceeded_429(
+    httpx_mock: HTTPXMock, mocker
+):
+    """
+    Tests that a 429 error with budget exceeded message yields error code 1.
+    """
+    error_response = json.dumps(
+        {
+            "error": {
+                "message": "Budget has been exceeded! Current cost: 0.001565, Max budget: 0.001",
+                "type": "budget_exceeded",
+                "code": "400",
+            }
+        }
+    )
+    httpx_mock.add_response(
+        method="POST",
+        url=LITELLM_COMPLETIONS_URL,
+        content=error_response.encode(),
+        status_code=429,
+    )
+
+    mock_metrics = mocker.patch("mlpa.core.completions.metrics")
+    mock_logger = mocker.patch("mlpa.core.completions.logger")
+
+    received_chunks = [chunk async for chunk in stream_completion(SAMPLE_REQUEST)]
+    assert len(received_chunks) == 1
+    assert (
+        received_chunks[0]
+        == f'data: {{"error": {ERROR_CODE_BUDGET_LIMIT_EXCEEDED}}}\n\n'.encode()
+    )
+    mock_logger.warning.assert_called_once()
+    assert "Budget limit exceeded" in str(mock_logger.warning.call_args)
+    mock_metrics.chat_completion_latency.labels.assert_called_once_with(
+        result=PrometheusResult.ERROR
+    )
+
+
+async def test_stream_completion_budget_limit_exceeded_400(
+    httpx_mock: HTTPXMock, mocker
+):
+    """
+    Tests that a 400 error with budget exceeded message yields error code 1.
+    """
+    error_response = json.dumps(
+        {
+            "error": {
+                "message": "Budget has been exceeded! Current cost: 0.001565, Max budget: 0.001",
+                "type": "budget_exceeded",
+                "code": "400",
+            }
+        }
+    )
+    httpx_mock.add_response(
+        method="POST",
+        url=LITELLM_COMPLETIONS_URL,
+        content=error_response.encode(),
+        status_code=400,
+    )
+
+    mock_metrics = mocker.patch("mlpa.core.completions.metrics")
+    mock_logger = mocker.patch("mlpa.core.completions.logger")
+
+    received_chunks = [chunk async for chunk in stream_completion(SAMPLE_REQUEST)]
+
+    assert len(received_chunks) == 1
+    assert (
+        received_chunks[0]
+        == f'data: {{"error": {ERROR_CODE_BUDGET_LIMIT_EXCEEDED}}}\n\n'.encode()
+    )
+    mock_logger.warning.assert_called_once()
+    assert "Budget limit exceeded" in str(mock_logger.warning.call_args)
+    mock_metrics.chat_completion_latency.labels.assert_called_once_with(
+        result=PrometheusResult.ERROR
+    )
+
+
+async def test_stream_completion_rate_limit_exceeded(httpx_mock: HTTPXMock, mocker):
+    """
+    Tests that a rate limit error (TPM/RPM) yields error code 2.
+    """
+    error_response = json.dumps(
+        {
+            "error": {
+                "message": "Rate limit exceeded. TPM: 1000/500",
+                "type": "rate_limit_exceeded",
+                "code": "429",
+            }
+        }
+    )
+    httpx_mock.add_response(
+        method="POST",
+        url=LITELLM_COMPLETIONS_URL,
+        content=error_response.encode(),
+        status_code=429,
+    )
+
+    mock_metrics = mocker.patch("mlpa.core.completions.metrics")
+    mock_logger = mocker.patch("mlpa.core.completions.logger")
+
+    received_chunks = [chunk async for chunk in stream_completion(SAMPLE_REQUEST)]
+
+    assert len(received_chunks) == 1
+    assert (
+        received_chunks[0]
+        == f'data: {{"error": {ERROR_CODE_RATE_LIMIT_EXCEEDED}}}\n\n'.encode()
+    )
+    mock_logger.warning.assert_called_once()
+    assert "Rate limit exceeded" in str(mock_logger.warning.call_args)
+    mock_metrics.chat_completion_latency.labels.assert_called_once_with(
+        result=PrometheusResult.ERROR
+    )
+
+
+async def test_stream_completion_400_non_rate_limit_error(
+    httpx_mock: HTTPXMock, mocker
+):
+    """
+    Tests that a 400 error without rate limit keywords yields generic error message.
+    """
+    error_response = json.dumps(
+        {
+            "error": {
+                "message": "Invalid request parameters",
+                "type": "invalid_request",
+                "code": "400",
+            }
+        }
+    )
+    httpx_mock.add_response(
+        method="POST",
+        url=LITELLM_COMPLETIONS_URL,
+        content=error_response.encode(),
+        status_code=400,
+    )
+
+    mock_metrics = mocker.patch("mlpa.core.completions.metrics")
+    mock_logger = mocker.patch("mlpa.core.completions.logger")
+
+    received_chunks = [chunk async for chunk in stream_completion(SAMPLE_REQUEST)]
+
+    assert len(received_chunks) == 1
+    assert (
+        received_chunks[0]
+        == b'data: {"error": "Upstream service returned an error"}\n\n'
+    )
+    mock_logger.error.assert_called_once()
+    mock_metrics.chat_completion_latency.labels.assert_called_once_with(
+        result=PrometheusResult.ERROR
+    )
+
+
+async def test_stream_completion_429_non_rate_limit_error(
+    httpx_mock: HTTPXMock, mocker
+):
+    """
+    Tests that a 429 error without rate limit keywords yields generic error message.
+    """
+    error_response = json.dumps(
+        {"error": {"message": "Some other error", "type": "other_error", "code": "429"}}
+    )
+    httpx_mock.add_response(
+        method="POST",
+        url=LITELLM_COMPLETIONS_URL,
+        content=error_response.encode(),
+        status_code=429,
+    )
+
+    mock_metrics = mocker.patch("mlpa.core.completions.metrics")
+    mock_logger = mocker.patch("mlpa.core.completions.logger")
+
+    received_chunks = [chunk async for chunk in stream_completion(SAMPLE_REQUEST)]
+
+    assert len(received_chunks) == 1
+    assert (
+        received_chunks[0]
+        == b'data: {"error": "Upstream service returned an error"}\n\n'
+    )
+    mock_logger.error.assert_called_once()
+    mock_metrics.chat_completion_latency.labels.assert_called_once_with(
+        result=PrometheusResult.ERROR
+    )
+
+
+async def test_stream_completion_429_invalid_json(httpx_mock: HTTPXMock, mocker):
+    """
+    Tests that a 429 error with invalid JSON yields generic error message.
+    """
+    httpx_mock.add_response(
+        method="POST",
+        url=LITELLM_COMPLETIONS_URL,
+        content=b"Invalid JSON response",
+        status_code=429,
+    )
+
+    mock_metrics = mocker.patch("mlpa.core.completions.metrics")
+    mock_logger = mocker.patch("mlpa.core.completions.logger")
+
+    received_chunks = [chunk async for chunk in stream_completion(SAMPLE_REQUEST)]
+
+    assert len(received_chunks) == 1
+    assert (
+        received_chunks[0]
+        == b'data: {"error": "Upstream service returned an error"}\n\n'
+    )
+    mock_logger.error.assert_called_once()
+    mock_metrics.chat_completion_latency.labels.assert_called_once_with(
+        result=PrometheusResult.ERROR
+    )
 
 
 async def test_stream_completion_exception_after_streaming_started(
@@ -432,9 +642,17 @@ async def test_stream_completion_exception_after_streaming_started(
 
     mock_metrics = mocker.patch("mlpa.core.completions.metrics")
     mock_logger = mocker.patch("mlpa.core.completions.logger")
-    mock_tiktoken = mocker.patch("mlpa.core.completions.tiktoken")
-    mock_tiktoken.encoding_for_model.side_effect = Exception("Token counting failed")
-    mock_tiktoken.get_encoding.side_effect = Exception("Token counting failed")
+
+    # Reset the global tokenizer to ensure it's not already initialized
+    import mlpa.core.completions as completions_module
+
+    completions_module._global_default_tokenizer = None
+
+    # Mock get_default_tokenizer to return a tokenizer whose encode method raises an exception
+    mock_tokenizer = MagicMock()
+    mock_tokenizer.encode.side_effect = Exception("Token counting failed")
+    mock_get_tokenizer = mocker.patch("mlpa.core.completions.get_default_tokenizer")
+    mock_get_tokenizer.return_value = mock_tokenizer
 
     received_chunks = []
     async for chunk in stream_completion(SAMPLE_REQUEST):

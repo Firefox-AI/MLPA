@@ -1,3 +1,4 @@
+import json
 import time
 from contextlib import asynccontextmanager
 from typing import Annotated, Optional
@@ -6,7 +7,7 @@ import sentry_sdk
 import uvicorn
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.exception_handlers import http_exception_handler
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
 from mlpa.core.auth.authorize import authorize_request
@@ -16,7 +17,9 @@ from mlpa.core.config import (
     RATE_LIMIT_ERROR_RESPONSE,
     env,
 )
+from mlpa.core.http_client import close_http_client, get_http_client
 from mlpa.core.logger import logger, setup_logger
+from mlpa.core.middleware import register_middleware
 from mlpa.core.pg_services.services import app_attest_pg, litellm_pg
 from mlpa.core.prometheus_metrics import metrics
 from mlpa.core.routers.appattest import appattest_router
@@ -41,6 +44,7 @@ tags_metadata = [
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     try:
+        get_http_client()
         await litellm_pg.connect()
         litellm_connected = True
 
@@ -55,9 +59,10 @@ async def lifespan(app: FastAPI):
             await app_attest_pg.disconnect()
         if litellm_connected:
             await litellm_pg.disconnect()
+        await close_http_client()
 
 
-sentry_sdk.init(dsn=env.SENTRY_DSN, send_default_pii=True)
+sentry_sdk.init(dsn=env.SENTRY_DSN, send_default_pii=False)
 
 app = FastAPI(
     title="MLPA",
@@ -155,6 +160,11 @@ async def instrument_requests(request: Request, call_next):
             raise e
         finally:
             metrics.in_progress_requests.dec()
+
+
+# Register all middleware in explicit execution order
+# See mlpa.core.middleware.__init__.py for execution order documentation
+register_middleware(app)
 
 
 @app.get("/metrics", tags=["Metrics"])
