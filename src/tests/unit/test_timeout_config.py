@@ -1,9 +1,7 @@
 import os
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import httpx
 import pytest
-from pytest_httpx import HTTPXMock
 
 from mlpa.core.completions import get_completion, stream_completion
 from mlpa.core.config import Env
@@ -41,8 +39,8 @@ async def test_get_completion_uses_configurable_timeout(mocker):
     mock_client = AsyncMock()
     mock_client.post.return_value = mock_response
 
-    mock_async_client_class = mocker.patch("mlpa.core.completions.httpx.AsyncClient")
-    mock_async_client_class.return_value.__aenter__.return_value = mock_client
+    mock_get_client = mocker.patch("mlpa.core.completions.get_http_client")
+    mock_get_client.return_value = mock_client
 
     mocker.patch("mlpa.core.completions.metrics")
 
@@ -97,8 +95,8 @@ async def test_get_completion_uses_default_timeout(mocker):
     mock_client = AsyncMock()
     mock_client.post.return_value = mock_response
 
-    mock_async_client_class = mocker.patch("mlpa.core.completions.httpx.AsyncClient")
-    mock_async_client_class.return_value.__aenter__.return_value = mock_client
+    mock_get_client = mocker.patch("mlpa.core.completions.get_http_client")
+    mock_get_client.return_value = mock_client
 
     mocker.patch("mlpa.core.completions.metrics")
 
