@@ -22,7 +22,8 @@ def fxa_auth(authorization: Annotated[str | None, Header()]):
         logger.error(f"FxA auth error: {e}")
         raise HTTPException(status_code=401, detail="Invalid FxA auth")
     finally:
-        metrics.validate_fxa_latency.labels(result=result).observe(
+        metrics.auth_response_count_total.labels(method="fxa", result=result).inc()
+        metrics.auth_duration_seconds.labels(method="fxa", result=result).observe(
             time.time() - start_time
         )
     return profile

@@ -36,7 +36,7 @@ def get_default_tokenizer() -> tiktoken.Encoding:
     return _global_default_tokenizer
 
 
-def _parse_rate_limit_error(error_text: str, user: str) -> int | None:
+def _parse_rate_limit_error(error_text: str, user: str, model_name: str) -> int | None:
     """
     Parse error response to detect budget or rate limit errors.
     Returns the error code if a rate limit error is detected, None otherwise.
@@ -47,20 +47,48 @@ def _parse_rate_limit_error(error_text: str, user: str) -> int | None:
     try:
         error_data = json.loads(error_text)
         if is_rate_limit_error(error_data, ["budget"]):
-            logger.warning(f"Budget limit exceeded for user {user}: {error_text}")
+            metrics.ai_error_count_total.labels(
+                model_name=model_name, error="BudgetExceeded"
+            ).inc()
+            logger.warning(
+                "Budget limit exceeded",
+                extra={
+                    "user_id": user,
+                    "model_name": model_name,
+                    "error": "BudgetExceeded",
+                },
+            )
             return ERROR_CODE_BUDGET_LIMIT_EXCEEDED
         elif is_rate_limit_error(error_data, ["rate"]):
-            logger.warning(f"Rate limit exceeded for user {user}: {error_text}")
+            metrics.ai_error_count_total.labels(
+                model_name=model_name, error="RateLimitExceeded"
+            ).inc()
+            logger.warning(
+                "Rate limit exceeded",
+                extra={
+                    "user_id": user,
+                    "model_name": model_name,
+                    "error": "RateLimitExceeded",
+                },
+            )
             return ERROR_CODE_RATE_LIMIT_EXCEEDED
     except (json.JSONDecodeError, AttributeError, UnicodeDecodeError):
-        pass
+        metrics.ai_error_count_total.labels(
+            model_name=model_name, error="UserThrottled"
+        ).inc()
+        logger.warning(
+            "User throttled",
+            extra={"user_id": user, "model_name": model_name, "error": "UserThrottled"},
+        )
 
     return None
 
 
-async def _handle_rate_limit_error(e: httpx.HTTPStatusError, user: str) -> None:
+async def _handle_rate_limit_error(
+    e: httpx.HTTPStatusError, user: str, model_name: str
+) -> None:
     error_text = e.response.text
-    error_code = _parse_rate_limit_error(error_text, user)
+    error_code = _parse_rate_limit_error(error_text, user, model_name)
     if error_code == ERROR_CODE_BUDGET_LIMIT_EXCEEDED:
         raise HTTPException(
             status_code=429,
@@ -76,13 +104,10 @@ async def _handle_rate_limit_error(e: httpx.HTTPStatusError, user: str) -> None:
 
 
 async def stream_completion(authorized_chat_request: AuthorizedChatRequest):
-    """
-    Proxies a streaming request to LiteLLM.
-    Yields response chunks as they are received and logs metrics.
-    """
     start_time = time.time()
+    model = authorized_chat_request.model
     body = {
-        "model": authorized_chat_request.model,
+        "model": model,
         "messages": authorized_chat_request.messages,
         "temperature": authorized_chat_request.temperature,
         "top_p": authorized_chat_request.top_p,
@@ -90,12 +115,30 @@ async def stream_completion(authorized_chat_request: AuthorizedChatRequest):
         "user": authorized_chat_request.user,
         "stream": True,
     }
+
+    metrics.ai_request_count_total.labels(model_name=model).inc()
+    logger.info(
+        "Completion request initiated",
+        extra={
+            "user_id": authorized_chat_request.user,
+            "model": model,
+            "stream": True,
+            "temperature": authorized_chat_request.temperature,
+            "top_p": authorized_chat_request.top_p,
+            "max_tokens": authorized_chat_request.max_completion_tokens,
+        },
+    )
+
     result = PrometheusResult.ERROR
     is_first_token = True
     num_completion_tokens = 0
     streaming_started = False
     logger.debug(
-        f"Starting a stream completion using {authorized_chat_request.model}, for user {authorized_chat_request.user}",
+        "Stream completion loop started",
+        extra={
+            "user_id": authorized_chat_request.user,
+            "model": authorized_chat_request.model,
+        },
     )
     try:
         client = get_http_client()
@@ -120,7 +163,7 @@ async def stream_completion(authorized_chat_request: AuthorizedChatRequest):
                 if e.response.status_code == 429 or e.response.status_code == 400:
                     # Check for budget or rate limit errors
                     error_code = _parse_rate_limit_error(
-                        error_text_str, authorized_chat_request.user
+                        error_text_str, authorized_chat_request.user, model
                     )
                     if error_code is not None:
                         yield f'data: {{"error": {error_code}}}\n\n'.encode()
@@ -136,7 +179,22 @@ async def stream_completion(authorized_chat_request: AuthorizedChatRequest):
             async for chunk in response.aiter_bytes():
                 num_completion_tokens += 1
                 if is_first_token:
-                    metrics.chat_completion_ttft.observe(time.time() - start_time)
+                    duration = time.time() - start_time
+                    metrics.ai_time_to_first_token.labels(
+                        model_name=authorized_chat_request.model
+                    ).observe(duration)
+                    logger.info(
+                        "First token generated",
+                        extra={
+                            "user_id": authorized_chat_request.user,
+                            "model": model,
+                            "stream": True,
+                            "temperature": authorized_chat_request.temperature,
+                            "top_p": authorized_chat_request.top_p,
+                            "max_tokens": authorized_chat_request.max_completion_tokens,
+                            "duration": duration,
+                        },
+                    )
                     is_first_token = False
                     streaming_started = True
                 yield chunk
@@ -146,20 +204,76 @@ async def stream_completion(authorized_chat_request: AuthorizedChatRequest):
                 message["content"] for message in authorized_chat_request.messages
             )
             prompt_tokens = len(tokenizer.encode(prompt_text))
-            metrics.chat_tokens.labels(type="prompt").inc(prompt_tokens)
-            metrics.chat_tokens.labels(type="completion").inc(num_completion_tokens)
+            metrics.ai_token_count_total.labels(model_name=model, type="prompt").inc(
+                prompt_tokens
+            )
+            metrics.ai_token_count_total.labels(
+                model_name=model, type="completion"
+            ).inc(num_completion_tokens)
+            logger.info(
+                "Token generation summary",
+                extra={
+                    "user_id": authorized_chat_request.user,
+                    "model": model,
+                    "stream": True,
+                    "temperature": authorized_chat_request.temperature,
+                    "top_p": authorized_chat_request.top_p,
+                    "max_tokens": authorized_chat_request.max_completion_tokens,
+                    "prompt_tokens": prompt_tokens,
+                    "completion_tokens": num_completion_tokens,
+                },
+            )
             result = PrometheusResult.SUCCESS
     except httpx.HTTPStatusError as e:
-        logger.error(f"Upstream service returned an error: {e}")
+        metrics.ai_error_count_total.labels(
+            model_name=model, error=f"HTTP_{e.response.status_code}"
+        ).inc()
+        logger.error(
+            "Upstream HTTP error",
+            extra={
+                "user_id": authorized_chat_request.user,
+                "model": model,
+                "stream": True,
+                "temperature": authorized_chat_request.temperature,
+                "top_p": authorized_chat_request.top_p,
+                "max_tokens": authorized_chat_request.max_completion_tokens,
+                "status_code": e.response.status_code,
+            },
+        )
         if not streaming_started:
             yield f'data: {{"error": "Upstream service returned an error"}}\n\n'.encode()
     except Exception as e:
-        logger.error(f"Failed to proxy request to {LITELLM_COMPLETIONS_URL}: {e}")
+        metrics.ai_error_count_total.labels(error_type=type(e).__name__).inc()
+        logger.error(
+            "Stream completion proxy failed",
+            extra={
+                "user_id": authorized_chat_request.user,
+                "model": model,
+                "stream": True,
+                "temperature": authorized_chat_request.temperature,
+                "top_p": authorized_chat_request.top_p,
+                "max_tokens": authorized_chat_request.max_completion_tokens,
+                "error_type": type(e).__name__,
+            },
+        )
         if not streaming_started:
             yield f'data: {{"error": "Failed to proxy request"}}\n\n'.encode()
     finally:
-        metrics.chat_completion_latency.labels(result=result).observe(
-            time.time() - start_time
+        duration = time.time() - start_time
+        metrics.ai_request_duration_seconds.labels(
+            model_name=model, streaming=True
+        ).observe(duration)
+        logger.info(
+            "Stream request finished",
+            extra={
+                "user_id": authorized_chat_request.user,
+                "model": model,
+                "stream": True,
+                "temperature": authorized_chat_request.temperature,
+                "top_p": authorized_chat_request.top_p,
+                "max_tokens": authorized_chat_request.max_completion_tokens,
+                "duration": duration,
+            },
         )
 
 
@@ -168,8 +282,9 @@ async def get_completion(authorized_chat_request: AuthorizedChatRequest):
     Proxies a non-streaming request to LiteLLM.
     """
     start_time = time.time()
+    model = authorized_chat_request.model
     body = {
-        "model": authorized_chat_request.model,
+        "model": model,
         "messages": authorized_chat_request.messages,
         "temperature": authorized_chat_request.temperature,
         "top_p": authorized_chat_request.top_p,
@@ -180,8 +295,19 @@ async def get_completion(authorized_chat_request: AuthorizedChatRequest):
     }
     result = PrometheusResult.ERROR
     logger.debug(
-        f"Starting a non-stream completion using {authorized_chat_request.model}, for user {authorized_chat_request.user}",
+        "Non-stream completion initiated",
+        extra={
+            "user_id": authorized_chat_request.user,
+            "model": model,
+            "stream": False,
+            "temperature": authorized_chat_request.temperature,
+            "top_p": authorized_chat_request.top_p,
+            "max_tokens": authorized_chat_request.max_completion_tokens,
+        },
     )
+
+    metrics.ai_request_count_total.labels(model_name=model).inc()
+
     try:
         client = get_http_client()
         response = await client.post(
@@ -195,8 +321,25 @@ async def get_completion(authorized_chat_request: AuthorizedChatRequest):
         except httpx.HTTPStatusError as e:
             if e.response.status_code == 429 or e.response.status_code == 400:
                 try:
-                    await _handle_rate_limit_error(e, authorized_chat_request.user)
+                    await _handle_rate_limit_error(
+                        e, authorized_chat_request.user, model
+                    )
                 except HTTPException:
+                    metrics.ai_error_count_total.labels(
+                        model_name=model, error=f"HTTP_{e.response.status_code}"
+                    ).inc()
+                    logger.error(
+                        "Upstream HTTP error",
+                        extra={
+                            "user_id": authorized_chat_request.user,
+                            "model": model,
+                            "stream": False,
+                            "temperature": authorized_chat_request.temperature,
+                            "top_p": authorized_chat_request.top_p,
+                            "max_tokens": authorized_chat_request.max_completion_tokens,
+                            "status_code": e.response.status_code,
+                        },
+                    )
                     raise
                 raise HTTPException(
                     status_code=429,
@@ -213,20 +356,77 @@ async def get_completion(authorized_chat_request: AuthorizedChatRequest):
         prompt_tokens = usage.get("prompt_tokens", 0)
         completion_tokens = usage.get("completion_tokens", 0)
 
-        metrics.chat_tokens.labels(type="prompt").inc(prompt_tokens)
-        metrics.chat_tokens.labels(type="completion").inc(completion_tokens)
+        metrics.ai_token_count_total.labels(model_name=model, type="prompt").inc(
+            prompt_tokens
+        )
+        metrics.ai_token_count_total.labels(model_name=model, type="completion").inc(
+            completion_tokens
+        )
+        logger.info(
+            "Token generation summary",
+            extra={
+                "user_id": authorized_chat_request.user,
+                "model": model,
+                "stream": False,
+                "temperature": authorized_chat_request.temperature,
+                "top_p": authorized_chat_request.top_p,
+                "max_tokens": authorized_chat_request.max_completion_tokens,
+                "prompt_tokens": prompt_tokens,
+                "completion_tokens": completion_tokens,
+            },
+        )
 
         result = PrometheusResult.SUCCESS
         return data
-    except HTTPException:
+    except HTTPException as e:
+        logger.error(
+            "Upstream service HTTP exception",
+            extra={
+                "user_id": authorized_chat_request.user,
+                "model": model,
+                "stream": False,
+                "temperature": authorized_chat_request.temperature,
+                "top_p": authorized_chat_request.top_p,
+                "max_tokens": authorized_chat_request.max_completion_tokens,
+                "status_code": e.status_code,
+            },
+        )
         raise
     except Exception as e:
-        logger.error(f"Failed to proxy request to {LITELLM_COMPLETIONS_URL}: {e}")
+        metrics.ai_error_count_total.labels(
+            model_name=model, error=type(e).__name__
+        ).inc()
+        logger.error(
+            "Proxy request failed",
+            extra={
+                "user_id": authorized_chat_request.user,
+                "model": model,
+                "stream": False,
+                "temperature": authorized_chat_request.temperature,
+                "top_p": authorized_chat_request.top_p,
+                "max_tokens": authorized_chat_request.max_completion_tokens,
+                "error_message": str(e),
+                "error_type": type(e).__name__,
+            },
+        )
         raise HTTPException(
             status_code=502,
             detail={"error": f"Failed to proxy request"},
         )
     finally:
-        metrics.chat_completion_latency.labels(result=result).observe(
-            time.time() - start_time
+        duration = time.time() - start_time
+        metrics.ai_request_duration_seconds.labels(
+            model_name=model, streaming=False
+        ).observe(duration)
+        logger.info(
+            "Request finished",
+            extra={
+                "user_id": authorized_chat_request.user,
+                "model": model,
+                "stream": True,
+                "temperature": authorized_chat_request.temperature,
+                "top_p": authorized_chat_request.top_p,
+                "max_tokens": authorized_chat_request.max_completion_tokens,
+                "duration": duration,
+            },
         )
