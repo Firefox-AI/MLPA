@@ -79,6 +79,7 @@ async def validate_challenge(challenge: str, key_id_b64: str) -> bool:
     start_time = time.time()
     stored_challenge = await app_attest_pg.get_challenge(key_id_b64)
     await app_attest_pg.delete_challenge(key_id_b64)  # Remove challenge after one use
+    success = False
     try:
         if (
             not stored_challenge
@@ -86,13 +87,14 @@ async def validate_challenge(challenge: str, key_id_b64: str) -> bool:
             > env.CHALLENGE_EXPIRY_SECONDS
         ):
             return False
+        success = True
         return challenge == stored_challenge["challenge"]
     finally:
         metrics.auth_response_count_total.labels(
-            method="appatest_challenge", result=result
+            method="appatest_challenge", result="allow" if success else "deny"
         ).inc()
         metrics.auth_duration_seconds.labels(
-            method="appatest_challenge", result=result
+            method="appatest_challenge", result="allow" if success else "deny"
         ).observe(time.time() - start_time)
 
 

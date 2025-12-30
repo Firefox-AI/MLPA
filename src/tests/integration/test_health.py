@@ -46,4 +46,4 @@ def test_health_readiness(mocked_client_integration, httpx_mock):
 def test_metrics_endpoint(mocked_client_integration):
     response = mocked_client_integration.get("/metrics")
     assert response.status_code == 200
-    assert "requests_total" in response.text
+    assert "in_progress_requests" in response.text

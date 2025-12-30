@@ -95,7 +95,7 @@ async def instrument_requests(request: Request, call_next):
         try:
             # Capture request size if available
             content_length = request.headers.get("content-length")
-            if content_length:
+            if content_length and content_length.isdigit():
                 metrics.request_size_bytes.labels(method=request.method).observe(
                     int(content_length)
                 )
@@ -237,7 +237,6 @@ async def log_and_handle_http_exception(request: Request, exc: HTTPException):
     metrics.request_error_count_total.labels(
         method=request.method, error_type=f"HTTPError"
     ).inc()
-    metrics.response_status_codes.labels(status_code=exc.status_code).inc()
 
     if exc.status_code != 429:
         logger.error(
