@@ -1,6 +1,5 @@
 import base64
 
-import httpx
 from fastapi import HTTPException
 from fxa.oauth import Client
 from jwtoxide import DecodingKey, ValidationOptions, decode
@@ -8,6 +7,7 @@ from loguru import logger
 
 from mlpa.core.classes import AssertionAuth, AttestationAuth
 from mlpa.core.config import LITELLM_MASTER_AUTH_HEADERS, env
+from mlpa.core.http_client import get_http_client
 
 
 async def get_or_create_user(user_id: str):
@@ -23,34 +23,34 @@ async def get_or_create_user(user_id: str):
     user_feature_budgets = env.user_feature_budget
     budget_id = user_feature_budgets[service_type]["budget_id"]
 
-    async with httpx.AsyncClient() as client:
-        try:
-            params = {"end_user_id": user_id}
+    client = get_http_client()
+    try:
+        params = {"end_user_id": user_id}
+        response = await client.get(
+            f"{env.LITELLM_API_BASE}/customer/info",
+            params=params,
+            headers=LITELLM_MASTER_AUTH_HEADERS,
+        )
+        user = response.json()
+
+        if not user.get("user_id"):
+            await client.post(
+                f"{env.LITELLM_API_BASE}/customer/new",
+                json={"user_id": user_id, "budget_id": budget_id},
+                headers=LITELLM_MASTER_AUTH_HEADERS,
+            )
             response = await client.get(
                 f"{env.LITELLM_API_BASE}/customer/info",
                 params=params,
                 headers=LITELLM_MASTER_AUTH_HEADERS,
             )
-            user = response.json()
-
-            if not user.get("user_id"):
-                await client.post(
-                    f"{env.LITELLM_API_BASE}/customer/new",
-                    json={"user_id": user_id, "budget_id": budget_id},
-                    headers=LITELLM_MASTER_AUTH_HEADERS,
-                )
-                response = await client.get(
-                    f"{env.LITELLM_API_BASE}/customer/info",
-                    params=params,
-                    headers=LITELLM_MASTER_AUTH_HEADERS,
-                )
-                return [response.json(), True]
-            return [user, False]
-        except Exception as e:
-            logger.error(f"Error fetching or creating user {user_id}: {e}")
-            raise HTTPException(
-                status_code=500, detail={"error": f"Error fetching user info"}
-            )
+            return [response.json(), True]
+        return [user, False]
+    except Exception as e:
+        logger.error(f"Error fetching or creating user {user_id}: {e}")
+        raise HTTPException(
+            status_code=500, detail={"error": f"Error fetching user info"}
+        )
 
 
 def b64decode_safe(data_b64: str, obj_name: str = "object") -> bytes:
