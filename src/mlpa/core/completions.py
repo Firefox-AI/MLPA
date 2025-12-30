@@ -303,7 +303,9 @@ async def get_completion(authorized_chat_request: AuthorizedChatRequest):
         except httpx.HTTPStatusError as e:
             if e.response.status_code == 429 or e.response.status_code == 400:
                 try:
-                    await _handle_rate_limit_error(e, authorized_chat_request.user)
+                    await _handle_rate_limit_error(
+                        e, authorized_chat_request.user, model
+                    )
                 except HTTPException:
                     metrics.ai_error_count_total.labels(
                         model_name=model, error=f"HTTP_{e.response.status_code}"
