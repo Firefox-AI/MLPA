@@ -12,65 +12,92 @@ class PrometheusResult(Enum):
 @dataclass
 class PrometheusMetrics:
     in_progress_requests: Gauge
-    requests_total: Counter
-    response_status_codes: Counter
-    request_latency: Histogram
-    validate_challenge_latency: Histogram
-    validate_app_attest_latency: Histogram
-    validate_app_assert_latency: Histogram
-    validate_fxa_latency: Histogram
-    chat_completion_latency: Histogram
-    chat_completion_ttft: Histogram  # time to first token (when stream=True)
-    chat_tokens: Counter
+
+    # Standard
+    request_size_bytes: Histogram  # method(Get, Put, Update, Delete, )
+    response_size_bytes: Histogram
+    request_error_count_total: Counter  # method, error_type
+
+    # Auth
+    auth_request_count_total: Counter
+    auth_response_count_total: (
+        Counter  # labels: method(fxa, appatest, ...), result (allow, deny, error)
+    )
+    auth_duration_seconds: Histogram  # labels: method(fxa, appatest, ...)
+    auth_error_count_total: Counter  # labels: method(fxa, appatest, ...), error(rate limited, throttled, ...)
+
+    # # Router Metrics
+    # router_request_count_total: Counter  # labels: model_name
+    # router_decision_count_total: Counter  # labels: decision_model_name,
+    # router_request_duration_seconds: Histogram  # labels: model_name
+
+    # AI Metrics
+    ai_request_count_total: Counter  # labels: model_name
+    ai_time_to_first_token: (
+        Histogram  #  time to first token (when stream=True) labels: model_name
+    )
+    ai_request_duration_seconds: Histogram  # labels: model_name, streaming
+    ai_error_count_total: (
+        Counter  # labels: model_name, error(timeout, retry, blocked, ...)
+    )
+    ai_token_count_total: Counter  # labels: model_name, type
 
 
 metrics = PrometheusMetrics(
     in_progress_requests=Gauge(
         "in_progress_requests", "Number of requests currently in progress."
     ),
-    requests_total=Counter(
-        "requests_total",
-        "Total number of requests handled by the proxy.",
-        ["method", "endpoint"],
+    # Standard
+    request_size_bytes=Histogram(
+        "request_size_bytes", "Size of requests in bytes.", ["method"]
     ),
-    response_status_codes=Counter(
-        "response_status_codes_total",
-        "Total number of response status codes.",
-        ["status_code"],
+    response_size_bytes=Histogram(
+        "response_size_bytes",
+        "Size of responses in bytes.",
     ),
-    request_latency=Histogram(
-        "request_latency_seconds", "Request latency in seconds.", ["method", "endpoint"]
+    request_error_count_total=Counter(
+        "request_error_count_total",
+        "Total number of errors encountered.",
+        ["method", "error_type"],
     ),
-    validate_challenge_latency=Histogram(
-        "validate_challenge_latency_seconds", "Challenge validation latency in seconds."
+    # Auth
+    auth_request_count_total=Counter(
+        "auth_request_count_total",
+        "Total authorization requests.",
     ),
-    validate_app_attest_latency=Histogram(
-        "validate_app_attest_latency_seconds",
-        "App Attest authentication latency in seconds.",
-        ["result"],
+    auth_response_count_total=Counter(
+        "auth_response_count_total",
+        "Total authorization responses.",
+        ["method", "result"],
     ),
-    validate_app_assert_latency=Histogram(
-        "validate_app_assert_latency_seconds",
-        "App Assert authentication latency in seconds.",
-        ["result"],
+    auth_duration_seconds=Histogram(
+        "auth_duration_seconds",
+        "Latency of authorization requests.",
+        ["method", "result"],
     ),
-    validate_fxa_latency=Histogram(
-        "validate_fxa_latency_seconds",
-        "FxA authentication latency in seconds.",
-        ["result"],
+    auth_error_count_total=Counter(
+        "auth_error_count_total", "Total authorization errors.", ["error"]
     ),
-    chat_completion_latency=Histogram(
-        "chat_completion_latency_seconds",
-        "Chat completion latency in seconds.",
-        ["result"],
+    # AI Metrics
+    ai_request_count_total=Counter(
+        "ai_request_count_total", "Total requests sent to AI backends.", ["model_name"]
     ),
-    chat_completion_ttft=Histogram(
-        "chat_completion_ttft_seconds",
-        "Time to first token for streaming chat completions in seconds.",
+    ai_time_to_first_token=Histogram(
+        "ai_time_to_first_token_seconds",
+        "Time to first token for streaming completions.",
+        ["model_name"],
     ),
-    chat_tokens=Counter(
-        "chat_tokens",
-        "Number of tokens for chat completions.",
-        ["type"],
+    ai_request_duration_seconds=Histogram(
+        "ai_request_duration_seconds",
+        "Latency of AI backend requests.",
+        ["model_name", "streaming"],
+    ),
+    ai_error_count_total=Counter(
+        "ai_error_count_total",
+        "Total errors communicating with AI backends.",
+        ["model_name", "error"],
+    ),
+    ai_token_count_total=Counter(
+        "ai_token_count_total", "Total tokens consumed.", ["model_name", "type"]
     ),
 )

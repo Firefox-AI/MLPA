@@ -101,14 +101,36 @@ async def chat_completion(
         Optional[AuthorizedChatRequest], Depends(authorize_request)
     ],
 ):
+    start_time = time.time()
     user_id = authorized_chat_request.user
+    model = authorized_chat_request.model
+
+    logger.info(
+        "Chat completion request initiated",
+        extra={"user_id": user_id, "model": model},
+    )
+
     if not user_id:
+        metrics.ai_error_count_total.labels(
+            model_name=model, error=f"UserNotFound"
+        ).inc()
+        logger.warning(
+            "Chat completion failed",
+            extra={"user_id": user_id, "model": model, "error": "User not found"},
+        )
         raise HTTPException(
             status_code=400,
             detail={"error": "User not found from authorization response."},
         )
     user, _ = await get_or_create_user(user_id)
     if user.get("blocked"):
+        metrics.ai_error_count_total.labels(
+            model_name=model, error=f"UserBlocked"
+        ).inc()
+        logger.warning(
+            "Chat completion failed",
+            extra={"user_id": user_id, "model": model, "error": "User blocked"},
+        )
         raise HTTPException(status_code=403, detail={"error": "User is blocked."})
 
     if authorized_chat_request.stream:
@@ -123,9 +145,17 @@ async def chat_completion(
 @app.exception_handler(HTTPException)
 async def log_and_handle_http_exception(request: Request, exc: HTTPException):
     """Logs HTTPExceptions"""
+    metrics.request_error_count_total.labels(
+        method=request.method, error_type=f"HTTP_{exc.status_code}"
+    ).inc()
     if exc.status_code != 429:
         logger.error(
-            f"HTTPException for {request.method} {request.url.path} -> status={exc.status_code} detail={exc.detail}",
+            "HTTPException occurred",
+            extra={
+                "path": request.url.path,
+                "method": request.method,
+                "status_code": exc.status_code,
+            },
         )
     return await http_exception_handler(request, exc)
 

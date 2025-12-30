@@ -54,21 +54,25 @@ async def test_get_completion_success(mocker):
     assert sent_json["stream"] == SAMPLE_REQUEST.stream
 
     # 2. Check that the token metrics were incremented correctly
-    mock_metrics.chat_tokens.labels.assert_any_call(type="prompt")
-    mock_metrics.chat_tokens.labels().inc.assert_any_call(
+    mock_metrics.ai_token_count_total.labels.assert_any_call(
+        model_name=SAMPLE_REQUEST.model, type="prompt"
+    )
+    mock_metrics.ai_token_count_total.labels().inc.assert_any_call(
         SUCCESSFUL_CHAT_RESPONSE["usage"]["prompt_tokens"]
     )
 
-    mock_metrics.chat_tokens.labels.assert_any_call(type="completion")
-    mock_metrics.chat_tokens.labels().inc.assert_any_call(
+    mock_metrics.ai_token_count_total.labels.assert_any_call(
+        model_name=SAMPLE_REQUEST.model, type="completion"
+    )
+    mock_metrics.ai_token_count_total.labels().inc.assert_any_call(
         SUCCESSFUL_CHAT_RESPONSE["usage"]["completion_tokens"]
     )
 
     # 3. Check that the latency metric was observed with SUCCESS
-    mock_metrics.chat_completion_latency.labels.assert_called_once_with(
-        result=PrometheusResult.SUCCESS
+    mock_metrics.ai_request_duration_seconds.labels.assert_called_once_with(
+        model_name=SAMPLE_REQUEST.model, streaming=False
     )
-    mock_metrics.chat_completion_latency.labels().observe.assert_called_once()
+    mock_metrics.ai_request_duration_seconds.labels().observe.assert_called_once()
 
     # 4. Check that the function returned the correct data
     assert result_data == SUCCESSFUL_CHAT_RESPONSE
@@ -104,13 +108,13 @@ async def test_get_completion_http_error(mocker):
     assert exc_info.value.detail == "Upstream service returned an error"
 
     # 2. Verify latency metric was observed with ERROR
-    mock_metrics.chat_completion_latency.labels.assert_called_once_with(
-        result=PrometheusResult.ERROR
+    mock_metrics.ai_request_duration_seconds.labels.assert_called_once_with(
+        model_name=SAMPLE_REQUEST.model, streaming=False
     )
-    mock_metrics.chat_completion_latency.labels().observe.assert_called_once()
+    mock_metrics.ai_request_duration_seconds.labels().observe.assert_called_once()
 
     # 3. Verify token metrics were NOT called
-    mock_metrics.chat_tokens.labels.assert_not_called()
+    mock_metrics.ai_token_count_total.labels.assert_not_called()
 
 
 async def test_get_completion_network_error(mocker):
@@ -134,10 +138,10 @@ async def test_get_completion_network_error(mocker):
     assert "Failed to proxy request" in exc_info.value.detail["error"]
 
     # 2. Verify latency metric was observed with ERROR
-    mock_metrics.chat_completion_latency.labels.assert_called_once_with(
-        result=PrometheusResult.ERROR
+    mock_metrics.ai_request_duration_seconds.labels.assert_called_once_with(
+        model_name=SAMPLE_REQUEST.model, streaming=False
     )
-    mock_metrics.chat_completion_latency.labels().observe.assert_called_once()
+    mock_metrics.ai_request_duration_seconds.labels().observe.assert_called_once()
 
 
 async def test_stream_completion_success(httpx_mock: HTTPXMock, mocker):
@@ -182,19 +186,25 @@ async def test_stream_completion_success(httpx_mock: HTTPXMock, mocker):
     assert request_body["model"] == "test-model"
 
     # 3. Verify TTFT metric was observed
-    mock_metrics.chat_completion_ttft.observe.assert_called_once()
+    mock_metrics.ai_time_to_first_token.labels(
+        model_name=request_body["model"]
+    ).observe.assert_called_once()
 
     # 4. Verify token counts
-    mock_metrics.chat_tokens.labels.assert_any_call(type="prompt")
-    mock_metrics.chat_tokens.labels().inc.assert_any_call(2)
-    mock_metrics.chat_tokens.labels.assert_any_call(type="completion")
-    mock_metrics.chat_tokens.labels().inc.assert_any_call(len(mock_chunks))
+    mock_metrics.ai_token_count_total.labels.assert_any_call(
+        model_name=request_body["model"], type="prompt"
+    )
+    mock_metrics.ai_token_count_total.labels().inc.assert_any_call(2)
+    mock_metrics.ai_token_count_total.labels.assert_any_call(
+        model_name=request_body["model"], type="completion"
+    )
+    mock_metrics.ai_token_count_total.labels().inc.assert_any_call(len(mock_chunks))
 
     # 5. Verify final latency metric
-    mock_metrics.chat_completion_latency.labels.assert_called_once_with(
-        result=PrometheusResult.SUCCESS
+    mock_metrics.ai_request_duration_seconds.labels.assert_called_once_with(
+        model_name=SAMPLE_REQUEST.model, streaming=True
     )
-    mock_metrics.chat_completion_latency.labels().observe.assert_called_once()
+    mock_metrics.ai_request_duration_seconds.labels().observe.assert_called_once()
 
 
 async def test_get_completion_budget_limit_exceeded_429(mocker):
@@ -235,8 +245,8 @@ async def test_get_completion_budget_limit_exceeded_429(mocker):
     assert exc_info.value.headers == {"Retry-After": "86400"}
 
     # Verify latency metric was observed with ERROR
-    mock_metrics.chat_completion_latency.labels.assert_called_once_with(
-        result=PrometheusResult.ERROR
+    mock_metrics.ai_request_duration_seconds.labels.assert_called_once_with(
+        model_name=SAMPLE_REQUEST.model, streaming=False
     )
 
 
@@ -448,8 +458,8 @@ async def test_stream_completion_budget_limit_exceeded_429(
     )
     mock_logger.warning.assert_called_once()
     assert "Budget limit exceeded" in str(mock_logger.warning.call_args)
-    mock_metrics.chat_completion_latency.labels.assert_called_once_with(
-        result=PrometheusResult.ERROR
+    mock_metrics.ai_request_duration_seconds.labels.assert_called_once_with(
+        model_name=SAMPLE_REQUEST.model, streaming=True
     )
 
 
@@ -487,8 +497,8 @@ async def test_stream_completion_budget_limit_exceeded_400(
     )
     mock_logger.warning.assert_called_once()
     assert "Budget limit exceeded" in str(mock_logger.warning.call_args)
-    mock_metrics.chat_completion_latency.labels.assert_called_once_with(
-        result=PrometheusResult.ERROR
+    mock_metrics.ai_request_duration_seconds.labels.assert_called_once_with(
+        model_name=SAMPLE_REQUEST.model, streaming=True
     )
 
 
@@ -524,8 +534,8 @@ async def test_stream_completion_rate_limit_exceeded(httpx_mock: HTTPXMock, mock
     )
     mock_logger.warning.assert_called_once()
     assert "Rate limit exceeded" in str(mock_logger.warning.call_args)
-    mock_metrics.chat_completion_latency.labels.assert_called_once_with(
-        result=PrometheusResult.ERROR
+    mock_metrics.ai_request_duration_seconds.labels.assert_called_once_with(
+        model_name=SAMPLE_REQUEST.model, streaming=True
     )
 
 
@@ -562,8 +572,8 @@ async def test_stream_completion_400_non_rate_limit_error(
         == b'data: {"error": "Upstream service returned an error"}\n\n'
     )
     mock_logger.error.assert_called_once()
-    mock_metrics.chat_completion_latency.labels.assert_called_once_with(
-        result=PrometheusResult.ERROR
+    mock_metrics.ai_request_duration_seconds.labels.assert_called_once_with(
+        model_name=SAMPLE_REQUEST.model, streaming=True
     )
 
 
@@ -594,8 +604,8 @@ async def test_stream_completion_429_non_rate_limit_error(
         == b'data: {"error": "Upstream service returned an error"}\n\n'
     )
     mock_logger.error.assert_called_once()
-    mock_metrics.chat_completion_latency.labels.assert_called_once_with(
-        result=PrometheusResult.ERROR
+    mock_metrics.ai_request_duration_seconds.labels.assert_called_once_with(
+        model_name=SAMPLE_REQUEST.model, streaming=True
     )
 
 
@@ -621,8 +631,8 @@ async def test_stream_completion_429_invalid_json(httpx_mock: HTTPXMock, mocker)
         == b'data: {"error": "Upstream service returned an error"}\n\n'
     )
     mock_logger.error.assert_called_once()
-    mock_metrics.chat_completion_latency.labels.assert_called_once_with(
-        result=PrometheusResult.ERROR
+    mock_metrics.ai_request_duration_seconds.labels.assert_called_once_with(
+        model_name=SAMPLE_REQUEST.model, streaming=True
     )
 
 
@@ -661,7 +671,7 @@ async def test_stream_completion_exception_after_streaming_started(
     assert len(received_chunks) == len(mock_chunks)
     assert received_chunks == mock_chunks
     mock_logger.error.assert_called()
-    mock_metrics.chat_completion_latency.labels.assert_called_once_with(
-        result=PrometheusResult.ERROR
+    mock_metrics.ai_request_duration_seconds.labels.assert_called_once_with(
+        model_name=SAMPLE_REQUEST.model, streaming=True
     )
-    mock_metrics.chat_completion_latency.labels().observe.assert_called_once()
+    mock_metrics.ai_request_duration_seconds.labels().observe.assert_called_once()
