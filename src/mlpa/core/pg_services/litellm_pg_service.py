@@ -15,9 +15,11 @@ class LiteLLMPGService(PGService):
         super().__init__(env.LITELLM_DB_NAME)
 
     async def get_user(self, user_id: str):
-        query = 'SELECT * FROM "LiteLLM_EndUserTable" WHERE user_id = $1'
-        user = await self.pg.fetchrow(query, user_id)
-        return dict(user) if user else None
+        async with self.pg.acquire() as conn:
+            query = 'SELECT * FROM "LiteLLM_EndUserTable" WHERE user_id = $1'
+            stmt = await self._get_prepared_statement(conn, query)
+            user = await stmt.fetchrow(user_id)
+            return dict(user) if user else None
 
     async def create_budget(self):
         """
