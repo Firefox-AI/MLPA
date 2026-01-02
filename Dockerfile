@@ -17,6 +17,7 @@ RUN chmod +x /app/scripts/migrate-app-attest-database.sh
 
 # Install dependencies
 RUN pip install --no-cache-dir uv
+RUN apt-get update && apt-get install -y git
 RUN uv pip install --system --editable .
 
 # Expose the application port
