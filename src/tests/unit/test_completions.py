@@ -33,10 +33,9 @@ async def test_get_completion_success(mocker):
     mock_client = AsyncMock()
     mock_client.post.return_value = mock_response
 
-    # Patch the AsyncClient class where it's used
-    mock_async_client_class = mocker.patch("mlpa.core.completions.httpx.AsyncClient")
-    # Configure the mock class's context manager to return our client
-    mock_async_client_class.return_value.__aenter__.return_value = mock_client
+    # Patch the shared HTTP client accessor to return our mock client
+    mock_get_client = mocker.patch("mlpa.core.completions.get_http_client")
+    mock_get_client.return_value = mock_client
 
     # Mock the metrics to check if they are called
     mock_metrics = mocker.patch("mlpa.core.completions.metrics")
@@ -91,8 +90,8 @@ async def test_get_completion_http_error(mocker):
 
     mock_client = AsyncMock()
     mock_client.post.return_value = mock_response
-    mock_async_client_class = mocker.patch("mlpa.core.completions.httpx.AsyncClient")
-    mock_async_client_class.return_value.__aenter__.return_value = mock_client
+    mock_get_client = mocker.patch("mlpa.core.completions.get_http_client")
+    mock_get_client.return_value = mock_client
 
     mock_metrics = mocker.patch("mlpa.core.completions.metrics")
 
@@ -121,8 +120,8 @@ async def test_get_completion_network_error(mocker):
     # Arrange: Mock httpx to raise a network error
     mock_client = AsyncMock()
     mock_client.post.side_effect = httpx.TimeoutException("Connection timed out")
-    mock_async_client_class = mocker.patch("mlpa.core.completions.httpx.AsyncClient")
-    mock_async_client_class.return_value.__aenter__.return_value = mock_client
+    mock_get_client = mocker.patch("mlpa.core.completions.get_http_client")
+    mock_get_client.return_value = mock_client
 
     mock_metrics = mocker.patch("mlpa.core.completions.metrics")
 
@@ -222,8 +221,8 @@ async def test_get_completion_budget_limit_exceeded_429(mocker):
 
     mock_client = AsyncMock()
     mock_client.post.return_value = mock_response
-    mock_async_client_class = mocker.patch("mlpa.core.completions.httpx.AsyncClient")
-    mock_async_client_class.return_value.__aenter__.return_value = mock_client
+    mock_get_client = mocker.patch("mlpa.core.completions.get_http_client")
+    mock_get_client.return_value = mock_client
 
     mock_metrics = mocker.patch("mlpa.core.completions.metrics")
 
@@ -265,8 +264,8 @@ async def test_get_completion_budget_limit_exceeded_400(mocker):
 
     mock_client = AsyncMock()
     mock_client.post.return_value = mock_response
-    mock_async_client_class = mocker.patch("mlpa.core.completions.httpx.AsyncClient")
-    mock_async_client_class.return_value.__aenter__.return_value = mock_client
+    mock_get_client = mocker.patch("mlpa.core.completions.get_http_client")
+    mock_get_client.return_value = mock_client
 
     mock_metrics = mocker.patch("mlpa.core.completions.metrics")
 
@@ -303,8 +302,8 @@ async def test_get_completion_rate_limit_exceeded(mocker):
 
     mock_client = AsyncMock()
     mock_client.post.return_value = mock_response
-    mock_async_client_class = mocker.patch("mlpa.core.completions.httpx.AsyncClient")
-    mock_async_client_class.return_value.__aenter__.return_value = mock_client
+    mock_get_client = mocker.patch("mlpa.core.completions.get_http_client")
+    mock_get_client.return_value = mock_client
 
     mock_metrics = mocker.patch("mlpa.core.completions.metrics")
 
@@ -341,8 +340,8 @@ async def test_get_completion_400_non_rate_limit_error(mocker):
 
     mock_client = AsyncMock()
     mock_client.post.return_value = mock_response
-    mock_async_client_class = mocker.patch("mlpa.core.completions.httpx.AsyncClient")
-    mock_async_client_class.return_value.__aenter__.return_value = mock_client
+    mock_get_client = mocker.patch("mlpa.core.completions.get_http_client")
+    mock_get_client.return_value = mock_client
 
     mock_metrics = mocker.patch("mlpa.core.completions.metrics")
     mock_logger = mocker.patch("mlpa.core.completions.logger")
@@ -374,8 +373,8 @@ async def test_get_completion_429_non_rate_limit_error(mocker):
 
     mock_client = AsyncMock()
     mock_client.post.return_value = mock_response
-    mock_async_client_class = mocker.patch("mlpa.core.completions.httpx.AsyncClient")
-    mock_async_client_class.return_value.__aenter__.return_value = mock_client
+    mock_get_client = mocker.patch("mlpa.core.completions.get_http_client")
+    mock_get_client.return_value = mock_client
 
     mock_metrics = mocker.patch("mlpa.core.completions.metrics")
 
@@ -403,8 +402,8 @@ async def test_get_completion_429_invalid_json(mocker):
 
     mock_client = AsyncMock()
     mock_client.post.return_value = mock_response
-    mock_async_client_class = mocker.patch("mlpa.core.completions.httpx.AsyncClient")
-    mock_async_client_class.return_value.__aenter__.return_value = mock_client
+    mock_get_client = mocker.patch("mlpa.core.completions.get_http_client")
+    mock_get_client.return_value = mock_client
 
     mock_metrics = mocker.patch("mlpa.core.completions.metrics")
 
@@ -643,9 +642,17 @@ async def test_stream_completion_exception_after_streaming_started(
 
     mock_metrics = mocker.patch("mlpa.core.completions.metrics")
     mock_logger = mocker.patch("mlpa.core.completions.logger")
-    mock_tiktoken = mocker.patch("mlpa.core.completions.tiktoken")
-    mock_tiktoken.encoding_for_model.side_effect = Exception("Token counting failed")
-    mock_tiktoken.get_encoding.side_effect = Exception("Token counting failed")
+
+    # Reset the global tokenizer to ensure it's not already initialized
+    import mlpa.core.completions as completions_module
+
+    completions_module._global_default_tokenizer = None
+
+    # Mock get_default_tokenizer to return a tokenizer whose encode method raises an exception
+    mock_tokenizer = MagicMock()
+    mock_tokenizer.encode.side_effect = Exception("Token counting failed")
+    mock_get_tokenizer = mocker.patch("mlpa.core.completions.get_default_tokenizer")
+    mock_get_tokenizer.return_value = mock_tokenizer
 
     received_chunks = []
     async for chunk in stream_completion(SAMPLE_REQUEST):
