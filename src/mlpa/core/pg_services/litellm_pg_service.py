@@ -21,6 +21,56 @@ class LiteLLMPGService(PGService):
             user = await stmt.fetchrow(user_id)
             return dict(user) if user else None
 
+    async def block_user(self, user_id: str, blocked: bool = True) -> dict:
+        try:
+            async with self.pg.acquire() as conn:
+                async with conn.transaction():
+                    query = 'UPDATE "LiteLLM_EndUserTable" SET "blocked" = $1 WHERE user_id = $2 RETURNING *'
+                    stmt = await self._get_prepared_statement(conn, query)
+                    updated_user_record = await stmt.fetchrow(blocked, user_id)
+
+                    if updated_user_record is None:
+                        logger.error(
+                            f"User {user_id} not found for blocking/unblocking."
+                        )
+                        raise HTTPException(status_code=404, detail="User not found.")
+
+                    logger.info(
+                        f"User {user_id} {'blocked' if blocked else 'unblocked'} successfully."
+                    )
+                    return dict(updated_user_record)
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"Error blocking/unblocking user {user_id}: {e}")
+            raise HTTPException(
+                status_code=500, detail={"error": "Error updating user"}
+            )
+
+    async def list_users(self, limit: int = 50, offset: int = 0) -> dict:
+        try:
+            async with self.pg.acquire() as conn:
+                async with conn.transaction():
+                    count_query = 'SELECT COUNT(*) FROM "LiteLLM_EndUserTable"'
+                    count_stmt = await self._get_prepared_statement(conn, count_query)
+                    total = await count_stmt.fetchval()
+
+                    query = 'SELECT * FROM "LiteLLM_EndUserTable" ORDER BY user_id LIMIT $1 OFFSET $2'
+                    stmt = await self._get_prepared_statement(conn, query)
+                    users = await stmt.fetch(limit, offset)
+
+                    return {
+                        "users": [dict(user) for user in users],
+                        "total": total,
+                        "limit": limit,
+                        "offset": offset,
+                    }
+        except Exception as e:
+            logger.error(f"Error listing users: {e}")
+            raise HTTPException(
+                status_code=500, detail={"error": "Error listing users"}
+            )
+
     async def create_budget(self):
         """
         Create end user budgets from configuration.
