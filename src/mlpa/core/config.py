@@ -106,6 +106,7 @@ class Env(BaseSettings):
     DB_PORT: int = 5432
     PG_POOL_MIN_SIZE: int = 1
     PG_POOL_MAX_SIZE: int = 10
+    PG_PREPARED_STMT_CACHE_MAX_SIZE: int = 100
 
     # LLM request default values
     MODEL_NAME: str = "openai/gpt-4o"

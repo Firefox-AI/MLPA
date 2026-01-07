@@ -71,10 +71,10 @@ async def mock_app_attest_auth(app_attest_jwt: str):
 async def mock_get_or_create_user(mock_litellm_pg, user_id: str):
     user = await mock_litellm_pg.get_user(user_id)
     if not user:
-        await mock_litellm_pg.store_user(user_id, {"data": "testdata"})
+        mock_litellm_pg.store_user(user_id, {"data": "testdata"})
         user = await mock_litellm_pg.get_user(user_id)
         return user, True
-    return [{"user_id": user_id, "data": "testdata"}, False]
+    return user, False
 
 
 async def mock_get_completion(authorized_chat_request: AuthorizedChatRequest):
@@ -153,7 +153,7 @@ class MockLiteLLMPGService:
         )
         return self.users.get(user_id)
 
-    async def store_user(self, user_id: str, data: dict):
+    def store_user(self, user_id: str, data: dict):
         logger.debug(
             f"mock store_user called with user_id: {user_id}, data: {data}",
         )
@@ -163,6 +163,33 @@ class MockLiteLLMPGService:
         """Mock create_budget method for testing."""
         logger.debug("mock create_budget called")
         return []
+
+    async def block_user(self, user_id: str, blocked: bool = True):
+        """Mock block_user method for testing."""
+        logger.debug(
+            f"mock block_user called with user_id: {user_id}, blocked: {blocked}",
+        )
+        if user_id not in self.users:
+            from fastapi import HTTPException
+
+            raise HTTPException(status_code=404, detail="User not found")
+        self.users[user_id]["blocked"] = blocked
+        return self.users[user_id]
+
+    async def list_users(self, limit: int = 50, offset: int = 0):
+        """Mock list_users method for testing."""
+        logger.debug(
+            f"mock list_users called with limit: {limit}, offset: {offset}",
+        )
+        user_list = list(self.users.values())
+        total = len(user_list)
+        paginated_users = user_list[offset : offset + limit]
+        return {
+            "users": paginated_users,
+            "total": total,
+            "limit": limit,
+            "offset": offset,
+        }
 
 
 class MockFxAService:
