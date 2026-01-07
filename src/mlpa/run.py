@@ -43,6 +43,8 @@ tags_metadata = [
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    litellm_connected = False
+    app_attest_connected = False
     try:
         get_http_client()
         await litellm_pg.connect()
