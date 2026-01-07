@@ -38,6 +38,10 @@ tags_metadata = [
     },
     {"name": "LiteLLM", "description": "Endpoints for interacting with LiteLLM."},
     {"name": "Mock", "description": "Mock endpoints for testing purposes."},
+    {
+        "name": "User Management",
+        "description": "Endpoints for managing user blocking status.",
+    },
 ]
 
 
