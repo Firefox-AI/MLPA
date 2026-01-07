@@ -101,7 +101,7 @@ async def test_get_completion_http_error(mocker):
 
     # 1. Verify exception details - should use the upstream status code (500)
     assert exc_info.value.status_code == 500
-    assert exc_info.value.detail == "Upstream service returned an error"
+    assert exc_info.value.detail == {"error": "Upstream service returned an error"}
 
     # 2. Verify latency metric was observed with ERROR
     mock_metrics.chat_completion_latency.labels.assert_called_once_with(
@@ -346,13 +346,12 @@ async def test_get_completion_400_non_rate_limit_error(mocker):
     mock_metrics = mocker.patch("mlpa.core.completions.metrics")
     mock_logger = mocker.patch("mlpa.core.completions.logger")
 
-    # Act & Assert: Expect a 429 HTTPException (since 400 is checked for rate limits)
-    # but since it's not a rate limit error, it should fall through to generic 429
+    # Act & Assert: Expect a 400 HTTPException with the upstream error payload
     with pytest.raises(HTTPException) as exc_info:
         await get_completion(SAMPLE_REQUEST)
 
-    assert exc_info.value.status_code == 429
-    assert exc_info.value.detail == "Upstream service returned an error"
+    assert exc_info.value.status_code == 400
+    assert exc_info.value.detail == {"error": "Upstream service returned an error"}
 
 
 async def test_get_completion_429_non_rate_limit_error(mocker):
@@ -378,12 +377,12 @@ async def test_get_completion_429_non_rate_limit_error(mocker):
 
     mock_metrics = mocker.patch("mlpa.core.completions.metrics")
 
-    # Act & Assert: Expect a generic 429 HTTPException
+    # Act & Assert: Expect a 429 HTTPException with the upstream error payload
     with pytest.raises(HTTPException) as exc_info:
         await get_completion(SAMPLE_REQUEST)
 
     assert exc_info.value.status_code == 429
-    assert exc_info.value.detail == "Upstream service returned an error"
+    assert exc_info.value.detail == {"error": "Upstream service returned an error"}
 
 
 async def test_get_completion_429_invalid_json(mocker):
@@ -407,12 +406,12 @@ async def test_get_completion_429_invalid_json(mocker):
 
     mock_metrics = mocker.patch("mlpa.core.completions.metrics")
 
-    # Act & Assert: Expect a generic 429 HTTPException (invalid JSON is handled gracefully)
+    # Act & Assert: Expect a 429 HTTPException with the upstream error payload
     with pytest.raises(HTTPException) as exc_info:
         await get_completion(SAMPLE_REQUEST)
 
     assert exc_info.value.status_code == 429
-    assert exc_info.value.detail == "Upstream service returned an error"
+    assert exc_info.value.detail == {"error": "Upstream service returned an error"}
 
 
 async def test_stream_completion_budget_limit_exceeded_429(
