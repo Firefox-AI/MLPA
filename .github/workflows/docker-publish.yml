@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - add-mozilla-it-deploy
     tags:
       - "v*"
 
@@ -21,5 +22,3 @@ jobs:
       gar_name: llm-proxy-prod
       project_id: moz-fx-llm-proxy-prod-b0b8
       should_tag_latest: true
-      workload_identity_pool_project_number: 324168772199
-      gar_location: us
