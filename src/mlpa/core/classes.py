@@ -14,6 +14,8 @@ class ChatRequest(BaseModel):
     max_completion_tokens: Optional[int] = env.MAX_COMPLETION_TOKENS
     top_p: Optional[float] = env.TOP_P
     mock_response: Optional[str] = None
+    tools: Optional[list] = None
+    tool_choice: Optional[str | dict] = None
 
 
 class UserUpdatePayload(BaseModel):

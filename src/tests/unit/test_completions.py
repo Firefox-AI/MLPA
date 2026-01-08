@@ -6,6 +6,7 @@ import pytest
 from fastapi import HTTPException
 from pytest_httpx import HTTPXMock, IteratorStream
 
+from mlpa.core.classes import AuthorizedChatRequest
 from mlpa.core.completions import get_completion, stream_completion
 from mlpa.core.config import (
     ERROR_CODE_BUDGET_LIMIT_EXCEEDED,
@@ -664,3 +665,136 @@ async def test_stream_completion_exception_after_streaming_started(
         result=PrometheusResult.ERROR
     )
     mock_metrics.chat_completion_latency.labels().observe.assert_called_once()
+
+
+async def test_get_completion_preserves_tools(mocker):
+    """
+    Tests that tool-related fields (tools and tool_choice) are preserved
+    when forwarding requests to LiteLLM.
+    """
+    tools = [
+        {
+            "type": "function",
+            "function": {
+                "name": "search_browsing_history",
+                "description": "Search browsing history",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "searchTerm": {"type": "string"},
+                        "startTs": {"type": "string"},
+                        "endTs": {"type": "string"},
+                    },
+                },
+            },
+        }
+    ]
+    tool_choice = "auto"
+
+    request_with_tools = AuthorizedChatRequest(
+        user="test-user-123:ai",
+        model="test-model",
+        messages=[
+            {"role": "user", "content": "What mario sites did i look at yesterday?"}
+        ],
+        temperature=0.7,
+        top_p=0.9,
+        max_completion_tokens=150,
+        tools=tools,
+        tool_choice=tool_choice,
+    )
+
+    mock_response = MagicMock()
+    mock_response.json.return_value = SUCCESSFUL_CHAT_RESPONSE
+    mock_response.raise_for_status.return_value = None
+
+    mock_client = AsyncMock()
+    mock_client.post.return_value = mock_response
+
+    mock_get_client = mocker.patch("mlpa.core.completions.get_http_client")
+    mock_get_client.return_value = mock_client
+
+    mock_metrics = mocker.patch("mlpa.core.completions.metrics")
+
+    await get_completion(request_with_tools)
+
+    mock_client.post.assert_awaited_once()
+    _, call_kwargs = mock_client.post.call_args
+    sent_json = call_kwargs.get("json", {})
+
+    assert sent_json["tools"] == tools
+    assert sent_json["tool_choice"] == tool_choice
+    assert sent_json["model"] == request_with_tools.model
+    assert sent_json["messages"] == request_with_tools.messages
+
+
+async def test_stream_completion_preserves_tools(httpx_mock: HTTPXMock, mocker):
+    """
+    Tests that tool-related fields (tools and tool_choice) are preserved
+    when forwarding streaming requests to LiteLLM.
+    """
+    # Arrange: Create a request with tools
+    tools = [
+        {
+            "type": "function",
+            "function": {
+                "name": "search_browsing_history",
+                "description": "Search browsing history",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "searchTerm": {"type": "string"},
+                        "startTs": {"type": "string"},
+                        "endTs": {"type": "string"},
+                    },
+                },
+            },
+        }
+    ]
+    tool_choice = {"type": "function", "function": {"name": "search_browsing_history"}}
+
+    request_with_tools = AuthorizedChatRequest(
+        user="test-user-123:ai",
+        model="test-model",
+        messages=[
+            {"role": "user", "content": "What mario sites did i look at yesterday?"}
+        ],
+        temperature=0.7,
+        top_p=0.9,
+        max_completion_tokens=150,
+        tools=tools,
+        tool_choice=tool_choice,
+    )
+
+    mock_chunks = [
+        b'data: {"choices":[{"delta":{"tool_calls":[{"id":"call_123","type":"function","function":{"name":"search_browsing_history","arguments":"{\\"searchTerm\\":\\"mario\\"}"}}]}}]}\n\n',
+        b"data: [DONE]\n\n",
+    ]
+
+    httpx_mock.add_response(
+        method="POST",
+        url=LITELLM_COMPLETIONS_URL,
+        stream=IteratorStream(mock_chunks),
+        status_code=200,
+    )
+
+    mock_metrics = mocker.patch("mlpa.core.completions.metrics")
+    mock_tokenizer = MagicMock()
+    mock_tokenizer.encode.return_value = [1, 2]
+    mock_tiktoken = mocker.patch("mlpa.core.completions.tiktoken")
+    mock_tiktoken.encoding_for_model.return_value = mock_tokenizer
+    mock_tiktoken.get_encoding.return_value = mock_tokenizer
+
+    received_chunks = [chunk async for chunk in stream_completion(request_with_tools)]
+
+    request = httpx_mock.get_request()
+    assert request is not None
+    request_body = json.loads(request.content)
+
+    assert request_body["tools"] == tools
+    assert request_body["tool_choice"] == tool_choice
+    assert request_body["model"] == request_with_tools.model
+    assert request_body["messages"] == request_with_tools.messages
+
+    assert len(received_chunks) == len(mock_chunks)
+    assert b"tool_calls" in received_chunks[0]

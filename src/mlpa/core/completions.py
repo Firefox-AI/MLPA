@@ -81,12 +81,10 @@ async def stream_completion(authorized_chat_request: AuthorizedChatRequest):
     """
     start_time = time.time()
     body = {
-        "model": authorized_chat_request.model,
-        "messages": authorized_chat_request.messages,
-        "temperature": authorized_chat_request.temperature,
-        "top_p": authorized_chat_request.top_p,
+        **authorized_chat_request.model_dump(
+            exclude={"max_completion_tokens"}, exclude_none=True
+        ),
         "max_tokens": authorized_chat_request.max_completion_tokens,
-        "user": authorized_chat_request.user,
         "stream": True,
     }
     result = PrometheusResult.ERROR
@@ -168,13 +166,10 @@ async def get_completion(authorized_chat_request: AuthorizedChatRequest):
     """
     start_time = time.time()
     body = {
-        "model": authorized_chat_request.model,
-        "messages": authorized_chat_request.messages,
-        "temperature": authorized_chat_request.temperature,
-        "top_p": authorized_chat_request.top_p,
+        **authorized_chat_request.model_dump(
+            exclude={"max_completion_tokens"}, exclude_none=True
+        ),
         "max_tokens": authorized_chat_request.max_completion_tokens,
-        "user": authorized_chat_request.user,
-        "mock_response": authorized_chat_request.mock_response,
         "stream": False,
     }
     result = PrometheusResult.ERROR
