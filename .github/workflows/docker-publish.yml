@@ -4,9 +4,8 @@ on:
   push:
     branches:
       - main
-      - add-mozilla-it-deploy
     tags:
-      - "v**"
+      - "v*"
 
 jobs:
   # docs - https://github.com/mozilla-it/deploy-actions/blob/main/.github/workflows/docs/build-and-push.md
