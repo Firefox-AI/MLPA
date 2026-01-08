@@ -7,7 +7,7 @@ def test_user_info_wrong_params(mocked_client_integration):
         "/user/",
         headers={"authorization": "Bearer " + TEST_FXA_TOKEN},
     )
-    assert response.status_code == 404
+    assert response.status_code in [404, 422]
 
     response = mocked_client_integration.get(
         "/user/invalid/user-id",

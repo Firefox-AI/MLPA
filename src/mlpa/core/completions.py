@@ -84,7 +84,7 @@ def _parse_rate_limit_error(error_text: str, user: str, model_name: str) -> int 
     return None
 
 
-async def _handle_rate_limit_error(
+def _handle_rate_limit_error(
     e: httpx.HTTPStatusError, user: str, model_name: str
 ) -> None:
     error_text = e.response.text
@@ -160,7 +160,7 @@ async def stream_completion(authorized_chat_request: AuthorizedChatRequest):
                 except Exception:
                     pass
 
-                if e.response.status_code == 429 or e.response.status_code == 400:
+                if e.response.status_code in {400, 429}:
                     # Check for budget or rate limit errors
                     error_code = _parse_rate_limit_error(
                         error_text_str, authorized_chat_request.user, model
@@ -315,43 +315,31 @@ async def get_completion(authorized_chat_request: AuthorizedChatRequest):
             headers=LITELLM_COMPLETION_AUTH_HEADERS,
             json=body,
         )
-        data = response.json()
         try:
             response.raise_for_status()
         except httpx.HTTPStatusError as e:
-            if e.response.status_code == 429 or e.response.status_code == 400:
-                try:
-                    await _handle_rate_limit_error(
-                        e, authorized_chat_request.user, model
-                    )
-                except HTTPException:
-                    metrics.ai_error_count_total.labels(
-                        model_name=model, error=f"HTTP_{e.response.status_code}"
-                    ).inc()
-                    logger.error(
-                        "Upstream HTTP error",
-                        extra={
-                            "user_id": authorized_chat_request.user,
-                            "model": model,
-                            "stream": False,
-                            "temperature": authorized_chat_request.temperature,
-                            "top_p": authorized_chat_request.top_p,
-                            "max_tokens": authorized_chat_request.max_completion_tokens,
-                            "status_code": e.response.status_code,
-                        },
-                    )
-                    raise
-                raise HTTPException(
-                    status_code=429,
-                    detail=f"Upstream service returned an error",
-                )
+            if e.response.status_code in {400, 429}:
+                _handle_rate_limit_error(e, authorized_chat_request.user, model)
+            metrics.ai_error_count_total.labels(
+                model_name=model, error=f"HTTP_{e.response.status_code}"
+            ).inc()
             logger.error(
-                f"Upstream service returned an error: {e.response.status_code} - {e.response.text}"
+                "Upstream HTTP error",
+                extra={
+                    "user_id": authorized_chat_request.user,
+                    "model": model,
+                    "stream": False,
+                    "temperature": authorized_chat_request.temperature,
+                    "top_p": authorized_chat_request.top_p,
+                    "max_tokens": authorized_chat_request.max_completion_tokens,
+                    "status_code": e.response.status_code,
+                },
             )
             raise HTTPException(
                 status_code=e.response.status_code,
-                detail=f"Upstream service returned an error",
+                detail={"error": "Upstream service returned an error"},
             )
+        data = response.json()
         usage = data.get("usage", {})
         prompt_tokens = usage.get("prompt_tokens", 0)
         completion_tokens = usage.get("completion_tokens", 0)
