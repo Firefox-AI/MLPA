@@ -11,7 +11,7 @@ on:
 jobs:
   # docs - https://github.com/mozilla-it/deploy-actions/blob/main/.github/workflows/docs/build-and-push.md
   build-and-push:
-    environment: build
+    secrets: inherit
     permissions:
       contents: read
       id-token: write
