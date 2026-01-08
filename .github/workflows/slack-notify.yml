@@ -1,0 +1,35 @@
+name: Slack notify on pr-ready label
+
+on:
+  issues:
+    types: [labeled]
+  pull_request:
+    types: [labeled]
+
+permissions:
+  contents: read
+
+jobs:
+  notify-slack:
+    # Only run when the label added is exactly "pr-ready"
+    if: github.event.label.name == 'pr-ready'
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Post to Slack
+        uses: slackapi/slack-github-action@v2
+        with:
+          method: chat.postMessage
+          token: ${{ secrets.SLACK_BOT_TOKEN }}
+          payload: |
+            channel: "${{ secrets.SLACK_CHANNEL_ID }}"
+            text: "🏷️ pr-ready label added to #${{ github.event.pull_request.number || github.event.issue.number }}"
+            blocks:
+              - type: section
+                text:
+                  type: mrkdwn
+                  text: "🏷️ *pr-ready* label added\n*Repo:* <${{ github.event.repository.html_url }}|${{ github.event.repository.full_name }}>\n*Item:* <${{ github.event.pull_request.html_url || github.event.issue.html_url }}|#${{ github.event.pull_request.number || github.event.issue.number }} — ${{ github.event.pull_request.title || github.event.issue.title }}>\n*By:* `${{ github.actor }}`"
+              - type: context
+                elements:
+                  - type: mrkdwn
+                    text: "Event: `${{ github.event_name }}` • Action: `${{ github.event.action }}`"
