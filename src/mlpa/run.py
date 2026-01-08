@@ -38,11 +38,17 @@ tags_metadata = [
     },
     {"name": "LiteLLM", "description": "Endpoints for interacting with LiteLLM."},
     {"name": "Mock", "description": "Mock endpoints for testing purposes."},
+    {
+        "name": "User Management",
+        "description": "Endpoints for managing user blocking status.",
+    },
 ]
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    litellm_connected = False
+    app_attest_connected = False
     try:
         get_http_client()
         await litellm_pg.connect()

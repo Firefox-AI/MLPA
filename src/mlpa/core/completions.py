@@ -58,8 +58,7 @@ def _parse_rate_limit_error(error_text: str, user: str) -> int | None:
     return None
 
 
-async def _handle_rate_limit_error(e: httpx.HTTPStatusError, user: str) -> None:
-    error_text = e.response.text
+def _handle_rate_limit_error(error_text: str, user: str) -> None:
     error_code = _parse_rate_limit_error(error_text, user)
     if error_code == ERROR_CODE_BUDGET_LIMIT_EXCEEDED:
         raise HTTPException(
@@ -67,7 +66,7 @@ async def _handle_rate_limit_error(e: httpx.HTTPStatusError, user: str) -> None:
             detail={"error": ERROR_CODE_BUDGET_LIMIT_EXCEEDED},
             headers={"Retry-After": "86400"},
         )
-    elif error_code == ERROR_CODE_RATE_LIMIT_EXCEEDED:
+    if error_code == ERROR_CODE_RATE_LIMIT_EXCEEDED:
         raise HTTPException(
             status_code=429,
             detail={"error": ERROR_CODE_RATE_LIMIT_EXCEEDED},
@@ -82,12 +81,10 @@ async def stream_completion(authorized_chat_request: AuthorizedChatRequest):
     """
     start_time = time.time()
     body = {
-        "model": authorized_chat_request.model,
-        "messages": authorized_chat_request.messages,
-        "temperature": authorized_chat_request.temperature,
-        "top_p": authorized_chat_request.top_p,
+        **authorized_chat_request.model_dump(
+            exclude={"max_completion_tokens"}, exclude_none=True
+        ),
         "max_tokens": authorized_chat_request.max_completion_tokens,
-        "user": authorized_chat_request.user,
         "stream": True,
     }
     result = PrometheusResult.ERROR
@@ -117,7 +114,7 @@ async def stream_completion(authorized_chat_request: AuthorizedChatRequest):
                 except Exception:
                     pass
 
-                if e.response.status_code == 429 or e.response.status_code == 400:
+                if e.response.status_code in {400, 429}:
                     # Check for budget or rate limit errors
                     error_code = _parse_rate_limit_error(
                         error_text_str, authorized_chat_request.user
@@ -169,13 +166,10 @@ async def get_completion(authorized_chat_request: AuthorizedChatRequest):
     """
     start_time = time.time()
     body = {
-        "model": authorized_chat_request.model,
-        "messages": authorized_chat_request.messages,
-        "temperature": authorized_chat_request.temperature,
-        "top_p": authorized_chat_request.top_p,
+        **authorized_chat_request.model_dump(
+            exclude={"max_completion_tokens"}, exclude_none=True
+        ),
         "max_tokens": authorized_chat_request.max_completion_tokens,
-        "user": authorized_chat_request.user,
-        "mock_response": authorized_chat_request.mock_response,
         "stream": False,
     }
     result = PrometheusResult.ERROR
@@ -189,26 +183,26 @@ async def get_completion(authorized_chat_request: AuthorizedChatRequest):
             headers=LITELLM_COMPLETION_AUTH_HEADERS,
             json=body,
         )
-        data = response.json()
         try:
             response.raise_for_status()
         except httpx.HTTPStatusError as e:
-            if e.response.status_code == 429 or e.response.status_code == 400:
-                try:
-                    await _handle_rate_limit_error(e, authorized_chat_request.user)
-                except HTTPException:
-                    raise
+            if e.response.status_code in {400, 429}:
+                _handle_rate_limit_error(e.response.text, authorized_chat_request.user)
+                logger.error(
+                    f"Upstream service returned an error: {e.response.status_code} - {e.response.text}"
+                )
                 raise HTTPException(
-                    status_code=429,
-                    detail=f"Upstream service returned an error",
+                    status_code=e.response.status_code,
+                    detail={"error": "Upstream service returned an error"},
                 )
             logger.error(
                 f"Upstream service returned an error: {e.response.status_code} - {e.response.text}"
             )
             raise HTTPException(
                 status_code=e.response.status_code,
-                detail=f"Upstream service returned an error",
+                detail={"error": "Upstream service returned an error"},
             )
+        data = response.json()
         usage = data.get("usage", {})
         prompt_tokens = usage.get("prompt_tokens", 0)
         completion_tokens = usage.get("completion_tokens", 0)
