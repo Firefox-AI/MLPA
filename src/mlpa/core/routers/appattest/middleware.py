@@ -1,10 +1,10 @@
 from typing import Annotated
 
 from fastapi import APIRouter, Header, HTTPException
-from loguru import logger
 
 from mlpa.core.classes import AssertionAuth, ChatRequest
 from mlpa.core.config import env
+from mlpa.core.logger import logger
 from mlpa.core.routers.appattest import (
     generate_client_challenge,
     validate_challenge,

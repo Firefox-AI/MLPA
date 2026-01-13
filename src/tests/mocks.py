@@ -5,13 +5,10 @@ import cbor2
 from cryptography.hazmat.primitives import serialization
 from cryptography.x509 import load_der_x509_certificate
 from fastapi import HTTPException
-from fastapi.responses import JSONResponse
-from loguru import logger
-from pyattest.assertion import Assertion
 from pyattest.testutils.factories.attestation import apple as apple_factory
 
 from mlpa.core.classes import AuthorizedChatRequest, ChatRequest
-from mlpa.core.config import env
+from mlpa.core.logger import logger
 from mlpa.core.routers.appattest.appattest import validate_challenge
 from mlpa.core.utils import b64decode_safe, parse_app_attest_jwt
 from tests.consts import (

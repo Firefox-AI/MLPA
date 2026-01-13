@@ -1,7 +1,7 @@
 from fastapi import HTTPException
-from loguru import logger
 
 from mlpa.core.config import env
+from mlpa.core.logger import logger
 from mlpa.core.pg_services.pg_service import PGService
 
 

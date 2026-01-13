@@ -345,7 +345,7 @@ async def test_get_completion_400_non_rate_limit_error(mocker):
     mock_get_client.return_value = mock_client
 
     mock_metrics = mocker.patch("mlpa.core.completions.metrics")
-    mock_logger = mocker.patch("mlpa.core.completions.logger")
+    mock_logger = mocker.patch("mlpa.core.utils.logger")
 
     # Act & Assert: Expect a 400 HTTPException with the upstream error payload
     with pytest.raises(HTTPException) as exc_info:
@@ -383,7 +383,7 @@ async def test_get_completion_429_non_rate_limit_error(mocker):
         await get_completion(SAMPLE_REQUEST)
 
     assert exc_info.value.status_code == 429
-    assert exc_info.value.detail == {"error": "Upstream service returned an error"}
+    assert exc_info.value.detail == {"error": "Rate limit exceeded"}
 
 
 async def test_get_completion_429_invalid_json(mocker):
@@ -412,7 +412,7 @@ async def test_get_completion_429_invalid_json(mocker):
         await get_completion(SAMPLE_REQUEST)
 
     assert exc_info.value.status_code == 429
-    assert exc_info.value.detail == {"error": "Upstream service returned an error"}
+    assert exc_info.value.detail == {"error": "Rate limit exceeded"}
 
 
 async def test_stream_completion_budget_limit_exceeded_429(
@@ -552,14 +552,14 @@ async def test_stream_completion_400_non_rate_limit_error(
     )
 
     mock_metrics = mocker.patch("mlpa.core.completions.metrics")
-    mock_logger = mocker.patch("mlpa.core.completions.logger")
+    mock_logger = mocker.patch("mlpa.core.utils.logger")
 
     received_chunks = [chunk async for chunk in stream_completion(SAMPLE_REQUEST)]
 
     assert len(received_chunks) == 1
     assert (
         received_chunks[0]
-        == b'data: {"error": "Upstream service returned an error"}\n\n'
+        == b'data: {"code": 400, "error": "Upstream service returned an error"}\n\n'
     )
     mock_logger.error.assert_called_once()
     mock_metrics.chat_completion_latency.labels.assert_called_once_with(
@@ -584,14 +584,14 @@ async def test_stream_completion_429_non_rate_limit_error(
     )
 
     mock_metrics = mocker.patch("mlpa.core.completions.metrics")
-    mock_logger = mocker.patch("mlpa.core.completions.logger")
+    mock_logger = mocker.patch("mlpa.core.utils.logger")
 
     received_chunks = [chunk async for chunk in stream_completion(SAMPLE_REQUEST)]
 
     assert len(received_chunks) == 1
     assert (
         received_chunks[0]
-        == b'data: {"error": "Upstream service returned an error"}\n\n'
+        == b'data: {"code": 429, "error": "Upstream service returned an error"}\n\n'
     )
     mock_logger.error.assert_called_once()
     mock_metrics.chat_completion_latency.labels.assert_called_once_with(
@@ -611,14 +611,14 @@ async def test_stream_completion_429_invalid_json(httpx_mock: HTTPXMock, mocker)
     )
 
     mock_metrics = mocker.patch("mlpa.core.completions.metrics")
-    mock_logger = mocker.patch("mlpa.core.completions.logger")
+    mock_logger = mocker.patch("mlpa.core.utils.logger")
 
     received_chunks = [chunk async for chunk in stream_completion(SAMPLE_REQUEST)]
 
     assert len(received_chunks) == 1
     assert (
         received_chunks[0]
-        == b'data: {"error": "Upstream service returned an error"}\n\n'
+        == b'data: {"code": 429, "error": "Upstream service returned an error"}\n\n'
     )
     mock_logger.error.assert_called_once()
     mock_metrics.chat_completion_latency.labels.assert_called_once_with(
@@ -641,7 +641,7 @@ async def test_stream_completion_exception_after_streaming_started(
     )
 
     mock_metrics = mocker.patch("mlpa.core.completions.metrics")
-    mock_logger = mocker.patch("mlpa.core.completions.logger")
+    mock_logger = mocker.patch("mlpa.core.utils.logger")
 
     # Reset the global tokenizer to ensure it's not already initialized
     import mlpa.core.completions as completions_module
