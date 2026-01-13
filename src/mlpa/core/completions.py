@@ -147,12 +147,12 @@ async def stream_completion(authorized_chat_request: AuthorizedChatRequest):
         if not streaming_started:
             yield raise_and_log(e, True)
         else:
-            raise_and_log(e, True)
+            logger.error(f"Upstream service returned an error: {e}")
     except Exception as e:
         if not streaming_started:
             yield raise_and_log(e, True, 502, "Failed to proxy request")
         else:
-            raise_and_log(e, True, 502, "Failed to proxy request")
+            logger.error(f"Upstream service returned an error: {e}")
     finally:
         metrics.chat_completion_latency.labels(result=result).observe(
             time.time() - start_time
@@ -187,8 +187,6 @@ async def get_completion(authorized_chat_request: AuthorizedChatRequest):
         except httpx.HTTPStatusError as e:
             if e.response.status_code in {400, 429}:
                 _handle_rate_limit_error(e.response.text, authorized_chat_request.user)
-                if e.response.status_code == 429:
-                    raise_and_log(e, False, 429, "Rate limit exceeded")
             raise_and_log(e)
         data = response.json()
         usage = data.get("usage", {})

@@ -14,19 +14,21 @@ class LiteLLMPGService(PGService):
         super().__init__(env.LITELLM_DB_NAME)
 
     async def get_user(self, user_id: str):
-        async with self.pg.acquire() as conn:
-            query = 'SELECT * FROM "LiteLLM_EndUserTable" WHERE user_id = $1'
-            stmt = await self._get_prepared_statement(conn, query)
-            user = await stmt.fetchrow(user_id)
-            return dict(user) if user else None
+        user = await self.pg.fetchrow(
+            'SELECT * FROM "LiteLLM_EndUserTable" WHERE user_id = $1',
+            user_id,
+        )
+        return dict(user) if user else None
 
     async def block_user(self, user_id: str, blocked: bool = True) -> dict:
         try:
             async with self.pg.acquire() as conn:
                 async with conn.transaction():
-                    query = 'UPDATE "LiteLLM_EndUserTable" SET "blocked" = $1 WHERE user_id = $2 RETURNING *'
-                    stmt = await self._get_prepared_statement(conn, query)
-                    updated_user_record = await stmt.fetchrow(blocked, user_id)
+                    updated_user_record = await conn.fetchrow(
+                        'UPDATE "LiteLLM_EndUserTable" SET "blocked" = $1 WHERE user_id = $2 RETURNING *',
+                        blocked,
+                        user_id,
+                    )
 
                     if updated_user_record is None:
                         logger.error(
@@ -48,21 +50,21 @@ class LiteLLMPGService(PGService):
 
     async def list_users(self, limit: int = 50, offset: int = 0) -> dict:
         try:
-            async with self.pg.acquire() as conn:
-                count_query = 'SELECT COUNT(*) FROM "LiteLLM_EndUserTable"'
-                count_stmt = await self._get_prepared_statement(conn, count_query)
-                total = await count_stmt.fetchval()
+            total = await self.pg.fetchval(
+                'SELECT COUNT(*) FROM "LiteLLM_EndUserTable"'
+            )
+            users = await self.pg.fetch(
+                'SELECT * FROM "LiteLLM_EndUserTable" ORDER BY user_id LIMIT $1 OFFSET $2',
+                limit,
+                offset,
+            )
 
-                query = 'SELECT * FROM "LiteLLM_EndUserTable" ORDER BY user_id LIMIT $1 OFFSET $2'
-                stmt = await self._get_prepared_statement(conn, query)
-                users = await stmt.fetch(limit, offset)
-
-                return {
-                    "users": [dict(user) for user in users],
-                    "total": total,
-                    "limit": limit,
-                    "offset": offset,
-                }
+            return {
+                "users": [dict(user) for user in users],
+                "total": total,
+                "limit": limit,
+                "offset": offset,
+            }
         except Exception as e:
             logger.error(f"Error listing users: {e}")
             raise HTTPException(
