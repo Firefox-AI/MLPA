@@ -148,7 +148,9 @@ def raise_and_log(
     status_code = response_code or getattr(response, "status_code", None) or 500
     logger.error(f"{response_text_prefix or GENERIC_UPSTREAM_ERROR}: {detail_text}")
     if stream:
-        return f'data: {{"code": {status_code}, "error": "{detail_text if env.MLPA_DEBUG else GENERIC_UPSTREAM_ERROR}"}}\n\n'.encode()
+        error_msg = detail_text if env.MLPA_DEBUG else GENERIC_UPSTREAM_ERROR
+        payload = {"code": status_code, "error": error_msg}
+        return f"data: {json.dumps(payload)}\n\n".encode()
     else:
         raise HTTPException(
             status_code=status_code,
