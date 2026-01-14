@@ -5,7 +5,6 @@ from typing import Optional
 import httpx
 import tiktoken
 from fastapi import HTTPException
-from loguru import logger
 
 from mlpa.core.classes import AuthorizedChatRequest
 from mlpa.core.config import (
@@ -16,8 +15,9 @@ from mlpa.core.config import (
     env,
 )
 from mlpa.core.http_client import get_http_client
+from mlpa.core.logger import logger
 from mlpa.core.prometheus_metrics import PrometheusResult, metrics
-from mlpa.core.utils import is_rate_limit_error
+from mlpa.core.utils import is_rate_limit_error, raise_and_log
 
 # Global default tokenizer - initialized once at module load time
 _global_default_tokenizer: Optional[tiktoken.Encoding] = None
@@ -124,10 +124,7 @@ async def stream_completion(authorized_chat_request: AuthorizedChatRequest):
                         return
 
                 # For other errors or if we couldn't parse the error
-                logger.error(
-                    f"Upstream service returned an error: {e.response.status_code} - {error_text_str}"
-                )
-                yield f'data: {{"error": "Upstream service returned an error"}}\n\n'.encode()
+                yield raise_and_log(e, True)
                 return
 
             async for chunk in response.aiter_bytes():
@@ -147,13 +144,15 @@ async def stream_completion(authorized_chat_request: AuthorizedChatRequest):
             metrics.chat_tokens.labels(type="completion").inc(num_completion_tokens)
             result = PrometheusResult.SUCCESS
     except httpx.HTTPStatusError as e:
-        logger.error(f"Upstream service returned an error: {e}")
         if not streaming_started:
-            yield f'data: {{"error": "Upstream service returned an error"}}\n\n'.encode()
+            yield raise_and_log(e, True)
+        else:
+            logger.error(f"Upstream service returned an error: {e}")
     except Exception as e:
-        logger.error(f"Failed to proxy request to {LITELLM_COMPLETIONS_URL}: {e}")
         if not streaming_started:
-            yield f'data: {{"error": "Failed to proxy request"}}\n\n'.encode()
+            yield raise_and_log(e, True, 502, "Failed to proxy request")
+        else:
+            logger.error(f"Upstream service returned an error: {e}")
     finally:
         metrics.chat_completion_latency.labels(result=result).observe(
             time.time() - start_time
@@ -188,20 +187,7 @@ async def get_completion(authorized_chat_request: AuthorizedChatRequest):
         except httpx.HTTPStatusError as e:
             if e.response.status_code in {400, 429}:
                 _handle_rate_limit_error(e.response.text, authorized_chat_request.user)
-                logger.error(
-                    f"Upstream service returned an error: {e.response.status_code} - {e.response.text}"
-                )
-                raise HTTPException(
-                    status_code=e.response.status_code,
-                    detail={"error": "Upstream service returned an error"},
-                )
-            logger.error(
-                f"Upstream service returned an error: {e.response.status_code} - {e.response.text}"
-            )
-            raise HTTPException(
-                status_code=e.response.status_code,
-                detail={"error": "Upstream service returned an error"},
-            )
+            raise_and_log(e)
         data = response.json()
         usage = data.get("usage", {})
         prompt_tokens = usage.get("prompt_tokens", 0)
@@ -215,11 +201,7 @@ async def get_completion(authorized_chat_request: AuthorizedChatRequest):
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Failed to proxy request to {LITELLM_COMPLETIONS_URL}: {e}")
-        raise HTTPException(
-            status_code=502,
-            detail={"error": f"Failed to proxy request"},
-        )
+        raise_and_log(e, False, 502, "Failed to proxy request")
     finally:
         metrics.chat_completion_latency.labels(result=result).observe(
             time.time() - start_time

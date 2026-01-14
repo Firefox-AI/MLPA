@@ -1,12 +1,9 @@
 import sys
-from collections.abc import MutableMapping
-from typing import Any
 
 import asyncpg
-from cachetools import LRUCache
-from loguru import logger
 
 from mlpa.core.config import env
+from mlpa.core.logger import logger
 
 
 class PGService:
@@ -18,29 +15,13 @@ class PGService:
         self.connected = False
         self.pg = None
 
-    def _create_stmt_cache(self) -> MutableMapping[str, Any]:
-        """Create a prepared statement cache with LRU eviction."""
-        return LRUCache(maxsize=env.PG_PREPARED_STMT_CACHE_MAX_SIZE)
-
-    async def _get_prepared_statement(self, conn: asyncpg.Connection, query: str):
-        stmt_cache = getattr(conn, "_mlpa_stmt_cache", None)
-        if stmt_cache is None:
-            stmt_cache = self._create_stmt_cache()
-            conn._mlpa_stmt_cache = stmt_cache
-
-        if query in stmt_cache:
-            return stmt_cache[query]
-
-        prepared_stmt = await conn.prepare(query)
-        stmt_cache[query] = prepared_stmt
-        return prepared_stmt
-
     async def connect(self):
         try:
             self.pg = await asyncpg.create_pool(
                 self.db_url,
                 min_size=env.PG_POOL_MIN_SIZE,
                 max_size=env.PG_POOL_MAX_SIZE,
+                statement_cache_size=env.PG_PREPARED_STMT_CACHE_MAX_SIZE,
             )
             self.connected = True
             logger.info(f"Connected to /{self.db_name}")

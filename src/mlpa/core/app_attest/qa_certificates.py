@@ -6,9 +6,9 @@ from typing import Iterable
 
 from google.cloud import storage
 from google.cloud.exceptions import NotFound
-from loguru import logger
 
 from mlpa.core.config import env
+from mlpa.core.logger import logger
 
 QA_CERT_DIR = Path(env.APP_ATTEST_QA_CERT_DIR)
 QA_CERT_FILENAMES: tuple[str, ...] = (

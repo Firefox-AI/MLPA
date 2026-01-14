@@ -12,13 +12,13 @@ from cryptography.hazmat.primitives.asymmetric import ec
 from cryptography.x509.base import load_pem_x509_certificate
 from fastapi import HTTPException
 from fastapi.concurrency import run_in_threadpool
-from loguru import logger
 from pyattest.assertion import Assertion
 from pyattest.attestation import Attestation
 from pyattest.configs.apple import AppleConfig
 
 from mlpa.core.app_attest import QA_CERT_DIR, ensure_qa_certificates
 from mlpa.core.config import env
+from mlpa.core.logger import logger
 from mlpa.core.pg_services.services import app_attest_pg
 from mlpa.core.prometheus_metrics import PrometheusResult, metrics
 from mlpa.core.utils import b64decode_safe

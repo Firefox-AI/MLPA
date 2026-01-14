@@ -1,11 +1,13 @@
 from typing import Annotated
 
+import httpx
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
-from loguru import logger
 
 from mlpa.core.config import LITELLM_MASTER_AUTH_HEADERS, env
 from mlpa.core.http_client import get_http_client
+from mlpa.core.logger import logger
 from mlpa.core.pg_services.services import litellm_pg
+from mlpa.core.utils import raise_and_log
 
 router = APIRouter()
 
@@ -45,6 +47,10 @@ async def user_info(user_id: str):
         params=params,
         headers=LITELLM_MASTER_AUTH_HEADERS,
     )
+    try:
+        response.raise_for_status()
+    except httpx.HTTPStatusError as e:
+        raise_and_log(e, False, e.response.status_code, "Error fetching user info")
     user = response.json()
 
     if not user:

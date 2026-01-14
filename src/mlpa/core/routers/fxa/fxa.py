@@ -2,8 +2,8 @@ import time
 from typing import Annotated
 
 from fastapi import APIRouter, Header, HTTPException
-from loguru import logger
 
+from mlpa.core.logger import logger
 from mlpa.core.prometheus_metrics import PrometheusResult, metrics
 from mlpa.core.utils import get_fxa_client
 

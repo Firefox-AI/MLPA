@@ -1,13 +1,15 @@
+import ast
 import base64
+import json
 
 from fastapi import HTTPException
 from fxa.oauth import Client
 from jwtoxide import DecodingKey, ValidationOptions, decode
-from loguru import logger
 
 from mlpa.core.classes import AssertionAuth, AttestationAuth
 from mlpa.core.config import LITELLM_MASTER_AUTH_HEADERS, env
 from mlpa.core.http_client import get_http_client
+from mlpa.core.logger import logger
 
 
 async def get_or_create_user(user_id: str):
@@ -107,3 +109,54 @@ def parse_app_attest_jwt(authorization: str, type: str):
         logger.error(f"App {type} JWT decode error: {e}")
         raise HTTPException(status_code=401, detail=f"Invalid App {type}")
     return appAuth
+
+
+GENERIC_UPSTREAM_ERROR = "Upstream service returned an error"
+
+
+def raise_and_log(
+    e: Exception,
+    stream: bool = False,
+    response_code: int | None = None,
+    response_text_prefix: str | None = None,
+):
+    """
+    Log an upstream exception and return or raise a standardized FastAPI response.
+
+    When streaming, returns an SSE payload as bytes. Otherwise, raises an
+    HTTPException with the chosen status code and a sanitized error message.
+    If the upstream error body contains a nested error message, it is extracted
+    so clients receive the actual upstream detail in debug mode. (dev environment only)
+    """
+    response = getattr(e, "response", None)
+    error_text = response.text if response is not None else ""
+    detail_text = error_text or str(e)
+    if error_text:
+        try:
+            error_payload = json.loads(error_text)
+            message = error_payload.get("error", {}).get("message")
+            if isinstance(message, str) and message.startswith("{'error':"):
+                try:
+                    message_obj = ast.literal_eval(message)
+                    message = message_obj.get("error", message)
+                except (ValueError, SyntaxError):
+                    pass
+            if isinstance(message, str) and message:
+                detail_text = message
+        except (json.JSONDecodeError, AttributeError, TypeError):
+            pass
+    status_code = response_code or getattr(response, "status_code", None) or 500
+    logger.error(f"{response_text_prefix or GENERIC_UPSTREAM_ERROR}: {detail_text}")
+    if stream:
+        error_msg = detail_text if env.MLPA_DEBUG else GENERIC_UPSTREAM_ERROR
+        payload = {"code": status_code, "error": error_msg}
+        return f"data: {json.dumps(payload)}\n\n".encode()
+    else:
+        raise HTTPException(
+            status_code=status_code,
+            detail={
+                "error": detail_text
+                if env.MLPA_DEBUG
+                else response_text_prefix or GENERIC_UPSTREAM_ERROR
+            },
+        )
