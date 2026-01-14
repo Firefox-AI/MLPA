@@ -344,9 +344,6 @@ async def test_get_completion_400_non_rate_limit_error(mocker):
     mock_get_client = mocker.patch("mlpa.core.completions.get_http_client")
     mock_get_client.return_value = mock_client
 
-    mock_metrics = mocker.patch("mlpa.core.completions.metrics")
-    mock_logger = mocker.patch("mlpa.core.logger")
-
     # Act & Assert: Expect a 400 HTTPException with the upstream error payload
     with pytest.raises(HTTPException) as exc_info:
         await get_completion(SAMPLE_REQUEST)
