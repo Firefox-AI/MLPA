@@ -61,7 +61,7 @@ async def _decode_integrity_token(integrity_token: str) -> dict:
     return response.json()
 
 
-def _validate_integrity_payload(payload: dict, expected_hash) -> None:
+def _validate_integrity_payload(payload: dict, expected_hash: str) -> None:
     request_details = payload.get("requestDetails", {})
     package_name = request_details.get("requestPackageName")
     if package_name and package_name != env.PLAY_INTEGRITY_PACKAGE_NAME:

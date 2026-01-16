@@ -6,7 +6,7 @@ from mlpa.core.classes import AuthorizedChatRequest, ChatRequest, ServiceType
 from mlpa.core.config import env
 from mlpa.core.routers.appattest import app_attest_auth
 from mlpa.core.routers.fxa import fxa_auth
-from mlpa.core.utils import parse_app_attest_jwt, parse_play_integrity_jwt
+from mlpa.core.utils import extract_user_from_play_integrity_jwt, parse_app_attest_jwt
 
 
 async def authorize_request(
@@ -32,7 +32,7 @@ async def authorize_request(
             )
     elif use_play_integrity:
         # Google Play integrity
-        play_user_id = parse_play_integrity_jwt(authorization)
+        play_user_id = extract_user_from_play_integrity_jwt(authorization)
         if play_user_id:
             return AuthorizedChatRequest(
                 user=f"{play_user_id}:{service_type.value}",

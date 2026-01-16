@@ -163,7 +163,7 @@ def raise_and_log(
         )
 
 
-def parse_play_integrity_jwt(authorization: str):
+def extract_user_from_play_integrity_jwt(authorization: str):
     token = authorization.removeprefix("Bearer ").split()[0]
     try:
         payload = decode(
