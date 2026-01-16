@@ -3,6 +3,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Header, HTTPException
 
+from mlpa.core.config import env
 from mlpa.core.logger import logger
 from mlpa.core.prometheus_metrics import PrometheusResult, metrics
 from mlpa.core.utils import get_fxa_client
@@ -16,7 +17,7 @@ def fxa_auth(authorization: Annotated[str | None, Header()]):
     token = authorization.removeprefix("Bearer ").split()[0]
     result = PrometheusResult.ERROR
     try:
-        profile = client.verify_token(token, scope="profile")
+        profile = client.verify_token(token, scope=env.FXA_SCOPE)
         result = PrometheusResult.SUCCESS
     except Exception as e:
         logger.error(f"FxA auth error: {e}")

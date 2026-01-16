@@ -1,10 +1,11 @@
 import ast
 import base64
 import json
+import time
 
 from fastapi import HTTPException
 from fxa.oauth import Client
-from jwtoxide import DecodingKey, ValidationOptions, decode
+from jwtoxide import DecodingKey, ValidationOptions, decode, encode
 
 from mlpa.core.classes import AssertionAuth, AttestationAuth
 from mlpa.core.config import LITELLM_MASTER_AUTH_HEADERS, env
@@ -160,3 +161,38 @@ def raise_and_log(
                 else response_text_prefix or GENERIC_UPSTREAM_ERROR
             },
         )
+
+
+def parse_play_integrity_jwt(authorization: str):
+    token = authorization.removeprefix("Bearer ").split()[0]
+    try:
+        payload = decode(
+            token,
+            env.MLPA_ACCESS_TOKEN_SECRET,
+            ValidationOptions(
+                required_spec_claims={"exp", "iat", "sub"},
+                iss={"mlpa"},
+                aud=None,
+                validate_aud=False,
+                validate_exp=True,
+                validate_nbf=False,
+                verify_signature=True,
+                algorithms=["HS256"],
+            ),
+        )
+        return payload["sub"]
+    except Exception as e:
+        logger.error(f"Play Integrity JWT decode error: {e}")
+        raise HTTPException(status_code=401, detail="Invalid MLPA access token")
+
+
+def issue_mlpa_access_token(user_id: str) -> str:
+    now = int(time.time())
+    payload = {
+        "sub": user_id,
+        "iat": now,
+        "exp": now + env.MLPA_ACCESS_TOKEN_TTL_SECONDS,
+        "iss": "mlpa",
+        "typ": "mlpa_access",
+    }
+    return encode(payload, env.MLPA_ACCESS_TOKEN_SECRET, algorithm="HS256")

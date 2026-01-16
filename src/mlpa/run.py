@@ -26,6 +26,8 @@ from mlpa.core.routers.appattest import appattest_router
 from mlpa.core.routers.fxa import fxa_router
 from mlpa.core.routers.health import health_router
 from mlpa.core.routers.mock import mock_router
+from mlpa.core.routers.play import play_router
+from mlpa.core.routers.play.play import _issue_mlpa_access_token
 from mlpa.core.routers.user import user_router
 from mlpa.core.utils import get_or_create_user
 
@@ -35,6 +37,10 @@ tags_metadata = [
     {
         "name": "App Attest",
         "description": "Endpoints for verifying App Attest payloads.",
+    },
+    {
+        "name": "Play Integrity",
+        "description": "Endpoints for verifying Play Integrity payloads.",
     },
     {"name": "LiteLLM", "description": "Endpoints for interacting with LiteLLM."},
     {"name": "Mock", "description": "Mock endpoints for testing purposes."},
@@ -91,6 +97,7 @@ async def get_metrics():
 
 app.include_router(health_router, prefix="/health")
 app.include_router(appattest_router, prefix="/verify")
+app.include_router(play_router, prefix="/verify")
 app.include_router(fxa_router, prefix="/fxa")
 app.include_router(user_router, prefix="/user")
 app.include_router(mock_router, prefix="/mock")

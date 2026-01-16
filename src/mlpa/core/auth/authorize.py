@@ -6,7 +6,7 @@ from mlpa.core.classes import AuthorizedChatRequest, ChatRequest, ServiceType
 from mlpa.core.config import env
 from mlpa.core.routers.appattest import app_attest_auth
 from mlpa.core.routers.fxa import fxa_auth
-from mlpa.core.utils import parse_app_attest_jwt
+from mlpa.core.utils import parse_app_attest_jwt, parse_play_integrity_jwt
 
 
 async def authorize_request(
@@ -15,10 +15,12 @@ async def authorize_request(
     service_type: Annotated[ServiceType, Header()],
     use_app_attest: Annotated[bool | None, Header()] = None,
     use_qa_certificates: Annotated[bool | None, Header()] = None,
+    use_play_integrity: Annotated[bool | None, Header()] = None,
 ) -> AuthorizedChatRequest:
     if not authorization:
         raise HTTPException(status_code=401, detail="Missing authorization header")
     if use_app_attest:
+        # Apple App Attest
         assertionAuth = parse_app_attest_jwt(authorization, "assert")
         data = await app_attest_auth(assertionAuth, chat_request, use_qa_certificates)
         if data:
@@ -28,8 +30,16 @@ async def authorize_request(
                 user=f"{assertionAuth.key_id_b64}:{service_type.value}",  # "user" is key_id_b64 from app attest
                 **chat_request.model_dump(exclude_unset=True),
             )
+    elif use_play_integrity:
+        # Google Play integrity
+        play_user_id = parse_play_integrity_jwt(authorization)
+        if play_user_id:
+            return AuthorizedChatRequest(
+                user=f"{play_user_id}:{service_type.value}",
+                **chat_request.model_dump(exclude_unset=True),
+            )
     else:
-        # FxA authorization
+        # Firefox Account authorization
         fxa_user_id = fxa_auth(authorization)
         if fxa_user_id:
             if fxa_user_id.get("error"):
