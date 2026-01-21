@@ -1,5 +1,3 @@
-import json
-import time
 from contextlib import asynccontextmanager
 from typing import Annotated, Optional
 
@@ -7,7 +5,7 @@ import sentry_sdk
 import uvicorn
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.exception_handlers import http_exception_handler
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import StreamingResponse
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
 from mlpa.core.auth.authorize import authorize_request
@@ -21,11 +19,11 @@ from mlpa.core.http_client import close_http_client, get_http_client
 from mlpa.core.logger import logger, setup_logger
 from mlpa.core.middleware import register_middleware
 from mlpa.core.pg_services.services import app_attest_pg, litellm_pg
-from mlpa.core.prometheus_metrics import metrics
 from mlpa.core.routers.appattest import appattest_router
 from mlpa.core.routers.fxa import fxa_router
 from mlpa.core.routers.health import health_router
 from mlpa.core.routers.mock import mock_router
+from mlpa.core.routers.play import play_router
 from mlpa.core.routers.user import user_router
 from mlpa.core.utils import get_or_create_user
 
@@ -35,6 +33,10 @@ tags_metadata = [
     {
         "name": "App Attest",
         "description": "Endpoints for verifying App Attest payloads.",
+    },
+    {
+        "name": "Play Integrity",
+        "description": "Endpoints for verifying Play Integrity payloads.",
     },
     {"name": "LiteLLM", "description": "Endpoints for interacting with LiteLLM."},
     {"name": "Mock", "description": "Mock endpoints for testing purposes."},
@@ -91,6 +93,7 @@ async def get_metrics():
 
 app.include_router(health_router, prefix="/health")
 app.include_router(appattest_router, prefix="/verify")
+app.include_router(play_router, prefix="/verify")
 app.include_router(fxa_router, prefix="/fxa")
 app.include_router(user_router, prefix="/user")
 app.include_router(mock_router, prefix="/mock")

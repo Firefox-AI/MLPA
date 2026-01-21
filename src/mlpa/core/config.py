@@ -93,9 +93,17 @@ class Env(BaseSettings):
     APP_ATTEST_QA_BUCKET_PREFIX: str | None = None
     APP_ATTEST_QA_GCP_PROJECT_ID: str | None = None
 
+    # Play Integrity
+    PLAY_INTEGRITY_PACKAGE_NAME: str = "com.example.app"
+    PLAY_INTEGRITY_SERVICE_ACCOUNT_FILE: str = "service_account.json"
+    PLAY_INTEGRITY_REQUEST_TIMEOUT_SECONDS: int = 30
+    MLPA_ACCESS_TOKEN_SECRET: str = "mlpa-dev-secret"
+    MLPA_ACCESS_TOKEN_TTL_SECONDS: int = 300
+
     # FxA
     CLIENT_ID: str = "default-client-id"
     CLIENT_SECRET: str = "default-client-secret"
+    FXA_SCOPE: str = "profile"
 
     # PostgreSQL
     LITELLM_DB_NAME: str = "litellm"
