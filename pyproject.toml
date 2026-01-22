@@ -85,6 +85,10 @@ select = ["I"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+filterwarnings = [
+    "ignore:'cgi' is deprecated and slated for removal in Python 3\\.13:DeprecationWarning:webob\\.compat",
+    "ignore:datetime\\.datetime\\.utcnow\\(\\) is deprecated and scheduled for removal in a future version\\.:DeprecationWarning:pyattest\\.testutils\\.factories\\.attestation\\.apple",
+]
 
 [tool.pytest_env]
 APP_ATTEST_QA = "true"
