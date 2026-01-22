@@ -2,27 +2,30 @@ import time
 from typing import Annotated
 
 from fastapi import APIRouter, Header, HTTPException
+from fastapi.concurrency import run_in_threadpool
 
 from mlpa.core.logger import logger
 from mlpa.core.prometheus_metrics import PrometheusResult, metrics
 from mlpa.core.utils import get_fxa_client
 
 router = APIRouter()
+
 client = get_fxa_client()
 
 
-def fxa_auth(authorization: Annotated[str | None, Header()]):
-    start_time = time.time()
+async def fxa_auth(authorization: Annotated[str | None, Header()]):
+    start_time = time.perf_counter()
     token = authorization.removeprefix("Bearer ").split()[0]
     result = PrometheusResult.ERROR
+
     try:
-        profile = client.verify_token(token, scope="profile")
+        profile = await run_in_threadpool(client.verify_token, token, scope="profile")
         result = PrometheusResult.SUCCESS
+        return profile
     except Exception as e:
         logger.error(f"FxA auth error: {e}")
         raise HTTPException(status_code=401, detail="Invalid FxA auth")
     finally:
         metrics.validate_fxa_latency.labels(result=result).observe(
-            time.time() - start_time
+            time.perf_counter() - start_time
         )
-    return profile

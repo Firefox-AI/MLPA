@@ -78,9 +78,10 @@ async def generate_client_challenge(key_id_b64: str) -> str:
 
 async def validate_challenge(challenge: str, key_id_b64: str) -> bool:
     """Check that the challenge exists, is fresh, and matches key_id_b64"""
-    start_time = time.time()
+    start_time = time.perf_counter()
+    result = PrometheusResult.ERROR
     stored_challenge = await app_attest_pg.get_challenge(key_id_b64)
-    await app_attest_pg.delete_challenge(key_id_b64)  # Remove challenge after one use
+    await app_attest_pg.delete_challenge(key_id_b64)
     try:
         if (
             not stored_challenge
@@ -88,9 +89,14 @@ async def validate_challenge(challenge: str, key_id_b64: str) -> bool:
             > env.CHALLENGE_EXPIRY_SECONDS
         ):
             return False
-        return challenge == stored_challenge["challenge"]
+        is_valid = challenge == stored_challenge["challenge"]
+        if is_valid:
+            result = PrometheusResult.SUCCESS
+        return is_valid
     finally:
-        metrics.validate_challenge_latency.observe(time.time() - start_time)
+        metrics.validate_challenge_latency.labels(result=result).observe(
+            time.perf_counter() - start_time
+        )
 
 
 async def verify_attest(
@@ -99,7 +105,7 @@ async def verify_attest(
     attestation_obj: bytes,
     use_qa_certificates: bool,
 ):
-    start_time = time.time()
+    start_time = time.perf_counter()
     key_id = b64decode_safe(key_id_b64, "key_id_b64")
     root_ca_pem = _load_root_ca(use_qa_certificates)
     config = AppleConfig(
@@ -149,7 +155,7 @@ async def verify_attest(
         raise HTTPException(status_code=403, detail="Attestation verification failed")
     finally:
         metrics.validate_app_attest_latency.labels(result=result).observe(
-            time.time() - start_time
+            time.perf_counter() - start_time
         )
 
     # save public_key in b64
@@ -161,7 +167,7 @@ async def verify_attest(
 async def verify_assert(
     key_id_b64: str, assertion: bytes, payload: dict, use_qa_certificates: bool
 ):
-    start_time = time.time()
+    start_time = time.perf_counter()
     key_id = b64decode_safe(key_id_b64, "key_id_b64")
     payload_bytes = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
     expected_hash = hashlib.sha256(payload_bytes).digest()
@@ -213,7 +219,7 @@ async def verify_assert(
         raise HTTPException(status_code=403, detail=f"Assertion verification failed")
     finally:
         metrics.validate_app_assert_latency.labels(result=result).observe(
-            time.time() - start_time
+            time.perf_counter() - start_time
         )
 
     return {"status": "success"}

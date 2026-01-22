@@ -198,7 +198,7 @@ class MockFxAService:
     def verify_token(self, token: str, scope: str = "profile"):
         if token == TEST_FXA_TOKEN:
             return {"user": TEST_USER_ID}
-        return {"error": "Invalid token"}
+        raise Exception("Invalid token")
 
 
 class MockFxAClientForMockRouter:

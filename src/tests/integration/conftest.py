@@ -38,6 +38,7 @@ def mocked_client_integration(mocker):
     mocker.patch("mlpa.core.routers.health.health.litellm_pg", mock_litellm_pg)
 
     mocker.patch("mlpa.core.routers.fxa.fxa.client", mock_fxa_client)
+
     mocker.patch(
         "mlpa.core.routers.mock.mock.fxa_client", mock_fxa_client_for_mock_router
     )
