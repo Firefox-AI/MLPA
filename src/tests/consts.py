@@ -8,6 +8,7 @@ TEST_BLOCKED_USER_ID = "blocked-user-id"
 
 SAMPLE_REQUEST = AuthorizedChatRequest(
     user="test-user-123:ai",
+    service_type="ai",
     model="test-model",
     messages=[{"role": "user", "content": "Hello"}],
     temperature=0.7,
