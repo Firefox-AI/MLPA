@@ -53,6 +53,7 @@ async def test_get_completion_success(mocker):
     assert sent_json["messages"] == SAMPLE_REQUEST.messages
     assert sent_json["user"] == SAMPLE_REQUEST.user
     assert sent_json["stream"] == SAMPLE_REQUEST.stream
+    assert "service_type" not in sent_json
 
     # 2. Check that the token metrics were incremented correctly
     mock_metrics.chat_tokens.labels.assert_any_call(
@@ -108,7 +109,7 @@ async def test_get_completion_http_error(mocker):
 
     # 1. Verify exception details - should use the upstream status code (500)
     assert exc_info.value.status_code == 500
-    assert exc_info.value.detail == {"error": "Internal Server Error"}
+    assert exc_info.value.detail["error"] == "Upstream service returned an error"
 
     # 2. Verify latency metric was observed with ERROR
     mock_metrics.chat_completion_latency.labels.assert_called_once_with(
@@ -180,6 +181,7 @@ async def test_stream_completion_success(httpx_mock: HTTPXMock, mocker):
     assert request_body["stream_options"] == {"include_usage": True}
     assert request_body["user"] == "test-user-123:ai"
     assert request_body["model"] == "test-model"
+    assert "service_type" not in request_body
 
     mock_metrics.chat_completion_ttft.labels.assert_called_once_with(
         model=SAMPLE_REQUEST.model
@@ -356,7 +358,7 @@ async def test_get_completion_400_non_rate_limit_error(mocker):
         await get_completion(SAMPLE_REQUEST)
 
     assert exc_info.value.status_code == 400
-    assert exc_info.value.detail == {"error": "Invalid request parameters"}
+    assert exc_info.value.detail == {"error": "Upstream service returned an error"}
 
 
 async def test_get_completion_429_non_rate_limit_error(mocker):
@@ -387,7 +389,7 @@ async def test_get_completion_429_non_rate_limit_error(mocker):
         await get_completion(SAMPLE_REQUEST)
 
     assert exc_info.value.status_code == 429
-    assert exc_info.value.detail == {"error": "Some other error"}
+    assert exc_info.value.detail == {"error": "Upstream service returned an error"}
 
 
 async def test_get_completion_429_invalid_json(mocker):
@@ -416,7 +418,7 @@ async def test_get_completion_429_invalid_json(mocker):
         await get_completion(SAMPLE_REQUEST)
 
     assert exc_info.value.status_code == 429
-    assert exc_info.value.detail == {"error": "Invalid JSON response"}
+    assert exc_info.value.detail == {"error": "Upstream service returned an error"}
 
 
 async def test_stream_completion_budget_limit_exceeded_429(
@@ -569,7 +571,7 @@ async def test_stream_completion_400_non_rate_limit_error(
     assert len(received_chunks) == 1
     assert (
         received_chunks[0]
-        == b'data: {"code": 400, "error": "Invalid request parameters"}\n\n'
+        == b'data: {"code": 400, "error": "Upstream service returned an error"}\n\n'
     )
     mock_logger.error.assert_called_once()
     mock_metrics.chat_completion_latency.labels.assert_called_once_with(
@@ -601,7 +603,10 @@ async def test_stream_completion_429_non_rate_limit_error(
     received_chunks = [chunk async for chunk in stream_completion(SAMPLE_REQUEST)]
 
     assert len(received_chunks) == 1
-    assert received_chunks[0] == b'data: {"code": 429, "error": "Some other error"}\n\n'
+    assert (
+        received_chunks[0]
+        == b'data: {"code": 429, "error": "Upstream service returned an error"}\n\n'
+    )
     mock_logger.error.assert_called_once()
     mock_metrics.chat_completion_latency.labels.assert_called_once_with(
         result=PrometheusResult.ERROR,
@@ -629,7 +634,7 @@ async def test_stream_completion_429_invalid_json(httpx_mock: HTTPXMock, mocker)
     assert len(received_chunks) == 1
     assert (
         received_chunks[0]
-        == b'data: {"code": 429, "error": "Invalid JSON response"}\n\n'
+        == b'data: {"code": 429, "error": "Upstream service returned an error"}\n\n'
     )
     mock_logger.error.assert_called_once()
     mock_metrics.chat_completion_latency.labels.assert_called_once_with(

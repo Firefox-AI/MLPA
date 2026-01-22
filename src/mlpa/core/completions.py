@@ -82,7 +82,7 @@ async def stream_completion(authorized_chat_request: AuthorizedChatRequest):
     start_time = time.perf_counter()
     body = {
         **authorized_chat_request.model_dump(
-            exclude={"max_completion_tokens"}, exclude_none=True
+            exclude={"max_completion_tokens", "service_type"}, exclude_none=True
         ),
         "max_tokens": authorized_chat_request.max_completion_tokens,
         "stream": True,
@@ -186,7 +186,7 @@ async def get_completion(authorized_chat_request: AuthorizedChatRequest):
     start_time = time.perf_counter()
     body = {
         **authorized_chat_request.model_dump(
-            exclude={"max_completion_tokens"}, exclude_none=True
+            exclude={"max_completion_tokens", "service_type"}, exclude_none=True
         ),
         "max_tokens": authorized_chat_request.max_completion_tokens,
         "stream": False,
