@@ -36,3 +36,6 @@ jobs:
 
       - name: Run integration tests
         run: uv run pytest src/tests/integration -v
+
+      - name: Run e2e tests
+        run: uv run pytest src/tests/e2e -v
