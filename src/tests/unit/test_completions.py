@@ -12,6 +12,7 @@ from mlpa.core.config import (
     ERROR_CODE_BUDGET_LIMIT_EXCEEDED,
     ERROR_CODE_RATE_LIMIT_EXCEEDED,
     LITELLM_COMPLETIONS_URL,
+    env,
 )
 from mlpa.core.prometheus_metrics import PrometheusResult
 from tests.consts import SAMPLE_REQUEST, SUCCESSFUL_CHAT_RESPONSE
@@ -102,6 +103,7 @@ async def test_get_completion_http_error(mocker):
     mock_get_client.return_value = mock_client
 
     mock_metrics = mocker.patch("mlpa.core.completions.metrics")
+    mocker.patch.object(env, "MLPA_DEBUG", False)
 
     # Act & Assert: Expect an HTTPException to be raised
     with pytest.raises(HTTPException) as exc_info:
@@ -352,6 +354,7 @@ async def test_get_completion_400_non_rate_limit_error(mocker):
     mock_client.post.return_value = mock_response
     mock_get_client = mocker.patch("mlpa.core.completions.get_http_client")
     mock_get_client.return_value = mock_client
+    mocker.patch.object(env, "MLPA_DEBUG", False)
 
     # Act & Assert: Expect a 400 HTTPException with the upstream error payload
     with pytest.raises(HTTPException) as exc_info:
@@ -383,6 +386,7 @@ async def test_get_completion_429_non_rate_limit_error(mocker):
     mock_get_client.return_value = mock_client
 
     mock_metrics = mocker.patch("mlpa.core.completions.metrics")
+    mocker.patch.object(env, "MLPA_DEBUG", False)
 
     # Act & Assert: Expect a 429 HTTPException with the upstream error payload
     with pytest.raises(HTTPException) as exc_info:
@@ -412,6 +416,7 @@ async def test_get_completion_429_invalid_json(mocker):
     mock_get_client.return_value = mock_client
 
     mock_metrics = mocker.patch("mlpa.core.completions.metrics")
+    mocker.patch.object(env, "MLPA_DEBUG", False)
 
     # Act & Assert: Expect a 429 HTTPException with the upstream error payload
     with pytest.raises(HTTPException) as exc_info:
@@ -565,6 +570,7 @@ async def test_stream_completion_400_non_rate_limit_error(
 
     mock_metrics = mocker.patch("mlpa.core.completions.metrics")
     mock_logger = mocker.patch("mlpa.core.utils.logger")
+    mocker.patch.object(env, "MLPA_DEBUG", False)
 
     received_chunks = [chunk async for chunk in stream_completion(SAMPLE_REQUEST)]
 
@@ -599,6 +605,7 @@ async def test_stream_completion_429_non_rate_limit_error(
 
     mock_metrics = mocker.patch("mlpa.core.completions.metrics")
     mock_logger = mocker.patch("mlpa.core.utils.logger")
+    mocker.patch.object(env, "MLPA_DEBUG", False)
 
     received_chunks = [chunk async for chunk in stream_completion(SAMPLE_REQUEST)]
 
@@ -628,6 +635,7 @@ async def test_stream_completion_429_invalid_json(httpx_mock: HTTPXMock, mocker)
 
     mock_metrics = mocker.patch("mlpa.core.completions.metrics")
     mock_logger = mocker.patch("mlpa.core.utils.logger")
+    mocker.patch.object(env, "MLPA_DEBUG", False)
 
     received_chunks = [chunk async for chunk in stream_completion(SAMPLE_REQUEST)]
 
