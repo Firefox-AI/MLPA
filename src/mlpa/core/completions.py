@@ -143,10 +143,17 @@ async def stream_completion(authorized_chat_request: AuthorizedChatRequest):
                         if line.startswith("data: ") and line != "data: [DONE]":
                             data = json.loads(line[6:])
                             if "usage" in data:
-                                prompt_tokens = data["usage"].get("prompt_tokens", 0)
-                                completion_tokens = data["usage"].get(
-                                    "completion_tokens", 0
-                                )
+                                usage = data["usage"]
+                                prompt_tokens = usage.get("prompt_tokens", 0)
+                                completion_tokens = usage.get("completion_tokens", 0)
+                                if "prompt_tokens" not in usage:
+                                    logger.warning(
+                                        f"Missing 'prompt_tokens' in usage for model {authorized_chat_request.model}"
+                                    )
+                                if "completion_tokens" not in usage:
+                                    logger.warning(
+                                        f"Missing 'completion_tokens' in usage for model {authorized_chat_request.model}"
+                                    )
                 except (json.JSONDecodeError, UnicodeDecodeError, KeyError):
                     pass
 
@@ -212,6 +219,15 @@ async def get_completion(authorized_chat_request: AuthorizedChatRequest):
         usage = data.get("usage", {})
         prompt_tokens = usage.get("prompt_tokens", 0)
         completion_tokens = usage.get("completion_tokens", 0)
+
+        if "prompt_tokens" not in usage:
+            logger.warning(
+                f"Missing 'prompt_tokens' in usage for model {authorized_chat_request.model}"
+            )
+        if "completion_tokens" not in usage:
+            logger.warning(
+                f"Missing 'completion_tokens' in usage for model {authorized_chat_request.model}"
+            )
 
         metrics.chat_tokens.labels(
             type="prompt", model=authorized_chat_request.model
