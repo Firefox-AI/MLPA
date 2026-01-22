@@ -1,4 +1,4 @@
-name: linters and unit tests
+name: linters and tests
 
 on:
   pull_request:
