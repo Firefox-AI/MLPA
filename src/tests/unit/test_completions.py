@@ -136,6 +136,7 @@ async def test_get_completion_network_error(mocker):
     mock_get_client.return_value = mock_client
 
     mock_metrics = mocker.patch("mlpa.core.completions.metrics")
+    mocker.patch.object(env, "MLPA_DEBUG", True)
 
     # Act & Assert: Expect an HTTPException
     with pytest.raises(HTTPException) as exc_info:
