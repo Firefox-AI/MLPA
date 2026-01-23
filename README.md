@@ -10,55 +10,43 @@ make setup
 
 This creates a virtual environment in `.venv/`, installs dependencies, and installs the tool locally in editable mode.
 
-## Running MLPA locally with Docker
+# Running MLPA locally with Docker
 
-### Run LiteLLM
+### Run LiteLLM and PostgreSQL
 
-`docker compose -f litellm_docker_compose.yaml up -d`
+1. `docker compose -f litellm_docker_compose.yaml up -d`
 
 ### Create and migrate appattest database
-`sh ./scripts/create-app-attest-database.sh`
 
-`alembic upgrade head`
+2. `sh ./scripts/create-app-attest-database.sh`
 
-### Set MLPA_DEBUG=true in the .env file
-Verify FxA requests against staging URL
+3. `alembic upgrade head`
+
+4. Set `MLPA_DEBUG=true` in the `config.py` or `.env` file
+
+### Create a virtual LiteLLM key
+
+5. Run `python scripts/create-and-set-virtual-key.py` (also sets the value in `.env`)
 
 ### Run MLPA
 
-1. install it as a library
+6. Install it as a library:
 
 ```bash
 pip install --no-cache-dir -e .
 ```
 
-2. Run the binary
+7. Run the binary
 
 ```bash
 mlpa
 ```
 
+Navigate to
+
 ## Config (see [LiteLLM Documentation](https://docs.litellm.ai/docs/simple_proxy_old_doc) for more config options)
 
-`.env` (see `config.py` for all configuration variables)
-
-```
-MASTER_KEY="sk-1234..."
-LITELLM_API_BASE="http://mlpa:4000"
-DATABASE_URL=postgresql://... # required for direct user editing in SQL
-CHALLENGE_EXPIRY_SECONDS=300
-PORT=8080
-
-APP_BUNDLE_ID="org.example.app"
-APP_DEVELOPMENT_TEAM="12BC943KDC"
-
-CLIENT_ID="..."
-CLIENT_SECRET="..."
-
-MODEL_NAME=""
-TEMPERATURE=0.1
-TOP_P=0.01
-```
+### See `config.py` for all configuration variables
 
 ### Also See `litellm_config.yaml` for litellm config
 
