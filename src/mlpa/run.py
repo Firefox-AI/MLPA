@@ -1,5 +1,4 @@
 import json
-import time
 from contextlib import asynccontextmanager
 from typing import Annotated, Optional
 
@@ -7,7 +6,7 @@ import sentry_sdk
 import uvicorn
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.exception_handlers import http_exception_handler
-from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.responses import StreamingResponse
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
 from mlpa.core.auth.authorize import authorize_request
@@ -15,13 +14,13 @@ from mlpa.core.classes import AuthorizedChatRequest
 from mlpa.core.completions import get_completion, stream_completion
 from mlpa.core.config import (
     RATE_LIMIT_ERROR_RESPONSE,
+    SENSITIVE_FIELDS_TO_SCRUB_FROM_SENTRY,
     env,
 )
 from mlpa.core.http_client import close_http_client, get_http_client
 from mlpa.core.logger import logger, setup_logger
 from mlpa.core.middleware import register_middleware
 from mlpa.core.pg_services.services import app_attest_pg, litellm_pg
-from mlpa.core.prometheus_metrics import metrics
 from mlpa.core.routers.appattest import appattest_router
 from mlpa.core.routers.fxa import fxa_router
 from mlpa.core.routers.health import health_router
@@ -68,7 +67,29 @@ async def lifespan(app: FastAPI):
         await close_http_client()
 
 
-sentry_sdk.init(dsn=env.SENTRY_DSN, send_default_pii=False)
+def sentry_scrub_sensitive_fields(event, hint):
+    if "request" in event and "data" in event["request"]:
+        try:
+            body = event["request"]["data"]
+            if isinstance(body, str):
+                body = json.loads(body)
+
+            for field in SENSITIVE_FIELDS_TO_SCRUB_FROM_SENTRY:
+                if field in body:
+                    body[field] = "[Filtered]"
+
+            event["request"]["data"] = body
+        except Exception:
+            pass
+
+    return event
+
+
+sentry_sdk.init(
+    before_send=sentry_scrub_sensitive_fields,
+    dsn=env.SENTRY_DSN,
+    send_default_pii=False,
+)
 
 app = FastAPI(
     title="MLPA",
