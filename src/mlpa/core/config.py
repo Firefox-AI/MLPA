@@ -201,3 +201,5 @@ RATE_LIMIT_ERROR_RESPONSE = {
         },
     }
 }
+
+SENSITIVE_FIELDS_TO_SCRUB_FROM_SENTRY = ["messages"]
