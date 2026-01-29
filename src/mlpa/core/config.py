@@ -96,6 +96,9 @@ class Env(BaseSettings):
     # FxA
     CLIENT_ID: str = "default-client-id"
     CLIENT_SECRET: str = "default-client-secret"
+    ADDITIONAL_FXA_SCOPE_1: str | None = None
+    ADDITIONAL_FXA_SCOPE_2: str | None = None
+    ADDITIONAL_FXA_SCOPE_3: str | None = None
 
     # PostgreSQL
     LITELLM_DB_NAME: str = "litellm"
