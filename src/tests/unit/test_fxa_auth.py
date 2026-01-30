@@ -8,7 +8,7 @@ from mlpa.core.routers.fxa import fxa as fxa_module
 
 
 async def test_fxa_auth_returns_first_successful_scope(mocker):
-    scopes = ("profile", "scope-a", "scope-b")
+    scopes = ("profile:uid", "scope-a", "scope-b")
     mocker.patch.object(fxa_module, "FXA_SCOPES", scopes)
 
     async def fake_run_in_threadpool(_fn, _token, *, scope):
@@ -31,7 +31,7 @@ async def test_fxa_auth_returns_first_successful_scope(mocker):
 
 
 async def test_fxa_auth_raises_when_all_scopes_fail(mocker):
-    scopes = ("profile", "scope-a")
+    scopes = ("profile:uid", "scope-a")
     mocker.patch.object(fxa_module, "FXA_SCOPES", scopes)
 
     async def fake_run_in_threadpool(_fn, _token, *, scope):
