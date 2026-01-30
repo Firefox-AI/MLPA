@@ -232,7 +232,7 @@ class TestMockRouterIntegration:
 
             mock_fxa_client._verify_jwt_token.return_value = {
                 "client_id": "test-client-id",
-                "scope": ["profile"],
+                "scope": ["profile:uid"],
             }
 
             response = mocked_client_integration.post(
@@ -259,7 +259,7 @@ class TestMockRouterIntegration:
             mock_fxa_client._verify_jwt_token.return_value = {
                 "user": "blocked-user-id",
                 "client_id": "test-client-id",
-                "scope": ["profile"],
+                "scope": ["profile:uid"],
             }
 
             with patch(
@@ -295,7 +295,7 @@ class TestMockRouterIntegration:
             mock_fxa_client._verify_jwt_token.return_value = {
                 "user": TEST_USER_ID,
                 "client_id": "test-client-id",
-                "scope": ["profile"],
+                "scope": ["profile:uid"],
             }
 
             with patch.dict("os.environ", {"MOCK_LATENCY_MS": "100"}):
