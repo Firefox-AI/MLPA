@@ -12,7 +12,7 @@ from mlpa.core.utils import get_fxa_client
 router = APIRouter()
 
 client = get_fxa_client()
-FXA_DEFAULT_SCOPE = "profile"
+FXA_DEFAULT_SCOPE = "profile:uid"
 FXA_SCOPES = tuple(
     scope
     for scope in (
