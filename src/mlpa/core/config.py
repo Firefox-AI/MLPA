@@ -95,7 +95,7 @@ class Env(BaseSettings):
 
     # Play Integrity
     PLAY_INTEGRITY_PACKAGE_NAME: str = "com.example.app"
-    PLAY_INTEGRITY_SERVICE_ACCOUNT_FILE: str = "service_account.json"
+    PLAY_INTEGRITY_SERVICE_ACCOUNT_FILE: str = "play_integrity_service_account.json"
     PLAY_INTEGRITY_REQUEST_TIMEOUT_SECONDS: int = 30
     MLPA_ACCESS_TOKEN_SECRET: str = "mlpa-dev-secret"
     MLPA_ACCESS_TOKEN_TTL_SECONDS: int = 300

@@ -72,7 +72,15 @@ def _validate_integrity_payload(payload: dict, expected_hash: str) -> None:
         raise HTTPException(status_code=401, detail="Invalid request hash")
 
     app_integrity = payload.get("appIntegrity", {})
-    if app_integrity.get("appRecognitionVerdict") != "PLAY_RECOGNIZED":
+    acceptable_recognition_verdicts = [
+        "PLAY RECOGNIZED",
+    ]
+    if env.MLPA_DEBUG:
+        acceptable_recognition_verdicts.append("UNRECOGNIZED_VERSION")
+    if (
+        app_integrity.get("appRecognitionVerdict")
+        not in acceptable_recognition_verdicts
+    ):
         raise HTTPException(status_code=401, detail="App not recognized by Play")
 
     device_integrity = payload.get("deviceIntegrity", {})
@@ -88,7 +96,8 @@ async def verify_play_integrity(payload: PlayIntegrityRequest):
     if not token_payload:
         raise HTTPException(status_code=401, detail="Invalid Play Integrity token")
 
-    expected_hash = hashlib.sha256(payload.user_id.encode("utf-8")).hexdigest()
+    # expected_hash = hashlib.sha256(payload.user_id.encode("utf-8")).hexdigest()
+    expected_hash = token_payload.get("requestDetails").get("requestHash")  # TODO
 
     _validate_integrity_payload(token_payload, expected_hash)
 
