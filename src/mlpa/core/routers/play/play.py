@@ -73,7 +73,7 @@ def _validate_integrity_payload(payload: dict, expected_hash: str) -> None:
 
     app_integrity = payload.get("appIntegrity", {})
     acceptable_recognition_verdicts = [
-        "PLAY RECOGNIZED",
+        "PLAY_RECOGNIZED",
     ]
     if env.MLPA_DEBUG:
         acceptable_recognition_verdicts.append("UNRECOGNIZED_VERSION")

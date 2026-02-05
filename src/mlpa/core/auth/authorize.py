@@ -37,6 +37,7 @@ async def authorize_request(
         if play_user_id:
             return AuthorizedChatRequest(
                 user=f"{play_user_id}:{service_type.value}",
+                service_type=service_type.value,
                 **chat_request.model_dump(exclude_unset=True),
             )
     else:
