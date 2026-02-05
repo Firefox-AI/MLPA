@@ -96,8 +96,7 @@ async def verify_play_integrity(payload: PlayIntegrityRequest):
     if not token_payload:
         raise HTTPException(status_code=401, detail="Invalid Play Integrity token")
 
-    # expected_hash = hashlib.sha256(payload.user_id.encode("utf-8")).hexdigest()
-    expected_hash = token_payload.get("requestDetails").get("requestHash")  # TODO
+    expected_hash = hashlib.sha256(payload.user_id.encode("utf-8")).hexdigest()
 
     _validate_integrity_payload(token_payload, expected_hash)
 
