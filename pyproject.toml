@@ -6,7 +6,10 @@ build-backend = "setuptools.build_meta"
 name = "mlpa"
 version = "0.1.0"
 description = "A proxy to verify App Attest/FxA payloads and proxy requests using LiteLLM virtual keys."
-authors = [{ name = "Noah Podgurski", email = "npodgurski@mozilla.com" }]
+authors = [
+    { name = "Noah Podgurski", email = "npodgurski@mozilla.com" },
+    { name = "Alexander Osipenko", email = "aosipenko@mozilla.com" }
+]
 readme = "README.md"
 requires-python = ">=3.12"
 license = { file = "LICENSE" }
@@ -82,6 +85,10 @@ select = ["I"]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+filterwarnings = [
+    "ignore:'cgi' is deprecated and slated for removal in Python 3\\.13:DeprecationWarning:webob\\.compat",
+    "ignore:datetime\\.datetime\\.utcnow\\(\\) is deprecated and scheduled for removal in a future version\\.:DeprecationWarning:pyattest\\.testutils\\.factories\\.attestation\\.apple",
+]
 
 [tool.pytest_env]
 APP_ATTEST_QA = "true"

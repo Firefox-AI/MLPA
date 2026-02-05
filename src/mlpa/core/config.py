@@ -103,7 +103,9 @@ class Env(BaseSettings):
     # FxA
     CLIENT_ID: str = "default-client-id"
     CLIENT_SECRET: str = "default-client-secret"
-    FXA_SCOPE: str = "profile"
+    ADDITIONAL_FXA_SCOPE_1: str | None = None
+    ADDITIONAL_FXA_SCOPE_2: str | None = None
+    ADDITIONAL_FXA_SCOPE_3: str | None = None
 
     # PostgreSQL
     LITELLM_DB_NAME: str = "litellm"
@@ -119,7 +121,7 @@ class Env(BaseSettings):
     # LLM request default values
     MODEL_NAME: str = "openai/gpt-4o"
     TEMPERATURE: float = 0.1
-    MAX_COMPLETION_TOKENS: int = 1024
+    MAX_COMPLETION_TOKENS: int = 8192
     TOP_P: float = 0.01
     MAX_REQUEST_SIZE_BYTES: int = 10 * 1024 * 1024  # 10 MB default
 
@@ -209,3 +211,5 @@ RATE_LIMIT_ERROR_RESPONSE = {
         },
     }
 }
+
+SENSITIVE_FIELDS_TO_SCRUB_FROM_SENTRY = ["messages"]

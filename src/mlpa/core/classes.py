@@ -46,6 +46,7 @@ class PlayIntegrityRequest(BaseModel):
 
 class AuthorizedChatRequest(ChatRequest):
     user: str
+    service_type: str
 
 
 # Dynamically create ServiceType enum from config

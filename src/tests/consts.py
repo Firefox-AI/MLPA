@@ -8,6 +8,7 @@ TEST_BLOCKED_USER_ID = "blocked-user-id"
 
 SAMPLE_REQUEST = AuthorizedChatRequest(
     user="test-user-123:ai",
+    service_type="ai",
     model="test-model",
     messages=[{"role": "user", "content": "Hello"}],
     temperature=0.7,
@@ -64,7 +65,7 @@ MOCK_JWKS_RESPONSE = {
 MOCK_FXA_USER_DATA = {
     "user": TEST_USER_ID,
     "client_id": "test-client-id",
-    "scope": ["profile"],
+    "scope": ["profile:uid"],
     "generation": 1,
     "profile_changed_at": 1234567890,
 }

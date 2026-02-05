@@ -12,6 +12,7 @@ from mlpa.core.config import (
     ERROR_CODE_BUDGET_LIMIT_EXCEEDED,
     ERROR_CODE_RATE_LIMIT_EXCEEDED,
     LITELLM_COMPLETIONS_URL,
+    env,
 )
 from mlpa.core.prometheus_metrics import PrometheusResult
 from tests.consts import SAMPLE_REQUEST, SUCCESSFUL_CHAT_RESPONSE
@@ -53,21 +54,28 @@ async def test_get_completion_success(mocker):
     assert sent_json["messages"] == SAMPLE_REQUEST.messages
     assert sent_json["user"] == SAMPLE_REQUEST.user
     assert sent_json["stream"] == SAMPLE_REQUEST.stream
+    assert "service_type" not in sent_json
 
     # 2. Check that the token metrics were incremented correctly
-    mock_metrics.chat_tokens.labels.assert_any_call(type="prompt")
+    mock_metrics.chat_tokens.labels.assert_any_call(
+        type="prompt", model=SAMPLE_REQUEST.model
+    )
     mock_metrics.chat_tokens.labels().inc.assert_any_call(
         SUCCESSFUL_CHAT_RESPONSE["usage"]["prompt_tokens"]
     )
 
-    mock_metrics.chat_tokens.labels.assert_any_call(type="completion")
+    mock_metrics.chat_tokens.labels.assert_any_call(
+        type="completion", model=SAMPLE_REQUEST.model
+    )
     mock_metrics.chat_tokens.labels().inc.assert_any_call(
         SUCCESSFUL_CHAT_RESPONSE["usage"]["completion_tokens"]
     )
 
     # 3. Check that the latency metric was observed with SUCCESS
     mock_metrics.chat_completion_latency.labels.assert_called_once_with(
-        result=PrometheusResult.SUCCESS
+        result=PrometheusResult.SUCCESS,
+        model=SAMPLE_REQUEST.model,
+        service_type=SAMPLE_REQUEST.service_type,
     )
     mock_metrics.chat_completion_latency.labels().observe.assert_called_once()
 
@@ -95,6 +103,7 @@ async def test_get_completion_http_error(mocker):
     mock_get_client.return_value = mock_client
 
     mock_metrics = mocker.patch("mlpa.core.completions.metrics")
+    mocker.patch.object(env, "MLPA_DEBUG", False)
 
     # Act & Assert: Expect an HTTPException to be raised
     with pytest.raises(HTTPException) as exc_info:
@@ -102,11 +111,13 @@ async def test_get_completion_http_error(mocker):
 
     # 1. Verify exception details - should use the upstream status code (500)
     assert exc_info.value.status_code == 500
-    assert exc_info.value.detail == {"error": "Upstream service returned an error"}
+    assert exc_info.value.detail["error"] == "Upstream service returned an error"
 
     # 2. Verify latency metric was observed with ERROR
     mock_metrics.chat_completion_latency.labels.assert_called_once_with(
-        result=PrometheusResult.ERROR
+        result=PrometheusResult.ERROR,
+        model=SAMPLE_REQUEST.model,
+        service_type=SAMPLE_REQUEST.service_type,
     )
     mock_metrics.chat_completion_latency.labels().observe.assert_called_once()
 
@@ -125,6 +136,7 @@ async def test_get_completion_network_error(mocker):
     mock_get_client.return_value = mock_client
 
     mock_metrics = mocker.patch("mlpa.core.completions.metrics")
+    mocker.patch.object(env, "MLPA_DEBUG", True)
 
     # Act & Assert: Expect an HTTPException
     with pytest.raises(HTTPException) as exc_info:
@@ -132,11 +144,13 @@ async def test_get_completion_network_error(mocker):
 
     # 1. Verify exception details
     assert exc_info.value.status_code == 502
-    assert "Failed to proxy request" in exc_info.value.detail["error"]
+    assert exc_info.value.detail["error"] == "Connection timed out"
 
     # 2. Verify latency metric was observed with ERROR
     mock_metrics.chat_completion_latency.labels.assert_called_once_with(
-        result=PrometheusResult.ERROR
+        result=PrometheusResult.ERROR,
+        model=SAMPLE_REQUEST.model,
+        service_type=SAMPLE_REQUEST.service_type,
     )
     mock_metrics.chat_completion_latency.labels().observe.assert_called_once()
 
@@ -147,11 +161,9 @@ async def test_stream_completion_success(httpx_mock: HTTPXMock, mocker):
     - Verifies the yielded chunks are correct.
     - Verifies TTFT and other metrics are recorded correctly.
     """
-    # Arrange
-    # 1. Create mock data for the stream
-    mock_chunks = [b"data: chunk1", b"data: chunk2", b"data: [DONE]"]
+    usage_chunk = b'data: {"usage": {"prompt_tokens": 10, "completion_tokens": 25}}'
+    mock_chunks = [b"data: chunk1", b"data: chunk2", usage_chunk, b"data: [DONE]"]
 
-    # 2. Use pytest-httpx to mock the response for the correct URL and method
     httpx_mock.add_response(
         method="POST",
         url=LITELLM_COMPLETIONS_URL,
@@ -159,41 +171,39 @@ async def test_stream_completion_success(httpx_mock: HTTPXMock, mocker):
         status_code=200,
     )
 
-    # 3. Mock metrics and tiktoken
     mock_metrics = mocker.patch("mlpa.core.completions.metrics")
-    mock_tokenizer = MagicMock()
-    mock_tokenizer.encode.return_value = [1, 2]  # Simulate 2 prompt tokens
-    mock_tiktoken = mocker.patch("mlpa.core.completions.tiktoken")
-    mock_tiktoken.encoding_for_model.return_value = mock_tokenizer
-    mock_tiktoken.get_encoding.return_value = mock_tokenizer
 
-    # Act: Consume the async generator
     received_chunks = [chunk async for chunk in stream_completion(SAMPLE_REQUEST)]
 
-    # Assert
-    # 1. Verify the received data matches the mocked stream
     assert received_chunks == mock_chunks
 
-    # 2. Verify the request was made correctly
     request = httpx_mock.get_request()
     assert request is not None
     request_body = json.loads(request.content)
     assert request_body["stream"] is True
+    assert request_body["stream_options"] == {"include_usage": True}
     assert request_body["user"] == "test-user-123:ai"
     assert request_body["model"] == "test-model"
+    assert "service_type" not in request_body
 
-    # 3. Verify TTFT metric was observed
-    mock_metrics.chat_completion_ttft.observe.assert_called_once()
+    mock_metrics.chat_completion_ttft.labels.assert_called_once_with(
+        model=SAMPLE_REQUEST.model
+    )
+    mock_metrics.chat_completion_ttft.labels().observe.assert_called_once()
 
-    # 4. Verify token counts
-    mock_metrics.chat_tokens.labels.assert_any_call(type="prompt")
-    mock_metrics.chat_tokens.labels().inc.assert_any_call(2)
-    mock_metrics.chat_tokens.labels.assert_any_call(type="completion")
-    mock_metrics.chat_tokens.labels().inc.assert_any_call(len(mock_chunks))
+    mock_metrics.chat_tokens.labels.assert_any_call(
+        type="prompt", model=SAMPLE_REQUEST.model
+    )
+    mock_metrics.chat_tokens.labels().inc.assert_any_call(10)
+    mock_metrics.chat_tokens.labels.assert_any_call(
+        type="completion", model=SAMPLE_REQUEST.model
+    )
+    mock_metrics.chat_tokens.labels().inc.assert_any_call(25)
 
-    # 5. Verify final latency metric
     mock_metrics.chat_completion_latency.labels.assert_called_once_with(
-        result=PrometheusResult.SUCCESS
+        result=PrometheusResult.SUCCESS,
+        model=SAMPLE_REQUEST.model,
+        service_type=SAMPLE_REQUEST.service_type,
     )
     mock_metrics.chat_completion_latency.labels().observe.assert_called_once()
 
@@ -237,7 +247,9 @@ async def test_get_completion_budget_limit_exceeded_429(mocker):
 
     # Verify latency metric was observed with ERROR
     mock_metrics.chat_completion_latency.labels.assert_called_once_with(
-        result=PrometheusResult.ERROR
+        result=PrometheusResult.ERROR,
+        model=SAMPLE_REQUEST.model,
+        service_type=SAMPLE_REQUEST.service_type,
     )
 
 
@@ -343,6 +355,7 @@ async def test_get_completion_400_non_rate_limit_error(mocker):
     mock_client.post.return_value = mock_response
     mock_get_client = mocker.patch("mlpa.core.completions.get_http_client")
     mock_get_client.return_value = mock_client
+    mocker.patch.object(env, "MLPA_DEBUG", False)
 
     # Act & Assert: Expect a 400 HTTPException with the upstream error payload
     with pytest.raises(HTTPException) as exc_info:
@@ -374,6 +387,7 @@ async def test_get_completion_429_non_rate_limit_error(mocker):
     mock_get_client.return_value = mock_client
 
     mock_metrics = mocker.patch("mlpa.core.completions.metrics")
+    mocker.patch.object(env, "MLPA_DEBUG", False)
 
     # Act & Assert: Expect a 429 HTTPException with the upstream error payload
     with pytest.raises(HTTPException) as exc_info:
@@ -403,6 +417,7 @@ async def test_get_completion_429_invalid_json(mocker):
     mock_get_client.return_value = mock_client
 
     mock_metrics = mocker.patch("mlpa.core.completions.metrics")
+    mocker.patch.object(env, "MLPA_DEBUG", False)
 
     # Act & Assert: Expect a 429 HTTPException with the upstream error payload
     with pytest.raises(HTTPException) as exc_info:
@@ -446,7 +461,9 @@ async def test_stream_completion_budget_limit_exceeded_429(
     mock_logger.warning.assert_called_once()
     assert "Budget limit exceeded" in str(mock_logger.warning.call_args)
     mock_metrics.chat_completion_latency.labels.assert_called_once_with(
-        result=PrometheusResult.ERROR
+        result=PrometheusResult.ERROR,
+        model=SAMPLE_REQUEST.model,
+        service_type=SAMPLE_REQUEST.service_type,
     )
 
 
@@ -485,7 +502,9 @@ async def test_stream_completion_budget_limit_exceeded_400(
     mock_logger.warning.assert_called_once()
     assert "Budget limit exceeded" in str(mock_logger.warning.call_args)
     mock_metrics.chat_completion_latency.labels.assert_called_once_with(
-        result=PrometheusResult.ERROR
+        result=PrometheusResult.ERROR,
+        model=SAMPLE_REQUEST.model,
+        service_type=SAMPLE_REQUEST.service_type,
     )
 
 
@@ -522,7 +541,9 @@ async def test_stream_completion_rate_limit_exceeded(httpx_mock: HTTPXMock, mock
     mock_logger.warning.assert_called_once()
     assert "Rate limit exceeded" in str(mock_logger.warning.call_args)
     mock_metrics.chat_completion_latency.labels.assert_called_once_with(
-        result=PrometheusResult.ERROR
+        result=PrometheusResult.ERROR,
+        model=SAMPLE_REQUEST.model,
+        service_type=SAMPLE_REQUEST.service_type,
     )
 
 
@@ -550,6 +571,7 @@ async def test_stream_completion_400_non_rate_limit_error(
 
     mock_metrics = mocker.patch("mlpa.core.completions.metrics")
     mock_logger = mocker.patch("mlpa.core.utils.logger")
+    mocker.patch.object(env, "MLPA_DEBUG", False)
 
     received_chunks = [chunk async for chunk in stream_completion(SAMPLE_REQUEST)]
 
@@ -560,7 +582,9 @@ async def test_stream_completion_400_non_rate_limit_error(
     )
     mock_logger.error.assert_called_once()
     mock_metrics.chat_completion_latency.labels.assert_called_once_with(
-        result=PrometheusResult.ERROR
+        result=PrometheusResult.ERROR,
+        model=SAMPLE_REQUEST.model,
+        service_type=SAMPLE_REQUEST.service_type,
     )
 
 
@@ -582,6 +606,7 @@ async def test_stream_completion_429_non_rate_limit_error(
 
     mock_metrics = mocker.patch("mlpa.core.completions.metrics")
     mock_logger = mocker.patch("mlpa.core.utils.logger")
+    mocker.patch.object(env, "MLPA_DEBUG", False)
 
     received_chunks = [chunk async for chunk in stream_completion(SAMPLE_REQUEST)]
 
@@ -592,7 +617,9 @@ async def test_stream_completion_429_non_rate_limit_error(
     )
     mock_logger.error.assert_called_once()
     mock_metrics.chat_completion_latency.labels.assert_called_once_with(
-        result=PrometheusResult.ERROR
+        result=PrometheusResult.ERROR,
+        model=SAMPLE_REQUEST.model,
+        service_type=SAMPLE_REQUEST.service_type,
     )
 
 
@@ -609,6 +636,7 @@ async def test_stream_completion_429_invalid_json(httpx_mock: HTTPXMock, mocker)
 
     mock_metrics = mocker.patch("mlpa.core.completions.metrics")
     mock_logger = mocker.patch("mlpa.core.utils.logger")
+    mocker.patch.object(env, "MLPA_DEBUG", False)
 
     received_chunks = [chunk async for chunk in stream_completion(SAMPLE_REQUEST)]
 
@@ -619,7 +647,9 @@ async def test_stream_completion_429_invalid_json(httpx_mock: HTTPXMock, mocker)
     )
     mock_logger.error.assert_called_once()
     mock_metrics.chat_completion_latency.labels.assert_called_once_with(
-        result=PrometheusResult.ERROR
+        result=PrometheusResult.ERROR,
+        model=SAMPLE_REQUEST.model,
+        service_type=SAMPLE_REQUEST.service_type,
     )
 
 
@@ -627,39 +657,27 @@ async def test_stream_completion_exception_after_streaming_started(
     httpx_mock: HTTPXMock, mocker
 ):
     """
-    Tests that exceptions after streaming starts are handled gracefully without raising HTTPException.
+    Tests that HTTPStatusError during streaming is logged and returns error chunk.
     """
-    mock_chunks = [b"data: chunk1", b"data: chunk2"]
     httpx_mock.add_response(
         method="POST",
         url=LITELLM_COMPLETIONS_URL,
-        stream=IteratorStream(mock_chunks),
-        status_code=200,
+        status_code=500,
+        text="Internal Server Error",
     )
 
     mock_metrics = mocker.patch("mlpa.core.completions.metrics")
-    mock_logger = mocker.patch("mlpa.core.completions.logger")
-
-    # Reset the global tokenizer to ensure it's not already initialized
-    import mlpa.core.completions as completions_module
-
-    completions_module._global_default_tokenizer = None
-
-    # Mock get_default_tokenizer to return a tokenizer whose encode method raises an exception
-    mock_tokenizer = MagicMock()
-    mock_tokenizer.encode.side_effect = Exception("Token counting failed")
-    mock_get_tokenizer = mocker.patch("mlpa.core.completions.get_default_tokenizer")
-    mock_get_tokenizer.return_value = mock_tokenizer
 
     received_chunks = []
     async for chunk in stream_completion(SAMPLE_REQUEST):
         received_chunks.append(chunk)
 
-    assert len(received_chunks) == len(mock_chunks)
-    assert received_chunks == mock_chunks
-    mock_logger.error.assert_called()
+    assert len(received_chunks) == 1
+    assert b"error" in received_chunks[0]
     mock_metrics.chat_completion_latency.labels.assert_called_once_with(
-        result=PrometheusResult.ERROR
+        result=PrometheusResult.ERROR,
+        model=SAMPLE_REQUEST.model,
+        service_type=SAMPLE_REQUEST.service_type,
     )
     mock_metrics.chat_completion_latency.labels().observe.assert_called_once()
 
@@ -690,6 +708,7 @@ async def test_get_completion_preserves_tools(mocker):
 
     request_with_tools = AuthorizedChatRequest(
         user="test-user-123:ai",
+        service_type="ai",
         model="test-model",
         messages=[
             {"role": "user", "content": "What mario sites did i look at yesterday?"}
@@ -752,6 +771,7 @@ async def test_stream_completion_preserves_tools(httpx_mock: HTTPXMock, mocker):
 
     request_with_tools = AuthorizedChatRequest(
         user="test-user-123:ai",
+        service_type="ai",
         model="test-model",
         messages=[
             {"role": "user", "content": "What mario sites did i look at yesterday?"}
@@ -763,8 +783,10 @@ async def test_stream_completion_preserves_tools(httpx_mock: HTTPXMock, mocker):
         tool_choice=tool_choice,
     )
 
+    usage_chunk = b'data: {"usage": {"prompt_tokens": 50, "completion_tokens": 30}}'
     mock_chunks = [
         b'data: {"choices":[{"delta":{"tool_calls":[{"id":"call_123","type":"function","function":{"name":"search_browsing_history","arguments":"{\\"searchTerm\\":\\"mario\\"}"}}]}}]}\n\n',
+        usage_chunk,
         b"data: [DONE]\n\n",
     ]
 
@@ -776,11 +798,6 @@ async def test_stream_completion_preserves_tools(httpx_mock: HTTPXMock, mocker):
     )
 
     mock_metrics = mocker.patch("mlpa.core.completions.metrics")
-    mock_tokenizer = MagicMock()
-    mock_tokenizer.encode.return_value = [1, 2]
-    mock_tiktoken = mocker.patch("mlpa.core.completions.tiktoken")
-    mock_tiktoken.encoding_for_model.return_value = mock_tokenizer
-    mock_tiktoken.get_encoding.return_value = mock_tokenizer
 
     received_chunks = [chunk async for chunk in stream_completion(request_with_tools)]
 
@@ -792,6 +809,7 @@ async def test_stream_completion_preserves_tools(httpx_mock: HTTPXMock, mocker):
     assert request_body["tool_choice"] == tool_choice
     assert request_body["model"] == request_with_tools.model
     assert request_body["messages"] == request_with_tools.messages
+    assert request_body["stream_options"] == {"include_usage": True}
 
     assert len(received_chunks) == len(mock_chunks)
     assert b"tool_calls" in received_chunks[0]

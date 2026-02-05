@@ -28,6 +28,7 @@ async def authorize_request(
                 raise HTTPException(status_code=401, detail=data["error"])
             return AuthorizedChatRequest(
                 user=f"{assertionAuth.key_id_b64}:{service_type.value}",  # "user" is key_id_b64 from app attest
+                service_type=service_type.value,
                 **chat_request.model_dump(exclude_unset=True),
             )
     elif use_play_integrity:
@@ -39,13 +40,13 @@ async def authorize_request(
                 **chat_request.model_dump(exclude_unset=True),
             )
     else:
-        # Firefox Account authorization
-        fxa_user_id = fxa_auth(authorization)
+        fxa_user_id = await fxa_auth(authorization)
         if fxa_user_id:
             if fxa_user_id.get("error"):
                 raise HTTPException(status_code=401, detail=fxa_user_id["error"])
             return AuthorizedChatRequest(
                 user=f"{fxa_user_id['user']}:{service_type.value}",
+                service_type=service_type.value,
                 **chat_request.model_dump(exclude_unset=True),
             )
     raise HTTPException(

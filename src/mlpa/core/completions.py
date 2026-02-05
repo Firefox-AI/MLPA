@@ -79,17 +79,19 @@ async def stream_completion(authorized_chat_request: AuthorizedChatRequest):
     Proxies a streaming request to LiteLLM.
     Yields response chunks as they are received and logs metrics.
     """
-    start_time = time.time()
+    start_time = time.perf_counter()
     body = {
         **authorized_chat_request.model_dump(
-            exclude={"max_completion_tokens"}, exclude_none=True
+            exclude={"max_completion_tokens", "service_type"}, exclude_none=True
         ),
         "max_tokens": authorized_chat_request.max_completion_tokens,
         "stream": True,
+        "stream_options": {"include_usage": True},
     }
     result = PrometheusResult.ERROR
     is_first_token = True
-    num_completion_tokens = 0
+    prompt_tokens = 0
+    completion_tokens = 0
     streaming_started = False
     logger.debug(
         f"Starting a stream completion using {authorized_chat_request.model}, for user {authorized_chat_request.user}",
@@ -128,20 +130,43 @@ async def stream_completion(authorized_chat_request: AuthorizedChatRequest):
                 return
 
             async for chunk in response.aiter_bytes():
-                num_completion_tokens += 1
                 if is_first_token:
-                    metrics.chat_completion_ttft.observe(time.time() - start_time)
+                    metrics.chat_completion_ttft.labels(
+                        model=authorized_chat_request.model
+                    ).observe(time.perf_counter() - start_time)
                     is_first_token = False
                     streaming_started = True
+
+                try:
+                    chunk_str = chunk.decode("utf-8")
+                    for line in chunk_str.split("\n"):
+                        if line.startswith("data: ") and line != "data: [DONE]":
+                            data = json.loads(line[6:])
+                            if "usage" in data:
+                                usage = data["usage"]
+                                prompt_tokens = usage.get("prompt_tokens", 0)
+                                completion_tokens = usage.get("completion_tokens", 0)
+                                if "prompt_tokens" not in usage:
+                                    logger.warning(
+                                        f"Missing 'prompt_tokens' in usage for model {authorized_chat_request.model}"
+                                    )
+                                if "completion_tokens" not in usage:
+                                    logger.warning(
+                                        f"Missing 'completion_tokens' in usage for model {authorized_chat_request.model}"
+                                    )
+                except (json.JSONDecodeError, UnicodeDecodeError, KeyError):
+                    pass
+
                 yield chunk
 
-            tokenizer = get_default_tokenizer()
-            prompt_text = "".join(
-                message["content"] for message in authorized_chat_request.messages
-            )
-            prompt_tokens = len(tokenizer.encode(prompt_text))
-            metrics.chat_tokens.labels(type="prompt").inc(prompt_tokens)
-            metrics.chat_tokens.labels(type="completion").inc(num_completion_tokens)
+            if prompt_tokens > 0:
+                metrics.chat_tokens.labels(
+                    type="prompt", model=authorized_chat_request.model
+                ).inc(prompt_tokens)
+            if completion_tokens > 0:
+                metrics.chat_tokens.labels(
+                    type="completion", model=authorized_chat_request.model
+                ).inc(completion_tokens)
             result = PrometheusResult.SUCCESS
     except httpx.HTTPStatusError as e:
         if not streaming_started:
@@ -154,19 +179,21 @@ async def stream_completion(authorized_chat_request: AuthorizedChatRequest):
         else:
             logger.error(f"Upstream service returned an error: {e}")
     finally:
-        metrics.chat_completion_latency.labels(result=result).observe(
-            time.time() - start_time
-        )
+        metrics.chat_completion_latency.labels(
+            result=result,
+            model=authorized_chat_request.model,
+            service_type=authorized_chat_request.service_type,
+        ).observe(time.perf_counter() - start_time)
 
 
 async def get_completion(authorized_chat_request: AuthorizedChatRequest):
     """
     Proxies a non-streaming request to LiteLLM.
     """
-    start_time = time.time()
+    start_time = time.perf_counter()
     body = {
         **authorized_chat_request.model_dump(
-            exclude={"max_completion_tokens"}, exclude_none=True
+            exclude={"max_completion_tokens", "service_type"}, exclude_none=True
         ),
         "max_tokens": authorized_chat_request.max_completion_tokens,
         "stream": False,
@@ -193,8 +220,21 @@ async def get_completion(authorized_chat_request: AuthorizedChatRequest):
         prompt_tokens = usage.get("prompt_tokens", 0)
         completion_tokens = usage.get("completion_tokens", 0)
 
-        metrics.chat_tokens.labels(type="prompt").inc(prompt_tokens)
-        metrics.chat_tokens.labels(type="completion").inc(completion_tokens)
+        if "prompt_tokens" not in usage:
+            logger.warning(
+                f"Missing 'prompt_tokens' in usage for model {authorized_chat_request.model}"
+            )
+        if "completion_tokens" not in usage:
+            logger.warning(
+                f"Missing 'completion_tokens' in usage for model {authorized_chat_request.model}"
+            )
+
+        metrics.chat_tokens.labels(
+            type="prompt", model=authorized_chat_request.model
+        ).inc(prompt_tokens)
+        metrics.chat_tokens.labels(
+            type="completion", model=authorized_chat_request.model
+        ).inc(completion_tokens)
 
         result = PrometheusResult.SUCCESS
         return data
@@ -203,6 +243,8 @@ async def get_completion(authorized_chat_request: AuthorizedChatRequest):
     except Exception as e:
         raise_and_log(e, False, 502, "Failed to proxy request")
     finally:
-        metrics.chat_completion_latency.labels(result=result).observe(
-            time.time() - start_time
-        )
+        metrics.chat_completion_latency.labels(
+            result=result,
+            model=authorized_chat_request.model,
+            service_type=authorized_chat_request.service_type,
+        ).observe(time.perf_counter() - start_time)

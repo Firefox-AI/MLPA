@@ -1,3 +1,4 @@
+import json
 from contextlib import asynccontextmanager
 from typing import Annotated, Optional
 
@@ -13,6 +14,7 @@ from mlpa.core.classes import AuthorizedChatRequest
 from mlpa.core.completions import get_completion, stream_completion
 from mlpa.core.config import (
     RATE_LIMIT_ERROR_RESPONSE,
+    SENSITIVE_FIELDS_TO_SCRUB_FROM_SENTRY,
     env,
 )
 from mlpa.core.http_client import close_http_client, get_http_client
@@ -70,7 +72,29 @@ async def lifespan(app: FastAPI):
         await close_http_client()
 
 
-sentry_sdk.init(dsn=env.SENTRY_DSN, send_default_pii=False)
+def sentry_scrub_sensitive_fields(event, hint):
+    if "request" in event and "data" in event["request"]:
+        try:
+            body = event["request"]["data"]
+            if isinstance(body, str):
+                body = json.loads(body)
+
+            for field in SENSITIVE_FIELDS_TO_SCRUB_FROM_SENTRY:
+                if field in body:
+                    body[field] = "[Filtered]"
+
+            event["request"]["data"] = body
+        except Exception:
+            pass
+
+    return event
+
+
+sentry_sdk.init(
+    before_send=sentry_scrub_sensitive_fields,
+    dsn=env.SENTRY_DSN,
+    send_default_pii=False,
+)
 
 app = FastAPI(
     title="MLPA",

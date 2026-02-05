@@ -10,7 +10,7 @@ async def instrument_requests_middleware(request: Request, call_next):
     """
     Measures request latency, counts total requests, and tracks requests in progress.
     """
-    start_time = time.time()
+    start_time = time.perf_counter()
     metrics.in_progress_requests.inc()
 
     # Forward non-auth headers to log metadata
@@ -25,12 +25,13 @@ async def instrument_requests_middleware(request: Request, call_next):
 
             route = request.scope.get("route")
             endpoint = route.path if route else request.url.path
+            service_type = request.headers.get("service-type", "NA")
 
             metrics.request_latency.labels(
                 method=request.method, endpoint=endpoint
-            ).observe(time.time() - start_time)
+            ).observe(time.perf_counter() - start_time)
             metrics.requests_total.labels(
-                method=request.method, endpoint=endpoint
+                method=request.method, endpoint=endpoint, service_type=service_type
             ).inc()
             metrics.response_status_codes.labels(status_code=response.status_code).inc()
             return response

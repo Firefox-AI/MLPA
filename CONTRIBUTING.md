@@ -139,7 +139,7 @@ from fxa.tools.bearer import get_bearer_token
 fxa_token: str = get_bearer_token(
     your_mozilla_account_email,
     your_mozilla_account_password,
-    scopes=["profile"],
+    scopes=["profile:uid"],
     client_id="5882386c6d801776" # a common client_id for the dev environment,
     account_server_url="https://api.accounts.firefox.com",
     oauth_server_url="https://oauth.accounts.firefox.com",
@@ -148,7 +148,7 @@ fxa_token: str = get_bearer_token(
 
 ## How to update static docs/index.html from redoc
 
-Make  sure you have Node installed
+Ensure Node is installed
 
 1. `make install`
 2. `mlpa`
