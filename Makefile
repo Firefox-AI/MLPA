@@ -5,6 +5,7 @@ VENV=.venv
 
 all: setup
 
+# dummy PR test
 setup:
 	uv venv --python $(PYTHON_VERSION)
 	uv sync --all-groups
