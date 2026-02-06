@@ -93,6 +93,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--base-url", dest="base_url", default="http://localhost:8080"
     )
     run_parser.add_argument("--timeout-s", dest="timeout_s", type=int, default=30)
+    run_parser.add_argument(
+        "--service-type", dest="service_type", default=DEFAULT_SERVICE_TYPE
+    )
+    run_parser.add_argument("--model", dest="model")
+    run_parser.add_argument("--message", dest="message")
     run_parser.set_defaults(func=run)
 
     return parser
