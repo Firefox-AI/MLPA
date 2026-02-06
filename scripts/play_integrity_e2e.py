@@ -97,7 +97,8 @@ def build_parser() -> argparse.ArgumentParser:
         "--service-type", dest="service_type", default=DEFAULT_SERVICE_TYPE
     )
     run_parser.add_argument("--model", dest="model")
-    run_parser.add_argument("--message", dest="message")
+    run_parser.add_argument("--message", dest="message", default="What is 2+2?")
+    run_parser.add_argument("--stream", dest="stream", action="store_true")
     run_parser.set_defaults(func=run)
 
     return parser
