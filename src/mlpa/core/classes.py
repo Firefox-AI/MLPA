@@ -25,6 +25,7 @@ class UserUpdatePayload(BaseModel):
     blocked: bool | None = None
 
 
+# iOS App Attest
 class AttestationAuth(BaseModel):
     key_id_b64: str
     challenge_b64: str
@@ -35,6 +36,12 @@ class AssertionAuth(BaseModel):
     key_id_b64: str
     challenge_b64: str
     assertion_obj_b64: str
+
+
+# Google Play Integrity
+class PlayIntegrityRequest(BaseModel):
+    integrity_token: str
+    user_id: str
 
 
 class AuthorizedChatRequest(ChatRequest):
