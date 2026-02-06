@@ -89,6 +89,10 @@ def build_parser() -> argparse.ArgumentParser:
     run_parser = subparsers.add_parser("run", help="Verify and request a completion.")
     run_parser.add_argument("--integrity-token", dest="integrity_token")
     run_parser.add_argument("--user-id", dest="user_id")
+    run_parser.add_argument(
+        "--base-url", dest="base_url", default="http://localhost:8080"
+    )
+    run_parser.add_argument("--timeout-s", dest="timeout_s", type=int, default=30)
     run_parser.set_defaults(func=run)
 
     return parser
