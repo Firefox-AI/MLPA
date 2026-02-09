@@ -23,33 +23,27 @@ async def authorize_request(
         # Apple App Attest
         assertionAuth = parse_app_attest_jwt(authorization, "assert")
         data = await app_attest_auth(assertionAuth, chat_request, use_qa_certificates)
-        if data:
-            if data.get("error"):
-                raise HTTPException(status_code=401, detail=data["error"])
-            return AuthorizedChatRequest(
-                user=f"{assertionAuth.key_id_b64}:{service_type.value}",  # "user" is key_id_b64 from app attest
-                service_type=service_type.value,
-                **chat_request.model_dump(exclude_unset=True),
-            )
+        if not data or data.get("error"):
+            raise HTTPException(status_code=401, detail=data["error"])
+        return AuthorizedChatRequest(
+            user=f"{assertionAuth.key_id_b64}:{service_type.value}",  # "user" is key_id_b64 from app attest
+            service_type=service_type.value,
+            **chat_request.model_dump(exclude_unset=True),
+        )
     elif use_play_integrity:
         # Google Play integrity
         play_user_id = extract_user_from_play_integrity_jwt(authorization)
-        if play_user_id:
-            return AuthorizedChatRequest(
-                user=f"{play_user_id}:{service_type.value}",
-                service_type=service_type.value,
-                **chat_request.model_dump(exclude_unset=True),
-            )
+        return AuthorizedChatRequest(
+            user=f"{play_user_id}:{service_type.value}",
+            service_type=service_type.value,
+            **chat_request.model_dump(exclude_unset=True),
+        )
     else:
         fxa_user_id = await fxa_auth(authorization)
-        if fxa_user_id:
-            if fxa_user_id.get("error"):
-                raise HTTPException(status_code=401, detail=fxa_user_id["error"])
-            return AuthorizedChatRequest(
-                user=f"{fxa_user_id['user']}:{service_type.value}",
-                service_type=service_type.value,
-                **chat_request.model_dump(exclude_unset=True),
-            )
-    raise HTTPException(
-        status_code=401, detail="Please authenticate with App Attest or FxA."
-    )
+        if not fxa_user_id or fxa_user_id.get("error"):
+            raise HTTPException(status_code=401, detail=fxa_user_id["error"])
+        return AuthorizedChatRequest(
+            user=f"{fxa_user_id['user']}:{service_type.value}",
+            service_type=service_type.value,
+            **chat_request.model_dump(exclude_unset=True),
+        )
