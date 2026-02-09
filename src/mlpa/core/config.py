@@ -98,7 +98,7 @@ class Env(BaseSettings):
     PLAY_INTEGRITY_SERVICE_ACCOUNT_FILE: str = "play_integrity_service_account.json"
     PLAY_INTEGRITY_REQUEST_TIMEOUT_SECONDS: int = 30
     MLPA_ACCESS_TOKEN_SECRET: str = "mlpa-dev-secret"
-    MLPA_ACCESS_TOKEN_TTL_SECONDS: int = 300
+    MLPA_ACCESS_TOKEN_TTL_SECONDS: int = 6000
 
     # FxA
     CLIENT_ID: str = "default-client-id"
