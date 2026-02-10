@@ -131,17 +131,17 @@ metrics = PrometheusMetrics(
     chat_completions_with_tools=Counter(
         "mlpa_chat_completions_with_tools_total",
         "Number of completions that contained at least one tool call.",
-        ["model", "service_type"],
+        ["tool_name", "model", "service_type"],
     ),
     chat_tool_calls_per_completion=Histogram(
         "mlpa_chat_tool_calls_per_completion",
         "Distribution of tool calls per completion.",
-        ["model", "service_type"],
+        ["tool_name", "model", "service_type"],
         buckets=BUCKETS_TOOL_CALLS,
     ),
     chat_requests_with_tools=Counter(
         "mlpa_chat_requests_with_tools_total",
         "Number of chat requests that included a tools payload.",
-        ["model", "service_type"],
+        ["tool_name", "model", "service_type"],
     ),
 )

@@ -74,11 +74,24 @@ def _handle_rate_limit_error(error_text: str, user: str) -> None:
         )
 
 
+def _tool_names_from_request(tools: list) -> list[str]:
+    """Extract function names from OpenAI-format tools list."""
+    names = []
+    for t in tools or []:
+        if not isinstance(t, dict):
+            continue
+        fn = t.get("function")
+        name = fn.get("name") if isinstance(fn, dict) else None
+        names.append(name or "unknown")
+    return names
+
+
 def _record_request_with_tools(req: AuthorizedChatRequest) -> None:
     if req.tools:
-        metrics.chat_requests_with_tools.labels(
-            model=req.model, service_type=req.service_type
-        ).inc()
+        for name in _tool_names_from_request(req.tools):
+            metrics.chat_requests_with_tools.labels(
+                tool_name=name, model=req.model, service_type=req.service_type
+            ).inc()
 
 
 def _record_tool_metrics(model: str, service_type: str, tool_names: list[str]) -> None:
@@ -86,13 +99,14 @@ def _record_tool_metrics(model: str, service_type: str, tool_names: list[str]) -
         metrics.chat_tool_calls.labels(
             tool_name=name, model=model, service_type=service_type
         ).inc()
-    if tool_names:
+    for name in tool_names:
         metrics.chat_completions_with_tools.labels(
-            model=model, service_type=service_type
+            tool_name=name, model=model, service_type=service_type
         ).inc()
-    metrics.chat_tool_calls_per_completion.labels(
-        model=model, service_type=service_type
-    ).observe(len(tool_names))
+    for name in tool_names:
+        metrics.chat_tool_calls_per_completion.labels(
+            tool_name=name, model=model, service_type=service_type
+        ).observe(1)
 
 
 async def stream_completion(authorized_chat_request: AuthorizedChatRequest):
