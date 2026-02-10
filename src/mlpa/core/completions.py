@@ -96,6 +96,7 @@ def _record_request_with_tools(req: AuthorizedChatRequest) -> None:
 
 
 def _record_tool_metrics(model: str, service_type: str, tool_names: list[str]) -> None:
+    n_calls = len(tool_names)
     for name in tool_names:
         metrics.chat_tool_calls.labels(
             tool_name=name, model=model, service_type=service_type
@@ -103,9 +104,10 @@ def _record_tool_metrics(model: str, service_type: str, tool_names: list[str]) -
         metrics.chat_completions_with_tools.labels(
             tool_name=name, model=model, service_type=service_type
         ).inc()
+        # Histogram: one observation per completion = total tool calls in that completion.
         metrics.chat_tool_calls_per_completion.labels(
             tool_name=name, model=model, service_type=service_type
-        ).observe(1)
+        ).observe(n_calls)
 
 
 async def stream_completion(authorized_chat_request: AuthorizedChatRequest):
