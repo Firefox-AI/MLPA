@@ -74,12 +74,47 @@ def _handle_rate_limit_error(error_text: str, user: str) -> None:
         )
 
 
+def _tool_names_from_request(tools: list) -> list[str]:
+    """Extract function names from OpenAI-format tools list."""
+    names = []
+    for t in tools or []:
+        if not isinstance(t, dict):
+            continue
+        fn = t.get("function")
+        fn = t.get("function") or {}
+        name = fn.get("name")
+        names.append(name or "unknown")
+    return names
+
+
+def _record_request_with_tools(req: AuthorizedChatRequest) -> None:
+    if req.tools:
+        for name in _tool_names_from_request(req.tools):
+            metrics.chat_requests_with_tools.labels(
+                tool_name=name, model=req.model, service_type=req.service_type
+            ).inc()
+
+
+def _record_tool_metrics(model: str, service_type: str, tool_names: list[str]) -> None:
+    for name in tool_names:
+        metrics.chat_tool_calls.labels(
+            tool_name=name, model=model, service_type=service_type
+        ).inc()
+        metrics.chat_completions_with_tools.labels(
+            tool_name=name, model=model, service_type=service_type
+        ).inc()
+        metrics.chat_tool_calls_per_completion.labels(
+            tool_name=name, model=model, service_type=service_type
+        ).observe(1)
+
+
 async def stream_completion(authorized_chat_request: AuthorizedChatRequest):
     """
     Proxies a streaming request to LiteLLM.
     Yields response chunks as they are received and logs metrics.
     """
     start_time = time.perf_counter()
+    _record_request_with_tools(authorized_chat_request)
     body = {
         **authorized_chat_request.model_dump(
             exclude={"max_completion_tokens", "service_type"}, exclude_none=True
@@ -93,6 +128,7 @@ async def stream_completion(authorized_chat_request: AuthorizedChatRequest):
     prompt_tokens = 0
     completion_tokens = 0
     streaming_started = False
+    tool_calls_accum: dict[int, dict] = {}
     logger.debug(
         f"Starting a stream completion using {authorized_chat_request.model}, for user {authorized_chat_request.user}",
     )
@@ -154,6 +190,20 @@ async def stream_completion(authorized_chat_request: AuthorizedChatRequest):
                                     logger.warning(
                                         f"Missing 'completion_tokens' in usage for model {authorized_chat_request.model}"
                                     )
+                            for tc in (
+                                data.get("choices", [{}])[0]
+                                .get("delta", {})
+                                .get("tool_calls", [])
+                            ):
+                                idx = tc.get("index", len(tool_calls_accum))
+                                if idx not in tool_calls_accum:
+                                    tool_calls_accum[idx] = {"function": {"name": ""}}
+                                name = tc.get("function", {}).get("name")
+                                if name:
+                                    tool_calls_accum[idx]["function"]["name"] = (
+                                        tool_calls_accum[idx]["function"]["name"]
+                                        or name
+                                    )
                 except (json.JSONDecodeError, UnicodeDecodeError, KeyError):
                     pass
 
@@ -167,6 +217,15 @@ async def stream_completion(authorized_chat_request: AuthorizedChatRequest):
                 metrics.chat_tokens.labels(
                     type="completion", model=authorized_chat_request.model
                 ).inc(completion_tokens)
+            tool_names = [
+                tool_calls_accum[i]["function"].get("name") or "unknown"
+                for i in sorted(tool_calls_accum)
+            ]
+            _record_tool_metrics(
+                authorized_chat_request.model,
+                authorized_chat_request.service_type,
+                tool_names,
+            )
             result = PrometheusResult.SUCCESS
     except httpx.HTTPStatusError as e:
         if not streaming_started:
@@ -191,6 +250,7 @@ async def get_completion(authorized_chat_request: AuthorizedChatRequest):
     Proxies a non-streaming request to LiteLLM.
     """
     start_time = time.perf_counter()
+    _record_request_with_tools(authorized_chat_request)
     body = {
         **authorized_chat_request.model_dump(
             exclude={"max_completion_tokens", "service_type"}, exclude_none=True
@@ -235,7 +295,17 @@ async def get_completion(authorized_chat_request: AuthorizedChatRequest):
         metrics.chat_tokens.labels(
             type="completion", model=authorized_chat_request.model
         ).inc(completion_tokens)
-
+        tool_calls = (
+            data.get("choices", [{}])[0].get("message", {}).get("tool_calls") or []
+        )
+        tool_names = [
+            tc.get("function", {}).get("name") or "unknown" for tc in tool_calls
+        ]
+        _record_tool_metrics(
+            authorized_chat_request.model,
+            authorized_chat_request.service_type,
+            tool_names,
+        )
         result = PrometheusResult.SUCCESS
         return data
     except HTTPException:
