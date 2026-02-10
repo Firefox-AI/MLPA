@@ -40,6 +40,7 @@ BUCKETS_COMPLETION = (
     float("inf"),
 )
 BUCKETS_TTFT = (0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0, float("inf"))
+BUCKETS_TOOL_CALLS = (0, 1, 2, 3, 5, 10, 20, 50, float("inf"))
 
 
 @dataclass
@@ -55,6 +56,10 @@ class PrometheusMetrics:
     chat_completion_latency: Histogram
     chat_completion_ttft: Histogram
     chat_tokens: Counter
+    chat_tool_calls: Counter
+    chat_completions_with_tools: Counter
+    chat_tool_calls_per_completion: Histogram
+    chat_requests_with_tools: Counter
 
 
 metrics = PrometheusMetrics(
@@ -117,5 +122,26 @@ metrics = PrometheusMetrics(
         "mlpa_chat_tokens",
         "Number of tokens for chat completions.",
         ["type", "model"],
+    ),
+    chat_tool_calls=Counter(
+        "mlpa_chat_tool_calls_total",
+        "Total number of LLM tool invocations.",
+        ["tool_name", "model", "service_type"],
+    ),
+    chat_completions_with_tools=Counter(
+        "mlpa_chat_completions_with_tools_total",
+        "Number of completions that contained at least one tool call.",
+        ["model", "service_type"],
+    ),
+    chat_tool_calls_per_completion=Histogram(
+        "mlpa_chat_tool_calls_per_completion",
+        "Distribution of tool calls per completion.",
+        ["model", "service_type"],
+        buckets=BUCKETS_TOOL_CALLS,
+    ),
+    chat_requests_with_tools=Counter(
+        "mlpa_chat_requests_with_tools_total",
+        "Number of chat requests that included a tools payload.",
+        ["model", "service_type"],
     ),
 )
