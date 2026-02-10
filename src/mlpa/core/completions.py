@@ -99,11 +99,9 @@ def _record_tool_metrics(model: str, service_type: str, tool_names: list[str]) -
         metrics.chat_tool_calls.labels(
             tool_name=name, model=model, service_type=service_type
         ).inc()
-    for name in tool_names:
         metrics.chat_completions_with_tools.labels(
             tool_name=name, model=model, service_type=service_type
         ).inc()
-    for name in tool_names:
         metrics.chat_tool_calls_per_completion.labels(
             tool_name=name, model=model, service_type=service_type
         ).observe(1)
@@ -199,13 +197,12 @@ async def stream_completion(authorized_chat_request: AuthorizedChatRequest):
                                 idx = tc.get("index", len(tool_calls_accum))
                                 if idx not in tool_calls_accum:
                                     tool_calls_accum[idx] = {"function": {"name": ""}}
-                                if "function" in tc:
-                                    fn = tc["function"]
-                                    if fn.get("name"):
-                                        tool_calls_accum[idx]["function"]["name"] = (
-                                            tool_calls_accum[idx]["function"]["name"]
-                                            or fn["name"]
-                                        )
+                                name = tc.get("function", {}).get("name")
+                                if name:
+                                    tool_calls_accum[idx]["function"]["name"] = (
+                                        tool_calls_accum[idx]["function"]["name"]
+                                        or name
+                                    )
                 except (json.JSONDecodeError, UnicodeDecodeError, KeyError):
                     pass
 
