@@ -110,6 +110,10 @@ def _record_tool_metrics(model: str, service_type: str, tool_names: list[str]) -
 
 
 async def stream_completion(authorized_chat_request: AuthorizedChatRequest):
+    """
+    Proxies a streaming request to LiteLLM.
+    Yields response chunks as they are received and logs metrics.
+    """
     start_time = time.perf_counter()
     _record_request_with_tools(authorized_chat_request)
     body = {
@@ -244,6 +248,9 @@ async def stream_completion(authorized_chat_request: AuthorizedChatRequest):
 
 
 async def get_completion(authorized_chat_request: AuthorizedChatRequest):
+    """
+    Proxies a non-streaming request to LiteLLM.
+    """
     start_time = time.perf_counter()
     _record_request_with_tools(authorized_chat_request)
     body = {
