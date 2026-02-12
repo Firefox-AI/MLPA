@@ -213,11 +213,15 @@ async def stream_completion(authorized_chat_request: AuthorizedChatRequest):
 
             if prompt_tokens > 0:
                 metrics.chat_tokens.labels(
-                    type="prompt", model=authorized_chat_request.model
+                    type="prompt",
+                    model=authorized_chat_request.model,
+                    service_type=authorized_chat_request.service_type,
                 ).inc(prompt_tokens)
             if completion_tokens > 0:
                 metrics.chat_tokens.labels(
-                    type="completion", model=authorized_chat_request.model
+                    type="completion",
+                    model=authorized_chat_request.model,
+                    service_type=authorized_chat_request.service_type,
                 ).inc(completion_tokens)
             tool_names = [
                 tool_calls_accum[i]["function"].get("name") or "unknown"

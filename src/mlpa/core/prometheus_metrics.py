@@ -121,7 +121,7 @@ metrics = PrometheusMetrics(
     chat_tokens=Counter(
         "mlpa_chat_tokens",
         "Number of tokens for chat completions.",
-        ["type", "model"],
+        ["type", "model", "service_type"],
     ),
     chat_tool_calls=Counter(
         "mlpa_chat_tool_calls_total",

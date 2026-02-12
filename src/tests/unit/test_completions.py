@@ -192,11 +192,15 @@ async def test_stream_completion_success(httpx_mock: HTTPXMock, mocker):
     mock_metrics.chat_completion_ttft.labels().observe.assert_called_once()
 
     mock_metrics.chat_tokens.labels.assert_any_call(
-        type="prompt", model=SAMPLE_REQUEST.model
+        type="prompt",
+        model=SAMPLE_REQUEST.model,
+        service_type=SAMPLE_REQUEST.service_type,
     )
     mock_metrics.chat_tokens.labels().inc.assert_any_call(10)
     mock_metrics.chat_tokens.labels.assert_any_call(
-        type="completion", model=SAMPLE_REQUEST.model
+        type="completion",
+        model=SAMPLE_REQUEST.model,
+        service_type=SAMPLE_REQUEST.service_type,
     )
     mock_metrics.chat_tokens.labels().inc.assert_any_call(25)
 
