@@ -58,14 +58,18 @@ async def test_get_completion_success(mocker):
 
     # 2. Check that the token metrics were incremented correctly
     mock_metrics.chat_tokens.labels.assert_any_call(
-        type="prompt", model=SAMPLE_REQUEST.model
+        type="prompt",
+        model=SAMPLE_REQUEST.model,
+        service_type=SAMPLE_REQUEST.service_type,
     )
     mock_metrics.chat_tokens.labels().inc.assert_any_call(
         SUCCESSFUL_CHAT_RESPONSE["usage"]["prompt_tokens"]
     )
 
     mock_metrics.chat_tokens.labels.assert_any_call(
-        type="completion", model=SAMPLE_REQUEST.model
+        type="completion",
+        model=SAMPLE_REQUEST.model,
+        service_type=SAMPLE_REQUEST.service_type,
     )
     mock_metrics.chat_tokens.labels().inc.assert_any_call(
         SUCCESSFUL_CHAT_RESPONSE["usage"]["completion_tokens"]
