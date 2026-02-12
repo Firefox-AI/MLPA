@@ -296,10 +296,14 @@ async def get_completion(authorized_chat_request: AuthorizedChatRequest):
             )
 
         metrics.chat_tokens.labels(
-            type="prompt", model=authorized_chat_request.model
+            type="prompt",
+            model=authorized_chat_request.model,
+            service_type=authorized_chat_request.service_type,
         ).inc(prompt_tokens)
         metrics.chat_tokens.labels(
-            type="completion", model=authorized_chat_request.model
+            type="completion",
+            model=authorized_chat_request.model,
+            service_type=authorized_chat_request.service_type,
         ).inc(completion_tokens)
         tool_calls = (
             data.get("choices", [{}])[0].get("message", {}).get("tool_calls") or []
