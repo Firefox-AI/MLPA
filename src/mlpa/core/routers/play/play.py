@@ -1,11 +1,11 @@
 import hashlib
 from functools import lru_cache
 
+import google.auth
 import httpx
 from fastapi import APIRouter, HTTPException
 from fastapi.concurrency import run_in_threadpool
 from google.auth.transport.requests import Request
-from google.oauth2 import service_account
 from pydantic import BaseModel
 
 from mlpa.core.classes import PlayIntegrityRequest
@@ -25,10 +25,8 @@ ALLOWED_DEVICE_VERDICTS = {
 
 @lru_cache(maxsize=1)
 def _get_service_account_credentials():
-    return service_account.Credentials.from_service_account_file(
-        env.PLAY_INTEGRITY_SERVICE_ACCOUNT_FILE,
-        scopes=[PLAY_INTEGRITY_SCOPE],
-    )
+    credentials, _ = google.auth.default(scopes=[PLAY_INTEGRITY_SCOPE])
+    return credentials
 
 
 def _get_play_integrity_access_token() -> str:
