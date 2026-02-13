@@ -11,10 +11,12 @@ async def test_fxa_auth_returns_first_successful_scope(mocker):
     scopes = ("profile:uid", "scope-a", "scope-b")
     mocker.patch.object(fxa_module, "FXA_SCOPES", scopes)
 
-    async def fake_run_in_threadpool(_fn, _token, *, scope):
+    async def fake_run_in_threadpool(
+        _fn, _token, *, scope, include_verification_source
+    ):
         if scope == "scope-b":
             await asyncio.sleep(0.01)
-            return {"user": "ok"}
+            return {"user": "ok", "verification_source": "local"}
         await asyncio.sleep(0.02)
         raise Exception(f"invalid-{scope}")
 
@@ -23,18 +25,24 @@ async def test_fxa_auth_returns_first_successful_scope(mocker):
 
     profile = await fxa_module.fxa_auth("Bearer test-token")
 
-    assert profile == {"user": "ok"}
+    assert profile == {"user": "ok", "verification_source": "local"}
     mock_metrics.validate_fxa_latency.labels.assert_called_once_with(
-        result=PrometheusResult.SUCCESS
+        result=PrometheusResult.SUCCESS, verification_source="local"
     )
     mock_metrics.validate_fxa_latency.labels().observe.assert_called_once()
+    mock_metrics.fxa_verifications_total.labels.assert_called_once_with(
+        verification_source="local"
+    )
+    mock_metrics.fxa_verifications_total.labels().inc.assert_called_once()
 
 
 async def test_fxa_auth_raises_when_all_scopes_fail(mocker):
     scopes = ("profile:uid", "scope-a")
     mocker.patch.object(fxa_module, "FXA_SCOPES", scopes)
 
-    async def fake_run_in_threadpool(_fn, _token, *, scope):
+    async def fake_run_in_threadpool(
+        _fn, _token, *, scope, include_verification_source
+    ):
         await asyncio.sleep(0.01)
         raise Exception(f"invalid-{scope}")
 
@@ -46,6 +54,6 @@ async def test_fxa_auth_raises_when_all_scopes_fail(mocker):
 
     assert exc_info.value.status_code == 401
     mock_metrics.validate_fxa_latency.labels.assert_called_once_with(
-        result=PrometheusResult.ERROR
+        result=PrometheusResult.ERROR, verification_source="unknown"
     )
     mock_metrics.validate_fxa_latency.labels().observe.assert_called_once()

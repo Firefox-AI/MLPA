@@ -53,6 +53,7 @@ class PrometheusMetrics:
     validate_app_attest_latency: Histogram
     validate_app_assert_latency: Histogram
     validate_fxa_latency: Histogram
+    fxa_verifications_total: Counter
     chat_completion_latency: Histogram
     chat_completion_ttft: Histogram
     chat_tokens: Counter
@@ -103,8 +104,13 @@ metrics = PrometheusMetrics(
     validate_fxa_latency=Histogram(
         "mlpa_validate_fxa_latency_seconds",
         "FxA authentication latency in seconds.",
-        ["result"],
+        ["result", "verification_source"],
         buckets=BUCKETS_FXA,
+    ),
+    fxa_verifications_total=Counter(
+        "mlpa_fxa_verifications_total",
+        "Total number of FxA token verifications.",
+        ["verification_source"],
     ),
     chat_completion_latency=Histogram(
         "mlpa_chat_completion_latency_seconds",
