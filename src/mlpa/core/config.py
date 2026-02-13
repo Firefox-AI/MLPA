@@ -97,7 +97,7 @@ class Env(BaseSettings):
     PLAY_INTEGRITY_PACKAGE_NAME: str = "com.example.app"
     PLAY_INTEGRITY_REQUEST_TIMEOUT_SECONDS: int = 30
     MLPA_ACCESS_TOKEN_SECRET: str = "mlpa-dev-secret"
-    MLPA_ACCESS_TOKEN_TTL_SECONDS: int = 6000
+    MLPA_ACCESS_TOKEN_TTL_SECONDS: int = 86400
 
     # FxA
     CLIENT_ID: str = "default-client-id"
