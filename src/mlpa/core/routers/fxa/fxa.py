@@ -30,11 +30,17 @@ async def fxa_auth(authorization: Annotated[str | None, Header()]):
     start_time = time.perf_counter()
     token = authorization.removeprefix("Bearer ").split()[0]
     result = PrometheusResult.ERROR
+    verification_source = "unknown"
     errors = []
     try:
         tasks = [
             asyncio.create_task(
-                run_in_threadpool(client.verify_token, token, scope=scope)
+                run_in_threadpool(
+                    client.verify_token,
+                    token,
+                    scope=scope,
+                    include_verification_source=True,
+                )
             )
             for scope in FXA_SCOPES
         ]
@@ -43,6 +49,10 @@ async def fxa_auth(authorization: Annotated[str | None, Header()]):
                 try:
                     profile = await task
                     result = PrometheusResult.SUCCESS
+                    verification_source = profile.get("verification_source", "unknown")
+                    metrics.fxa_verifications_total.labels(
+                        verification_source=verification_source
+                    ).inc()
                     return profile
                 except Exception as e:
                     errors.append(e)
@@ -54,6 +64,6 @@ async def fxa_auth(authorization: Annotated[str | None, Header()]):
         logger.error(f"FxA auth error: {errors}")
         raise HTTPException(status_code=401, detail="Invalid FxA auth")
     finally:
-        metrics.validate_fxa_latency.labels(result=result).observe(
-            time.perf_counter() - start_time
-        )
+        metrics.validate_fxa_latency.labels(
+            result=result, verification_source=verification_source
+        ).observe(time.perf_counter() - start_time)
