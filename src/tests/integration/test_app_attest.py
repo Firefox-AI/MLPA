@@ -15,7 +15,14 @@ from mlpa.core.routers.appattest import appattest
 from tests.consts import (
     SAMPLE_CHAT_REQUEST,
     SUCCESSFUL_CHAT_RESPONSE,
+    TEST_BUNDLE_ID,
     TEST_KEY_ID_B64,
+)
+from tests.helpers import (
+    auth_headers,
+    get_challenge_b64,
+    make_jwt,
+    patch_apple_config_capture_app_id,
 )
 from tests.mocks import MockAppAttestPGService
 
@@ -79,6 +86,7 @@ def test_invalid_challenge(mocked_client_integration):
             "challenge_b64": challenge_b64,
             "key_id_b64": TEST_KEY_ID_B64,
             "attestation_obj_b64": "VEVTVF9BVFRFU1RBVElPTl9CQVNFNjRVUkw=",
+            "bundle_id": TEST_BUNDLE_ID,
         },
         key=jwt_secret,
         algorithm="HS256",
@@ -107,6 +115,7 @@ def test_invalid_attestation_request_missing_fields(mocked_client_integration):
         {
             "challenge_b64": challenge_b64,
             "key_id_b64": TEST_KEY_ID_B64,
+            "bundle_id": TEST_BUNDLE_ID,
             # "attestation_obj_b64" is missing
         },
         key=jwt_secret,
@@ -154,6 +163,7 @@ def test_invalid_attestation_request_wrong_key_id(mocked_client_integration):
             "challenge_b64": challenge_b64,
             "key_id_b64": "invalid_key_id_b64",
             "attestation_obj_b64": "VEVTVF9BVFRFU1RBVElPTl9CQVNFNjRVUkw=",
+            "bundle_id": TEST_BUNDLE_ID,
         },
         key=jwt_secret,
         algorithm="HS256",
@@ -186,6 +196,7 @@ def test_successful_attestation_request(mocked_client_integration):
             "challenge_b64": challenge_b64,
             "key_id_b64": TEST_KEY_ID_B64,
             "attestation_obj_b64": attestation_obj_b64,
+            "bundle_id": TEST_BUNDLE_ID,
         },
         key=jwt_secret,
         algorithm="HS256",
@@ -205,6 +216,71 @@ def test_successful_attestation_request(mocked_client_integration):
     assert response.json() == {"status": "success"}
 
 
+def test_attest_uses_bundle_id_from_jwt(mocker, mocked_client_integration):
+    captured = patch_apple_config_capture_app_id(mocker)
+
+    # Use wraps to bypass the fixture's mock and run the real verify_attest,
+    # so execution actually reaches AppleConfig
+    mocker.patch(
+        "mlpa.core.routers.appattest.middleware.verify_attest",
+        wraps=appattest.verify_attest,
+    )
+
+    token = make_jwt(
+        jwt_secret,
+        challenge_b64=get_challenge_b64(mocked_client_integration),
+        bundle_id=TEST_BUNDLE_ID,
+        attestation_obj_b64=base64.b64encode(b"fake").decode(),
+    )
+
+    resp = mocked_client_integration.post(
+        "/verify/attest",
+        headers=auth_headers(token),
+        json=sample_chat_request,
+    )
+
+    assert resp.status_code != 200
+    assert captured["app_id"] == f"{env.APP_DEVELOPMENT_TEAM}.{TEST_BUNDLE_ID}"
+
+
+async def test_assert_uses_bundle_id_from_jwt(mocker, mocked_client_integration):
+    captured = patch_apple_config_capture_app_id(mocker)
+
+    # Use wraps to bypass the fixture's mock and run the real verify_assert,
+    # so execution actually reaches AppleConfig
+    mocker.patch(
+        "mlpa.core.routers.appattest.middleware.verify_assert",
+        wraps=appattest.verify_assert,
+    )
+
+    # Mock load_pem_public_key so we don't need a real key
+    mocker.patch(
+        "mlpa.core.routers.appattest.appattest.serialization.load_pem_public_key",
+        return_value="fake",
+    )
+
+    # Seed a fake key so verify_assert gets past the public-key lookup
+    mock_pg = MockAppAttestPGService()
+    await mock_pg.store_key(TEST_KEY_ID_B64, "fake_pem", counter=0)
+    mocker.patch("mlpa.core.routers.appattest.appattest.app_attest_pg", mock_pg)
+
+    token = make_jwt(
+        jwt_secret,
+        challenge_b64=get_challenge_b64(mocked_client_integration),
+        bundle_id=TEST_BUNDLE_ID,
+        assertion_obj_b64=base64.b64encode(b"fake").decode(),
+    )
+
+    resp = mocked_client_integration.post(
+        "/v1/chat/completions",
+        headers=auth_headers(token),
+        json=sample_chat_request,
+    )
+
+    assert resp.status_code != 200
+    assert captured["app_id"] == f"{env.APP_DEVELOPMENT_TEAM}.{TEST_BUNDLE_ID}"
+
+
 def test_successful_request_with_mocked_app_attest_auth(mocked_client_integration):
     challenge_response = mocked_client_integration.get(
         "/verify/challenge", params={"key_id_b64": TEST_KEY_ID_B64}
@@ -217,6 +293,7 @@ def test_successful_request_with_mocked_app_attest_auth(mocked_client_integratio
             "challenge_b64": challenge_b64,
             "key_id_b64": TEST_KEY_ID_B64,
             "assertion_obj_b64": "VEVTVF9BU1NFUlRJT05fQkFTRTY0VVJM",
+            "bundle_id": TEST_BUNDLE_ID,
         },
         key=jwt_secret,
         algorithm="HS256",
@@ -262,7 +339,7 @@ async def test_verify_assert_rejects_non_monotonic_counter(mocker):
 
     with pytest.raises(HTTPException) as exc:
         await appattest.verify_assert(
-            TEST_KEY_ID_B64, assertion_bytes, sample_chat_request, False
+            TEST_KEY_ID_B64, assertion_bytes, sample_chat_request, False, TEST_BUNDLE_ID
         )
 
     assert exc.value.status_code == 403
@@ -305,7 +382,7 @@ async def test_verify_assert_succeeds_and_updates_counter(mocker):
     )
 
     result = await appattest.verify_assert(
-        TEST_KEY_ID_B64, assertion_bytes, chat_payload, False
+        TEST_KEY_ID_B64, assertion_bytes, chat_payload, False, TEST_BUNDLE_ID
     )
     assert result == {"status": "success"}
 
