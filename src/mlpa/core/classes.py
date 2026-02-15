@@ -30,12 +30,14 @@ class AttestationAuth(BaseModel):
     key_id_b64: str
     challenge_b64: str
     attestation_obj_b64: str
+    bundle_id: str
 
 
 class AssertionAuth(BaseModel):
     key_id_b64: str
     challenge_b64: str
     assertion_obj_b64: str
+    bundle_id: str
 
 
 # Google Play Integrity
