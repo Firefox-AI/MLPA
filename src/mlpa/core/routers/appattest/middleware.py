@@ -76,7 +76,7 @@ async def app_attest_auth(
             assertionAuth.bundle_id,
         )
     except HTTPException:
-        raise HTTPException(status_code=401, detail="Invalid App Attest attestation")
+        raise HTTPException(status_code=401, detail="Invalid App Attest assertion")
     except Exception as e:
         logger.error(f"App Attest auth error: {e}")
         raise HTTPException(
