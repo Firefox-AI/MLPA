@@ -48,6 +48,7 @@ def mocked_client_integration(mocker):
         challenge: str,
         attestation_obj: str,
         use_qa_certificates: bool,
+        bundle_id: str,
     ):
         return await mock_verify_attest(
             mock_app_attest_pg,
@@ -55,6 +56,7 @@ def mocked_client_integration(mocker):
             challenge,
             attestation_obj,
             use_qa_certificates,
+            bundle_id=bundle_id,
         )
 
     mocker.patch(

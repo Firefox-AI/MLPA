@@ -104,13 +104,14 @@ async def verify_attest(
     challenge: bytes,
     attestation_obj: bytes,
     use_qa_certificates: bool,
+    bundle_id: str,
 ):
     start_time = time.perf_counter()
     key_id = b64decode_safe(key_id_b64, "key_id_b64")
     root_ca_pem = _load_root_ca(use_qa_certificates)
     config = AppleConfig(
         key_id=key_id,
-        app_id=f"{env.APP_DEVELOPMENT_TEAM}.{env.APP_BUNDLE_ID}",
+        app_id=f"{env.APP_DEVELOPMENT_TEAM}.{bundle_id}",
         root_ca=root_ca_pem,
         production=env.APP_ATTEST_PRODUCTION,
     )
@@ -165,7 +166,11 @@ async def verify_attest(
 
 
 async def verify_assert(
-    key_id_b64: str, assertion: bytes, payload: dict, use_qa_certificates: bool
+    key_id_b64: str,
+    assertion: bytes,
+    payload: dict,
+    use_qa_certificates: bool,
+    bundle_id: str,
 ):
     start_time = time.perf_counter()
     key_id = b64decode_safe(key_id_b64, "key_id_b64")
@@ -186,7 +191,7 @@ async def verify_assert(
     root_ca_pem = _load_root_ca(use_qa_certificates)
     config = AppleConfig(
         key_id=key_id,
-        app_id=f"{env.APP_DEVELOPMENT_TEAM}.{env.APP_BUNDLE_ID}",
+        app_id=f"{env.APP_DEVELOPMENT_TEAM}.{bundle_id}",
         root_ca=root_ca_pem,
         production=env.APP_ATTEST_PRODUCTION,
     )

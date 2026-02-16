@@ -47,6 +47,7 @@ async def attest(
             challenge_bytes,
             attestation_obj,
             use_qa_certificates,
+            attestationAuth.bundle_id,
         )
     except ValueError as e:
         logger.error(f"App Attest attestation error: {e}")
@@ -72,6 +73,7 @@ async def app_attest_auth(
             assertion_obj,
             chat_request.model_dump(exclude_unset=True),
             use_qa_certificates,
+            assertionAuth.bundle_id,
         )
     except HTTPException:
         raise HTTPException(status_code=401, detail="Invalid App Attest attestation")

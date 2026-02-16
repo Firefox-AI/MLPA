@@ -26,6 +26,7 @@ async def mock_verify_attest(
     challenge: str,
     attestation_obj: str,
     use_qa_certificates: bool,
+    bundle_id: str,
 ):
     try:
         attestation_data = cbor2.loads(attestation_obj)
@@ -47,7 +48,11 @@ async def mock_verify_attest(
 
 
 async def mock_verify_assert(
-    key_id_b64, assertion_obj, payload: ChatRequest, use_qa_certificates: bool
+    key_id_b64,
+    assertion_obj,
+    payload: ChatRequest,
+    use_qa_certificates: bool,
+    bundle_id: str,
 ):
     # TODO: implement
     return {"status": "success"}
