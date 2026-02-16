@@ -18,7 +18,7 @@ from tests.consts import (
     TEST_BUNDLE_ID,
     TEST_KEY_ID_B64,
 )
-from tests.helpers import (
+from tests.integration.appattest_helpers import (
     auth_headers,
     get_challenge_b64,
     make_jwt,
