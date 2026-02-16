@@ -6,11 +6,12 @@ import sentry_sdk
 import uvicorn
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.exception_handlers import http_exception_handler
+from fastapi.openapi.utils import get_openapi
 from fastapi.responses import StreamingResponse
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
 from mlpa.core.auth.authorize import authorize_request
-from mlpa.core.classes import AuthorizedChatRequest
+from mlpa.core.classes import AssertionAuth, AttestationAuth, AuthorizedChatRequest
 from mlpa.core.completions import get_completion, stream_completion
 from mlpa.core.config import (
     RATE_LIMIT_ERROR_RESPONSE,
@@ -34,7 +35,9 @@ tags_metadata = [
     {"name": "Metrics", "description": "Prometheus metrics endpoints."},
     {
         "name": "App Attest",
-        "description": "Endpoints for verifying App Attest payloads.",
+        "description": "iOS App Attest verification flow: (1) GET /verify/challenge to obtain a challenge, "
+        "(2) POST /verify/attest with a JWT containing the attestation object. "
+        "Use the attested key for subsequent requests to /v1/chat/completions with use-app-attest header.",
     },
     {
         "name": "Play Integrity",
@@ -123,10 +126,38 @@ app.include_router(user_router, prefix="/user")
 app.include_router(mock_router, prefix="/mock")
 
 
+def _custom_openapi():
+    if app.openapi_schema:
+        return app.openapi_schema
+    openapi_schema = get_openapi(
+        title=app.title,
+        version=app.version,
+        description=app.description,
+        routes=app.routes,
+        tags=tags_metadata,
+    )
+    schemas = openapi_schema.setdefault("components", {}).setdefault("schemas", {})
+    attest_schema = AttestationAuth.model_json_schema()
+    attest_schema["description"] = "JWT payload for POST /verify/attest"
+    schemas["AttestationAuth"] = attest_schema
+    assert_schema = AssertionAuth.model_json_schema()
+    assert_schema["description"] = (
+        "JWT payload for POST /v1/chat/completions with use-app-attest"
+    )
+    schemas["AssertionAuth"] = assert_schema
+    app.openapi_schema = openapi_schema
+    return app.openapi_schema
+
+
+app.openapi = _custom_openapi
+
+
 @app.post(
     "/v1/chat/completions",
     tags=["LiteLLM"],
-    description="Authorize first using App Attest or FxA. Pass the authorization header containing either the FxA token or the App Attest data JWT",
+    description="Authorize first using App Attest or FxA. "
+    "For FxA: pass the OAuth token in Authorization. "
+    "For App Attest: set use-app-attest header and pass a Bearer JWT in Authorization (see AssertionAuth schema).",
     responses=RATE_LIMIT_ERROR_RESPONSE,
 )
 async def chat_completion(
