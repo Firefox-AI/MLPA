@@ -379,7 +379,7 @@ def app_attest_id() -> str:
     Returns:
         App Attest identifier string
     """
-    return f"{env.APP_DEVELOPMENT_TEAM}.{env.APP_BUNDLE_ID}"
+    return f"{env.APP_DEVELOPMENT_TEAM}.org.mozilla.ios.Fennec"
 
 
 @app.command("register")
