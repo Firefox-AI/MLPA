@@ -83,7 +83,6 @@ class Env(BaseSettings):
     ASYNCPG_LOGGING: bool = True
 
     # App Attest
-    APP_BUNDLE_ID: str = "org.example.app"
     APP_DEVELOPMENT_TEAM: str = "TEAMID1234"
     # NOTE: Should be False in production
     # only use it for local testing

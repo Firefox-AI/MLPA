@@ -111,7 +111,7 @@ async def verify_attest(
     root_ca_pem = _load_root_ca(use_qa_certificates)
     config = AppleConfig(
         key_id=key_id,
-        app_id=f"{env.APP_DEVELOPMENT_TEAM}.{bundle_id or env.APP_BUNDLE_ID}",
+        app_id=f"{env.APP_DEVELOPMENT_TEAM}.{bundle_id}",
         root_ca=root_ca_pem,
         production=env.APP_ATTEST_PRODUCTION,
     )
