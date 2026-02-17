@@ -96,6 +96,8 @@ class Env(BaseSettings):
     # Play Integrity
     PLAY_INTEGRITY_PACKAGE_NAME: str = "com.example.app"
     PLAY_INTEGRITY_REQUEST_TIMEOUT_SECONDS: int = 30
+
+    # Access token
     MLPA_ACCESS_TOKEN_SECRET: str = "mlpa-dev-secret"
     MLPA_ACCESS_TOKEN_TTL_SECONDS: int = 86400
 
