@@ -1,6 +1,7 @@
+import hashlib
 from typing import Annotated
 
-from fastapi import Header, HTTPException
+from fastapi import Header, HTTPException, Request
 
 from mlpa.core.classes import AuthorizedChatRequest, ChatRequest, ServiceType
 from mlpa.core.config import env
@@ -10,6 +11,7 @@ from mlpa.core.utils import extract_user_from_play_integrity_jwt, parse_app_atte
 
 
 async def authorize_request(
+    request: Request,
     chat_request: ChatRequest,
     authorization: Annotated[str, Header()],
     service_type: Annotated[ServiceType, Header()],
@@ -21,8 +23,10 @@ async def authorize_request(
         raise HTTPException(status_code=401, detail="Missing authorization header")
     if use_app_attest:
         # Apple App Attest
+        body_bytes = await request.body()
         assertionAuth = parse_app_attest_jwt(authorization, "assert")
-        data = await app_attest_auth(assertionAuth, chat_request, use_qa_certificates)
+        expected_hash = hashlib.sha256(body_bytes).digest()
+        data = await app_attest_auth(assertionAuth, expected_hash, use_qa_certificates)
         if not data or data.get("error"):
             raise HTTPException(status_code=401, detail=data["error"])
         return AuthorizedChatRequest(

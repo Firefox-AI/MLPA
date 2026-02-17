@@ -50,7 +50,7 @@ async def mock_verify_attest(
 async def mock_verify_assert(
     key_id_b64,
     assertion_obj,
-    payload: ChatRequest,
+    expected_hash: bytes,
     use_qa_certificates: bool,
     bundle_id: str,
 ):
