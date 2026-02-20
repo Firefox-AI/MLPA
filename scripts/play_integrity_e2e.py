@@ -35,11 +35,7 @@ def run(args: argparse.Namespace) -> None:
         args.user_id or os.getenv("MLPA_PLAY_USER_ID"),
         "user_id",
     )
-    package_name = (
-        args.package_name
-        or os.getenv("MLPA_PLAY_PACKAGE_NAME")
-        or env.PLAY_INTEGRITY_PACKAGE_NAME
-    )
+    package_name = args.package_name or env.PLAY_INTEGRITY_PACKAGE_NAME
 
     verify_response = httpx.post(
         f"{args.base_url}/verify/play",
