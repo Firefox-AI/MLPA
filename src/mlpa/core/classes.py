@@ -60,6 +60,7 @@ class AssertionAuth(BaseModel):
 class PlayIntegrityRequest(BaseModel):
     integrity_token: str
     user_id: str
+    package_name: str = "org.mozilla.firefox"
 
 
 class AuthorizedChatRequest(ChatRequest):
