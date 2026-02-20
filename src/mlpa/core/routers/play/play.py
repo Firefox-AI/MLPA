@@ -38,12 +38,15 @@ def _get_play_integrity_access_token() -> str:
     return credentials.token
 
 
-async def _decode_integrity_token(integrity_token: str) -> dict:
+async def _decode_integrity_token(integrity_token: str, package_name: str) -> dict:
     access_token = await run_in_threadpool(_get_play_integrity_access_token)
     client = get_http_client()
+    if not package_name in env.ALLOWED_PACKAGE_NAMES:
+        raise HTTPException(status_code=403, detail="Package name not allowed")
+
     try:
         response = await client.post(
-            f"https://playintegrity.googleapis.com/v1/{env.PLAY_INTEGRITY_PACKAGE_NAME}:decodeIntegrityToken",
+            f"https://playintegrity.googleapis.com/v1/{package_name}:decodeIntegrityToken",
             headers={
                 "Authorization": f"Bearer {access_token}",
                 "Content-Type": "application/json",
@@ -61,8 +64,8 @@ async def _decode_integrity_token(integrity_token: str) -> dict:
 
 def _validate_integrity_payload(payload: dict, expected_hash: str) -> None:
     request_details = payload.get("requestDetails", {})
-    package_name = request_details.get("requestPackageName")
-    if package_name != env.PLAY_INTEGRITY_PACKAGE_NAME:
+    actual_package_name = request_details.get("requestPackageName")
+    if actual_package_name not in env.ALLOWED_PACKAGE_NAMES:
         raise HTTPException(status_code=401, detail="Invalid package name")
 
     token_request_hash = request_details.get("requestHash")
@@ -89,7 +92,9 @@ def _validate_integrity_payload(payload: dict, expected_hash: str) -> None:
 
 @router.post("/play", tags=["Play Integrity"])
 async def verify_play_integrity(payload: PlayIntegrityRequest):
-    decoded = await _decode_integrity_token(payload.integrity_token)
+    decoded = await _decode_integrity_token(
+        payload.integrity_token, payload.package_name
+    )
     token_payload = decoded.get("tokenPayloadExternal") or decoded.get("tokenPayload")
     if not token_payload:
         raise HTTPException(status_code=401, detail="Invalid Play Integrity token")

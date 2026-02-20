@@ -60,6 +60,7 @@ class AssertionAuth(BaseModel):
 class PlayIntegrityRequest(BaseModel):
     integrity_token: str
     user_id: str
+    package_name: str = env.PLAY_INTEGRITY_PACKAGE_NAME
 
 
 class AuthorizedChatRequest(ChatRequest):
