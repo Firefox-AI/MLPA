@@ -62,12 +62,12 @@ async def _decode_integrity_token(integrity_token: str, package_name: str) -> di
     return response.json()
 
 
-def _validate_integrity_payload(
-    payload: dict, expected_hash: str, package_name: str
-) -> None:
+def _validate_integrity_payload(payload: dict, expected_hash: str) -> None:
     request_details = payload.get("requestDetails", {})
-    package_name = request_details.get("requestPackageName")
-    if package_name != package_name:
+    actual_package_name = request_details.get(
+        "requestPackageName", env.PLAY_INTEGRITY_PACKAGE_NAME
+    )
+    if actual_package_name not in env.ALLOWED_PACKAGE_NAMES:
         raise HTTPException(status_code=401, detail="Invalid package name")
 
     token_request_hash = request_details.get("requestHash")
