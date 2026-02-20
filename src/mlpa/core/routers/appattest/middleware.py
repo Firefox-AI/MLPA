@@ -2,8 +2,11 @@ from typing import Annotated
 
 from fastapi import APIRouter, Header, HTTPException, Query
 
-from mlpa.core.classes import AssertionAuth
-from mlpa.core.config import env
+from mlpa.core.classes import (
+    AssertionAuth,
+    AttestSuccessResponse,
+    ChallengeResponse,
+)
 from mlpa.core.logger import logger
 from mlpa.core.routers.appattest import (
     generate_client_challenge,
