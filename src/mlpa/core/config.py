@@ -93,6 +93,7 @@ class Env(BaseSettings):
     APP_ATTEST_QA_GCP_PROJECT_ID: str | None = None
 
     # Play Integrity
+    PLAY_INTEGRITY_PACKAGE_NAME: str = "org.mozilla.firefox"
     PLAY_INTEGRITY_REQUEST_TIMEOUT_SECONDS: int = 30
     ALLOWED_PACKAGE_NAMES: set[str] = {
         "org.mozilla.fenix.debug",
