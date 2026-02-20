@@ -2,12 +2,8 @@ from typing import Annotated
 
 from fastapi import APIRouter, Header, HTTPException, Query
 
-from mlpa.core.classes import (
-    AssertionAuth,
-    AttestSuccessResponse,
-    ChallengeResponse,
-    ChatRequest,
-)
+from mlpa.core.classes import AssertionAuth
+from mlpa.core.config import env
 from mlpa.core.logger import logger
 from mlpa.core.routers.appattest import (
     generate_client_challenge,
@@ -106,7 +102,7 @@ async def attest(
 # Assert validation
 async def app_attest_auth(
     assertionAuth: AssertionAuth,
-    chat_request: ChatRequest,
+    expected_hash: bytes,
     use_qa_certificates: bool,
 ):
     challenge_bytes = b64decode_safe(assertionAuth.challenge_b64, "challenge_b64")
@@ -119,12 +115,12 @@ async def app_attest_auth(
         result = await verify_assert(
             assertionAuth.key_id_b64,
             assertion_obj,
-            chat_request.model_dump(exclude_unset=True),
+            expected_hash,
             use_qa_certificates,
             assertionAuth.bundle_id,
         )
     except HTTPException:
-        raise HTTPException(status_code=401, detail="Invalid App Attest attestation")
+        raise HTTPException(status_code=401, detail="Invalid App Attest assertion")
     except Exception as e:
         logger.error(f"App Attest auth error: {e}")
         raise HTTPException(

@@ -7,6 +7,8 @@ from mlpa.core.config import env
 
 
 class ChatRequest(BaseModel):
+    # NOTE: this are sanitized parames we are willing to expose to the user
+    # full list is https://docs.litellm.ai/docs/completion/input#input-params-1
     stream: Optional[bool] = False
     messages: list[dict] = []
     model: Optional[str] = env.MODEL_NAME
@@ -16,6 +18,20 @@ class ChatRequest(BaseModel):
     mock_response: Optional[str] = None
     tools: Optional[list] = None
     tool_choice: Optional[str | dict] = None
+    # Optional OpenAI params
+    n: Optional[int] = None
+    stream_options: Optional[dict] = None
+    stop: Optional[str | list[str]] = None
+    max_tokens: Optional[int] = None
+    presence_penalty: Optional[float] = None
+    frequency_penalty: Optional[float] = None
+    logit_bias: Optional[dict] = None
+    # openai v1.0+ new params
+    response_format: Optional[dict] = None
+    seed: Optional[int] = None
+    parallel_tool_calls: Optional[bool] = None
+    logprobs: Optional[bool] = None
+    top_logprobs: Optional[int] = None
 
 
 class UserUpdatePayload(BaseModel):

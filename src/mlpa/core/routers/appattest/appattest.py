@@ -168,15 +168,12 @@ async def verify_attest(
 async def verify_assert(
     key_id_b64: str,
     assertion: bytes,
-    payload: dict,
+    expected_hash: bytes,
     use_qa_certificates: bool,
     bundle_id: str,
 ):
     start_time = time.perf_counter()
     key_id = b64decode_safe(key_id_b64, "key_id_b64")
-    payload_bytes = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
-    expected_hash = hashlib.sha256(payload_bytes).digest()
-
     key_record = await app_attest_pg.get_key(key_id_b64)
     if not key_record or not key_record.get("public_key_pem"):
         logger.error(

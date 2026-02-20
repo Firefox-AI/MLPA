@@ -83,7 +83,6 @@ class Env(BaseSettings):
     ASYNCPG_LOGGING: bool = True
 
     # App Attest
-    APP_BUNDLE_ID: str = "org.example.app"
     APP_DEVELOPMENT_TEAM: str = "TEAMID1234"
     # NOTE: Should be False in production
     # only use it for local testing
@@ -96,6 +95,8 @@ class Env(BaseSettings):
     # Play Integrity
     PLAY_INTEGRITY_PACKAGE_NAME: str = "com.example.app"
     PLAY_INTEGRITY_REQUEST_TIMEOUT_SECONDS: int = 30
+
+    # Access token
     MLPA_ACCESS_TOKEN_SECRET: str = "mlpa-dev-secret"
     MLPA_ACCESS_TOKEN_TTL_SECONDS: int = 86400
 

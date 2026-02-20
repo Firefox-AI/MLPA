@@ -201,6 +201,7 @@ def main():
         host="0.0.0.0",
         port=env.PORT,
         timeout_keep_alive=10,
+        timeout_graceful_shutdown=60,
         log_config=None,
         log_level=None,
     )
