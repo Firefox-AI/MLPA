@@ -6,12 +6,11 @@ import sentry_sdk
 import uvicorn
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.exception_handlers import http_exception_handler
-from fastapi.openapi.utils import get_openapi
 from fastapi.responses import StreamingResponse
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
 from mlpa.core.auth.authorize import authorize_request
-from mlpa.core.classes import AssertionAuth, AttestationAuth, AuthorizedChatRequest
+from mlpa.core.classes import AuthorizedChatRequest
 from mlpa.core.completions import get_completion, stream_completion
 from mlpa.core.config import (
     RATE_LIMIT_ERROR_RESPONSE,
@@ -21,6 +20,7 @@ from mlpa.core.config import (
 from mlpa.core.http_client import close_http_client, get_http_client
 from mlpa.core.logger import logger, setup_logger
 from mlpa.core.middleware import register_middleware
+from mlpa.core.openapi import customize_openapi
 from mlpa.core.pg_services.services import app_attest_pg, litellm_pg
 from mlpa.core.routers.appattest import appattest_router
 from mlpa.core.routers.fxa import fxa_router
@@ -124,32 +124,7 @@ app.include_router(play_router, prefix="/verify")
 app.include_router(fxa_router, prefix="/fxa")
 app.include_router(user_router, prefix="/user")
 app.include_router(mock_router, prefix="/mock")
-
-
-def _custom_openapi():
-    if app.openapi_schema:
-        return app.openapi_schema
-    openapi_schema = get_openapi(
-        title=app.title,
-        version=app.version,
-        description=app.description,
-        routes=app.routes,
-        tags=tags_metadata,
-    )
-    schemas = openapi_schema.setdefault("components", {}).setdefault("schemas", {})
-    attest_schema = AttestationAuth.model_json_schema()
-    attest_schema["description"] = "JWT payload for POST /verify/attest"
-    schemas["AttestationAuth"] = attest_schema
-    assert_schema = AssertionAuth.model_json_schema()
-    assert_schema["description"] = (
-        "JWT payload for POST /v1/chat/completions with use-app-attest"
-    )
-    schemas["AssertionAuth"] = assert_schema
-    app.openapi_schema = openapi_schema
-    return app.openapi_schema
-
-
-app.openapi = _custom_openapi
+customize_openapi(app, tags_metadata)
 
 
 @app.post(
