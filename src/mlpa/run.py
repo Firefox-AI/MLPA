@@ -20,6 +20,7 @@ from mlpa.core.config import (
 from mlpa.core.http_client import close_http_client, get_http_client
 from mlpa.core.logger import logger, setup_logger
 from mlpa.core.middleware import register_middleware
+from mlpa.core.openapi import customize_openapi
 from mlpa.core.pg_services.services import app_attest_pg, litellm_pg
 from mlpa.core.routers.appattest import appattest_router
 from mlpa.core.routers.fxa import fxa_router
@@ -34,7 +35,9 @@ tags_metadata = [
     {"name": "Metrics", "description": "Prometheus metrics endpoints."},
     {
         "name": "App Attest",
-        "description": "Endpoints for verifying App Attest payloads.",
+        "description": "iOS App Attest verification flow: (1) GET /verify/challenge to obtain a challenge, "
+        "(2) POST /verify/attest with a JWT containing the attestation object. "
+        "Use the attested key for subsequent requests to /v1/chat/completions with use-app-attest header.",
     },
     {
         "name": "Play Integrity",
@@ -121,12 +124,15 @@ app.include_router(play_router, prefix="/verify")
 app.include_router(fxa_router, prefix="/fxa")
 app.include_router(user_router, prefix="/user")
 app.include_router(mock_router, prefix="/mock")
+customize_openapi(app, tags_metadata)
 
 
 @app.post(
     "/v1/chat/completions",
     tags=["LiteLLM"],
-    description="Authorize first using App Attest or FxA. Pass the authorization header containing either the FxA token or the App Attest data JWT",
+    description="Authorize first using App Attest or FxA. "
+    "For FxA: pass the OAuth token in Authorization. "
+    "For App Attest: set use-app-attest header and pass a Bearer JWT in Authorization (see AssertionAuth schema).",
     responses=RATE_LIMIT_ERROR_RESPONSE,
 )
 async def chat_completion(
