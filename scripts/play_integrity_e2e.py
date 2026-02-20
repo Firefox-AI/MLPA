@@ -35,10 +35,19 @@ def run(args: argparse.Namespace) -> None:
         args.user_id or os.getenv("MLPA_PLAY_USER_ID"),
         "user_id",
     )
+    package_name = (
+        args.package_name
+        or os.getenv("MLPA_PLAY_PACKAGE_NAME")
+        or env.PLAY_INTEGRITY_PACKAGE_NAME
+    )
 
     verify_response = httpx.post(
         f"{args.base_url}/verify/play",
-        json={"integrity_token": integrity_token, "user_id": user_id},
+        json={
+            "integrity_token": integrity_token,
+            "user_id": user_id,
+            "package_name": package_name,
+        },
         timeout=args.timeout_s,
     )
     verify_response.raise_for_status()
@@ -89,6 +98,7 @@ def build_parser() -> argparse.ArgumentParser:
     run_parser = subparsers.add_parser("run", help="Verify and request a completion.")
     run_parser.add_argument("--integrity-token", dest="integrity_token")
     run_parser.add_argument("--user-id", dest="user_id")
+    run_parser.add_argument("--package-name", dest="package_name")
     run_parser.add_argument(
         "--base-url", dest="base_url", default="http://localhost:8080"
     )
