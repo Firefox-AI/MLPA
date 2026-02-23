@@ -42,6 +42,14 @@ class UserUpdatePayload(BaseModel):
 
 
 # iOS App Attest
+class ChallengeResponse(BaseModel):
+    challenge: str
+
+
+class AttestSuccessResponse(BaseModel):
+    status: str
+
+
 class AttestationAuth(BaseModel):
     key_id_b64: str
     challenge_b64: str
