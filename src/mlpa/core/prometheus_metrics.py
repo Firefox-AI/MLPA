@@ -41,6 +41,20 @@ BUCKETS_COMPLETION = (
 )
 BUCKETS_TTFT = (0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0, float("inf"))
 BUCKETS_TOOL_CALLS = (0, 1, 2, 3, 5, 10, 20, 50, float("inf"))
+BUCKETS_TOKENS = (
+    0,
+    10,
+    50,
+    100,
+    250,
+    500,
+    1000,
+    2500,
+    5000,
+    10000,
+    25000,
+    float("inf"),
+)
 
 
 @dataclass
@@ -57,6 +71,7 @@ class PrometheusMetrics:
     chat_completion_latency: Histogram
     chat_completion_ttft: Histogram
     chat_tokens: Counter
+    chat_tokens_per_request: Histogram
     chat_tool_calls: Counter
     chat_completions_with_tools: Counter
     chat_tool_calls_per_completion: Histogram
@@ -128,6 +143,12 @@ metrics = PrometheusMetrics(
         "mlpa_chat_tokens",
         "Number of tokens for chat completions.",
         ["type", "model", "service_type"],
+    ),
+    chat_tokens_per_request=Histogram(
+        "mlpa_chat_tokens_per_request",
+        "Distribution of tokens per chat completion request.",
+        ["type", "model", "service_type"],
+        buckets=BUCKETS_TOKENS,
     ),
     chat_tool_calls=Counter(
         "mlpa_chat_tool_calls_total",

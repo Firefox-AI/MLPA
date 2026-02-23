@@ -217,12 +217,22 @@ async def stream_completion(authorized_chat_request: AuthorizedChatRequest):
                     model=authorized_chat_request.model,
                     service_type=authorized_chat_request.service_type,
                 ).inc(prompt_tokens)
+                metrics.chat_tokens_per_request.labels(
+                    type="prompt",
+                    model=authorized_chat_request.model,
+                    service_type=authorized_chat_request.service_type,
+                ).observe(prompt_tokens)
             if completion_tokens > 0:
                 metrics.chat_tokens.labels(
                     type="completion",
                     model=authorized_chat_request.model,
                     service_type=authorized_chat_request.service_type,
                 ).inc(completion_tokens)
+                metrics.chat_tokens_per_request.labels(
+                    type="completion",
+                    model=authorized_chat_request.model,
+                    service_type=authorized_chat_request.service_type,
+                ).observe(completion_tokens)
             tool_names = [
                 tool_calls_accum[i]["function"].get("name") or "unknown"
                 for i in sorted(tool_calls_accum)
@@ -300,11 +310,21 @@ async def get_completion(authorized_chat_request: AuthorizedChatRequest):
             model=authorized_chat_request.model,
             service_type=authorized_chat_request.service_type,
         ).inc(prompt_tokens)
+        metrics.chat_tokens_per_request.labels(
+            type="prompt",
+            model=authorized_chat_request.model,
+            service_type=authorized_chat_request.service_type,
+        ).observe(prompt_tokens)
         metrics.chat_tokens.labels(
             type="completion",
             model=authorized_chat_request.model,
             service_type=authorized_chat_request.service_type,
         ).inc(completion_tokens)
+        metrics.chat_tokens_per_request.labels(
+            type="completion",
+            model=authorized_chat_request.model,
+            service_type=authorized_chat_request.service_type,
+        ).observe(completion_tokens)
         tool_calls = (
             data.get("choices", [{}])[0].get("message", {}).get("tool_calls") or []
         )
