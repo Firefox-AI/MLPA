@@ -11,6 +11,7 @@ from mlpa.core.completions import get_completion, stream_completion
 from mlpa.core.config import (
     ERROR_CODE_BUDGET_LIMIT_EXCEEDED,
     ERROR_CODE_RATE_LIMIT_EXCEEDED,
+    ERROR_CODE_REQUEST_TOO_LARGE,
     LITELLM_COMPLETIONS_URL,
     env,
 )
@@ -405,6 +406,45 @@ async def test_get_completion_429_non_rate_limit_error(mocker):
     assert exc_info.value.detail == {"error": "Upstream service returned an error"}
 
 
+async def test_get_completion_context_window_exceeded(mocker):
+    """
+    Tests that a 400 error with context window exceeded message returns 413.
+    """
+    error_text = (
+        "litellm.ContextWindowExceededError: This model's maximum context length "
+        "is 128000 tokens. However, your messages resulted in 496095 tokens."
+    )
+    mock_response = MagicMock()
+    mock_response.text = error_text
+    mock_response.status_code = 400
+
+    mock_http_status_error = httpx.HTTPStatusError(
+        "Bad Request", request=MagicMock(), response=mock_response
+    )
+    mock_response.raise_for_status.side_effect = mock_http_status_error
+
+    mock_client = AsyncMock()
+    mock_client.post.return_value = mock_response
+    mock_get_client = mocker.patch("mlpa.core.completions.get_http_client")
+    mock_get_client.return_value = mock_client
+
+    mock_metrics = mocker.patch("mlpa.core.completions.metrics")
+    mock_logger = mocker.patch("mlpa.core.completions.logger")
+
+    with pytest.raises(HTTPException) as exc_info:
+        await get_completion(SAMPLE_REQUEST)
+
+    assert exc_info.value.status_code == 413
+    assert exc_info.value.detail == {"error": ERROR_CODE_REQUEST_TOO_LARGE}
+    mock_logger.warning.assert_called_once()
+    assert "Context window exceeded" in str(mock_logger.warning.call_args)
+    mock_metrics.chat_completion_latency.labels.assert_called_once_with(
+        result=PrometheusResult.ERROR,
+        model=SAMPLE_REQUEST.model,
+        service_type=SAMPLE_REQUEST.service_type,
+    )
+
+
 async def test_get_completion_429_invalid_json(mocker):
     """
     Tests that a 429 error with invalid JSON is handled gracefully.
@@ -548,6 +588,40 @@ async def test_stream_completion_rate_limit_exceeded(httpx_mock: HTTPXMock, mock
     )
     mock_logger.warning.assert_called_once()
     assert "Rate limit exceeded" in str(mock_logger.warning.call_args)
+    mock_metrics.chat_completion_latency.labels.assert_called_once_with(
+        result=PrometheusResult.ERROR,
+        model=SAMPLE_REQUEST.model,
+        service_type=SAMPLE_REQUEST.service_type,
+    )
+
+
+async def test_stream_completion_context_window_exceeded(httpx_mock: HTTPXMock, mocker):
+    """
+    Tests that a 400 error with context window exceeded yields 413 SSE payload.
+    """
+    error_text = (
+        "litellm.ContextWindowExceededError: This model's maximum context length "
+        "is 128000 tokens. However, your messages resulted in 496095 tokens."
+    )
+    httpx_mock.add_response(
+        method="POST",
+        url=LITELLM_COMPLETIONS_URL,
+        content=error_text.encode(),
+        status_code=400,
+    )
+
+    mock_metrics = mocker.patch("mlpa.core.completions.metrics")
+    mock_logger = mocker.patch("mlpa.core.completions.logger")
+
+    received_chunks = [chunk async for chunk in stream_completion(SAMPLE_REQUEST)]
+
+    assert len(received_chunks) == 1
+    assert (
+        received_chunks[0]
+        == f'data: {{"error": {ERROR_CODE_REQUEST_TOO_LARGE}}}\n\n'.encode()
+    )
+    mock_logger.warning.assert_called_once()
+    assert "Context window exceeded" in str(mock_logger.warning.call_args)
     mock_metrics.chat_completion_latency.labels.assert_called_once_with(
         result=PrometheusResult.ERROR,
         model=SAMPLE_REQUEST.model,

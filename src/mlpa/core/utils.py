@@ -80,6 +80,20 @@ def is_rate_limit_error(error_response: dict, keywords: list[str]) -> bool:
     return any(indicator in error_text for indicator in keywords)
 
 
+def is_context_window_error(error_text: str) -> bool:
+    """Check if the error indicates context window exceeded (LiteLLM/providers)."""
+    if not error_text:
+        return False
+    text = error_text.lower()
+    indicators = [
+        "contextwindowexceeded",
+        "maximum context length",
+        "context window exceeded",
+        "context length",
+    ]
+    return any(ind in text for ind in indicators)
+
+
 def parse_app_attest_jwt(authorization: str, type: str):
     # Parse App Attest/Assert authorization JWT
     try:

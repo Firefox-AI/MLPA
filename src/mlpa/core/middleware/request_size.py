@@ -1,7 +1,7 @@
 from fastapi import Request
 from fastapi.responses import JSONResponse
 
-from mlpa.core.config import env
+from mlpa.core.config import ERROR_CODE_REQUEST_TOO_LARGE, env
 from mlpa.core.logger import logger
 
 
@@ -21,7 +21,7 @@ async def check_request_size_middleware(request: Request, call_next):
                     )
                     return JSONResponse(
                         status_code=413,
-                        content={"error": "Request body too large."},
+                        content={"error": ERROR_CODE_REQUEST_TOO_LARGE},
                     )
             except ValueError:
                 pass

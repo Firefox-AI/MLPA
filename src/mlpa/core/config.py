@@ -123,7 +123,7 @@ class Env(BaseSettings):
     TEMPERATURE: float = 0.1
     MAX_COMPLETION_TOKENS: int = 8192
     TOP_P: float = 0.01
-    MAX_REQUEST_SIZE_BYTES: int = 10 * 1024 * 1024  # 10 MB default
+    MAX_REQUEST_SIZE_BYTES: int = 3 * 1024 * 1024  # 3 MB default
 
     # Request Timeouts (in seconds)
     STREAMING_TIMEOUT_SECONDS: int = 300
@@ -173,6 +173,7 @@ LITELLM_COMPLETION_AUTH_HEADERS = {
 
 ERROR_CODE_BUDGET_LIMIT_EXCEEDED: int = 1
 ERROR_CODE_RATE_LIMIT_EXCEEDED: int = 2
+ERROR_CODE_REQUEST_TOO_LARGE: int = 3
 
 RATE_LIMIT_ERROR_RESPONSE = {
     429: {
@@ -209,7 +210,25 @@ RATE_LIMIT_ERROR_RESPONSE = {
                 "schema": {"type": "string", "example": "86400"},
             }
         },
-    }
+    },
+    413: {
+        "description": "Payload Too Large - Request body or context exceeded",
+        "content": {
+            "application/json": {
+                "schema": {
+                    "type": "object",
+                    "properties": {
+                        "error": {
+                            "type": "integer",
+                            "description": "Error code: 3 for request/context too large",
+                        }
+                    },
+                    "required": ["error"],
+                },
+                "example": {"error": ERROR_CODE_REQUEST_TOO_LARGE},
+            }
+        },
+    },
 }
 
 SENSITIVE_FIELDS_TO_SCRUB_FROM_SENTRY = ["messages"]
