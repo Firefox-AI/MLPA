@@ -10,6 +10,7 @@ from mlpa.core.classes import AuthorizedChatRequest
 from mlpa.core.config import (
     ERROR_CODE_BUDGET_LIMIT_EXCEEDED,
     ERROR_CODE_RATE_LIMIT_EXCEEDED,
+    ERROR_CODE_REQUEST_TOO_LARGE,
     LITELLM_COMPLETION_AUTH_HEADERS,
     LITELLM_COMPLETIONS_URL,
     env,
@@ -17,7 +18,7 @@ from mlpa.core.config import (
 from mlpa.core.http_client import get_http_client
 from mlpa.core.logger import logger
 from mlpa.core.prometheus_metrics import PrometheusResult, metrics
-from mlpa.core.utils import is_rate_limit_error, raise_and_log
+from mlpa.core.utils import is_context_window_error, is_rate_limit_error, raise_and_log
 
 # Global default tokenizer - initialized once at module load time
 _global_default_tokenizer: Optional[tiktoken.Encoding] = None
@@ -163,6 +164,16 @@ async def stream_completion(authorized_chat_request: AuthorizedChatRequest):
                         yield f'data: {{"error": {error_code}}}\n\n'.encode()
                         return
 
+                # Context window exceeded: detect by error text or upstream 413
+                if e.response.status_code == 413 or is_context_window_error(
+                    error_text_str
+                ):
+                    logger.warning(
+                        f"Context window exceeded for user {authorized_chat_request.user}"
+                    )
+                    yield f'data: {{"error": {ERROR_CODE_REQUEST_TOO_LARGE}}}\n\n'.encode()
+                    return
+
                 # For other errors or if we couldn't parse the error
                 yield raise_and_log(e, True)
                 return
@@ -288,8 +299,18 @@ async def get_completion(authorized_chat_request: AuthorizedChatRequest):
         try:
             response.raise_for_status()
         except httpx.HTTPStatusError as e:
+            error_text = e.response.text
             if e.response.status_code in {400, 429}:
-                _handle_rate_limit_error(e.response.text, authorized_chat_request.user)
+                _handle_rate_limit_error(error_text, authorized_chat_request.user)
+            # Context window exceeded: detect by error text or upstream 413
+            if e.response.status_code == 413 or is_context_window_error(error_text):
+                logger.warning(
+                    f"Context window exceeded for user {authorized_chat_request.user}"
+                )
+                raise HTTPException(
+                    status_code=413,
+                    detail={"error": ERROR_CODE_REQUEST_TOO_LARGE},
+                )
             raise_and_log(e)
         data = response.json()
         usage = data.get("usage", {})

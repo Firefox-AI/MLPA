@@ -3,7 +3,7 @@ import base64
 import pytest
 from fastapi import HTTPException
 
-from mlpa.core.utils import b64decode_safe, is_rate_limit_error
+from mlpa.core.utils import b64decode_safe, is_context_window_error, is_rate_limit_error
 
 
 def test_b64decode_safe():
@@ -113,3 +113,34 @@ def test_is_rate_limit_error_multiple_keywords():
     }
     assert is_rate_limit_error(error_response, ["budget", "rate"]) is True
     assert is_rate_limit_error(error_response, ["rate", "budget"]) is True
+
+
+def test_is_context_window_error_context_window_exceeded():
+    """Test that ContextWindowExceededError is detected."""
+    error_text = "litellm.ContextWindowExceededError: This model's maximum context length is 128000 tokens."
+    assert is_context_window_error(error_text) is True
+
+
+def test_is_context_window_error_maximum_context_length():
+    """Test that 'maximum context length' message is detected."""
+    error_text = '{"error": {"message": "maximum context length is 128000 tokens. Your messages resulted in 496095 tokens"}}'
+    assert is_context_window_error(error_text) is True
+
+
+def test_is_context_window_error_context_window_exceeded_literal():
+    """Test that 'context window exceeded' string is detected."""
+    error_text = "Error: context window exceeded for this model"
+    assert is_context_window_error(error_text) is True
+
+
+def test_is_context_window_error_context_length():
+    """Test that 'context length' is detected."""
+    error_text = "Invalid context length - too many tokens"
+    assert is_context_window_error(error_text) is True
+
+
+def test_is_context_window_error_no_match():
+    """Test that non-context-window errors return False."""
+    assert is_context_window_error("Invalid request parameters") is False
+    assert is_context_window_error("Rate limit exceeded") is False
+    assert is_context_window_error("") is False

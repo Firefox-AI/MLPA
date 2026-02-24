@@ -148,8 +148,13 @@ fxa_token: str = get_bearer_token(
 
 ## How to update static docs/index.html from redoc
 
-Ensure Node is installed
+Ensure Node is installed.
 
+```bash
+make docs
+```
+
+Alternatively, with a running server:
 1. `make install`
 2. `mlpa`
 3. `curl http://localhost:8080/openapi.json -o /tmp/openapi.json`

@@ -13,3 +13,4 @@ uv.lock
 logs/
 qa_certificates/
 litellm_config_experimental.yaml
+openapi.json

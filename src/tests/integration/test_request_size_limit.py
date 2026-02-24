@@ -57,8 +57,7 @@ def test_request_size_over_limit(mocked_client_integration):
         )
 
     assert response.status_code == 413
-    assert "error" in response.json()
-    assert "too large" in response.json()["error"].lower()
+    assert response.json() == {"error": 3}
 
 
 def test_request_size_exactly_at_limit(mocked_client_integration):

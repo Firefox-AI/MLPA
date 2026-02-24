@@ -9,6 +9,7 @@ import pytest
 from fastapi import FastAPI, Request
 from fastapi.testclient import TestClient
 
+from mlpa.core.config import ERROR_CODE_REQUEST_TOO_LARGE
 from mlpa.core.middleware import register_middleware
 
 
@@ -76,3 +77,4 @@ def test_register_middleware_function():
         content=large_content,
     )
     assert response.status_code == 413
+    assert response.json() == {"error": ERROR_CODE_REQUEST_TOO_LARGE}

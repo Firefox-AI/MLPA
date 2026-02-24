@@ -1,7 +1,7 @@
 PYTHON_VERSION=3.12
 VENV=.venv
 
-.PHONY: all setup install lint test run clean
+.PHONY: all setup install lint test run clean docs
 
 all: setup
 
@@ -27,3 +27,8 @@ mlpa:
 
 clean:
 	rm -rf __pycache__ .cache $(VENV)
+
+docs:
+	uv run python -c "from mlpa.run import app; import json; json.dump(app.openapi(), open('openapi.json', 'w'), indent=2)" && \
+	npx --yes @redocly/cli build-docs openapi.json -o docs/index.html && \
+	rm -f openapi.json
