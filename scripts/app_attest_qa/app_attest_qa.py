@@ -11,6 +11,7 @@ import hashlib
 import json
 import os
 import struct
+import time
 from pathlib import Path
 from typing import Optional
 
@@ -247,6 +248,8 @@ def create_attestation_jwt(
         "key_id_b64": key_id_b64,
         "challenge_b64": challenge_b64,
         "attestation_obj_b64": attestation_obj_b64,
+        "bundle_id": app_bundle_id(),
+        "iat": int(time.time()),
     }
     # JWT signature is not verified by the server, so we can use any secret
     return jwt.encode(payload, key="qa-secret", algorithm="HS256")
@@ -299,6 +302,8 @@ def create_assertion_jwt(
         "key_id_b64": key_id_b64,
         "challenge_b64": challenge_b64,
         "assertion_obj_b64": assertion_obj_b64,
+        "bundle_id": app_bundle_id(),
+        "iat": int(time.time()),
     }
     # JWT signature is not verified by the server, so we can use any secret
     return jwt.encode(payload, key="qa-secret", algorithm="HS256")
@@ -380,6 +385,10 @@ def app_attest_id() -> str:
         App Attest identifier string
     """
     return f"{env.APP_DEVELOPMENT_TEAM}.org.mozilla.ios.Fennec"
+
+
+def app_bundle_id() -> str:
+    return "org.mozilla.ios.Fennec"
 
 
 @app.command("register")
