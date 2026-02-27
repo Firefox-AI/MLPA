@@ -6,7 +6,6 @@ import httpx
 from fastapi import APIRouter, HTTPException
 from fastapi.concurrency import run_in_threadpool
 from google.auth.transport.requests import Request
-from pydantic import BaseModel
 
 from mlpa.core.classes import PlayIntegrityRequest
 from mlpa.core.config import env
