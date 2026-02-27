@@ -2,6 +2,7 @@ import ast
 import base64
 import json
 import time
+from functools import lru_cache
 
 from fastapi import HTTPException
 from fxa.oauth import Client
@@ -64,6 +65,7 @@ def b64decode_safe(data_b64: str, obj_name: str = "object") -> bytes:
         raise HTTPException(status_code=400, detail={obj_name: f"Invalid Base64"})
 
 
+@lru_cache(maxsize=1)
 def get_fxa_client():
     fxa_url = (
         "https://api-accounts.stage.mozaws.net/v1"

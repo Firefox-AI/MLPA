@@ -1,5 +1,6 @@
 import json
 import time
+from functools import lru_cache
 from typing import Optional
 
 import httpx
@@ -24,6 +25,7 @@ from mlpa.core.utils import is_context_window_error, is_rate_limit_error, raise_
 _global_default_tokenizer: Optional[tiktoken.Encoding] = None
 
 
+@lru_cache(maxsize=1)
 def get_default_tokenizer() -> tiktoken.Encoding:
     """
     Get or create the global default tokenizer.
