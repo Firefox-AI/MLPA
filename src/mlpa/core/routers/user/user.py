@@ -1,3 +1,4 @@
+import secrets
 from typing import Annotated
 
 import httpx
@@ -16,7 +17,7 @@ def require_master_key(
     master_key: Annotated[str, Header(alias="master_key")],
 ) -> None:
     try:
-        if master_key != f"Bearer {env.MASTER_KEY}":
+        if not secrets.compare_digest(master_key, f"Bearer {env.MASTER_KEY}"):
             raise HTTPException(status_code=401, detail={"error": "Unauthorized"})
     except HTTPException:
         raise

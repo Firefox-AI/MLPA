@@ -1,4 +1,5 @@
 import hashlib
+import secrets
 from functools import lru_cache
 
 import google.auth
@@ -68,7 +69,9 @@ def _validate_integrity_payload(payload: dict, expected_hash: str) -> None:
         raise HTTPException(status_code=401, detail="Invalid package name")
 
     token_request_hash = request_details.get("requestHash")
-    if token_request_hash != expected_hash:
+    if not token_request_hash or not secrets.compare_digest(
+        token_request_hash, expected_hash
+    ):
         raise HTTPException(status_code=401, detail="Invalid request hash")
 
     app_integrity = payload.get("appIntegrity", {})

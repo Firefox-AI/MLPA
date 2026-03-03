@@ -1,11 +1,9 @@
 import secrets
 
-from fastapi import APIRouter, HTTPException
+from fastapi import HTTPException
 
 from mlpa.core.config import env
 from mlpa.core.routers.fxa import fxa_auth
-
-router = APIRouter()
 
 
 async def auth_with_key(
