@@ -2,7 +2,6 @@ import binascii
 import hashlib
 import json
 import os
-import secrets
 import time
 from functools import lru_cache
 from pathlib import Path
@@ -90,7 +89,7 @@ async def validate_challenge(challenge: str, key_id_b64: str) -> bool:
             > env.CHALLENGE_EXPIRY_SECONDS
         ):
             return False
-        is_valid = secrets.compare_digest(challenge, stored_challenge["challenge"])
+        is_valid = challenge == stored_challenge["challenge"]
         if is_valid:
             result = PrometheusResult.SUCCESS
         return is_valid
