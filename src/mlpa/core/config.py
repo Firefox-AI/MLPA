@@ -135,7 +135,7 @@ class Env(BaseSettings):
     MLPA_ACCESS_TOKEN_TTL_SECONDS: int = 86400
 
     # Dev / experimentation auth (x-dev-authorization header)
-    MLPA_EXPERIMENTATION_AUTHORIZATION_TOKEN: str = ""
+    MLPA_EXPERIMENTATION_AUTHORIZATION_TOKEN: str = "secret-dev-token"
 
     # FxA
     CLIENT_ID: str = "default-client-id"

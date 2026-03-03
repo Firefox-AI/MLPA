@@ -44,7 +44,12 @@ async def authorize_request(
             service_type=service_type.value,
             **chat_request.model_dump(exclude_unset=True),
         )
-    elif service_type.value.endswith("-dev") and x_dev_authorization is not None:
+    elif service_type.value.endswith("-dev"):
+        if x_dev_authorization is None:
+            raise HTTPException(
+                status_code=401,
+                detail="x-dev-authorization required for dev service types (ai-dev, memories-dev)",
+            )
         fxa_profile = await auth_with_key(x_dev_authorization, authorization)
         return AuthorizedChatRequest(
             user=f"{fxa_profile['user']}:{service_type.value}",

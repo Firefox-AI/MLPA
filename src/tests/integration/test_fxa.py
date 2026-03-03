@@ -116,6 +116,20 @@ def test_x_dev_authorization_token_not_configured(mocked_client_integration):
     assert response.status_code == 422
 
 
+def test_ai_dev_requires_x_dev_authorization(mocked_client_integration):
+    """Test that ai-dev without x-dev-authorization returns 401."""
+    response = mocked_client_integration.post(
+        "/v1/chat/completions",
+        headers={
+            "authorization": f"Bearer {TEST_FXA_TOKEN}",
+            "service-type": "ai-dev",
+        },
+        json={"messages": [{"role": "user", "content": "Hello"}]},
+    )
+    assert response.status_code == 401
+    assert "x-dev-authorization required" in str(response.json().get("detail", ""))
+
+
 def test_x_dev_authorization_ignored_for_non_dev_service_type(
     mocked_client_integration,
 ):
