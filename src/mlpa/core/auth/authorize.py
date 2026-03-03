@@ -3,7 +3,7 @@ from typing import Annotated
 
 from fastapi import Header, HTTPException, Request
 
-from mlpa.core.auth import auth_with_key
+from mlpa.core.auth.dev_auth import auth_with_key
 from mlpa.core.classes import AuthorizedChatRequest, ChatRequest, ServiceType
 from mlpa.core.config import env
 from mlpa.core.routers.appattest import app_attest_auth
