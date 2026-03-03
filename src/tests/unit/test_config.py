@@ -66,15 +66,34 @@ def test_valid_service_types_includes_memories():
     assert isinstance(service_types, list)
 
 
+def test_user_feature_budget_dev_service_types_default_values():
+    """Test that ai-dev and memories-dev have correct default values."""
+    env = Env()
+    ai_dev_config = env.user_feature_budget["ai-dev"]
+    memories_dev_config = env.user_feature_budget["memories-dev"]
+
+    assert ai_dev_config["budget_id"] == "end-user-budget-ai-dev"
+    assert ai_dev_config["max_budget"] == 1.0
+    assert ai_dev_config["rpm_limit"] == 200
+    assert ai_dev_config["tpm_limit"] == 10000
+
+    assert memories_dev_config["budget_id"] == "end-user-budget-memories-dev"
+    assert memories_dev_config["max_budget"] == 1.0
+    assert memories_dev_config["rpm_limit"] == 50
+    assert memories_dev_config["tpm_limit"] == 5000
+
+
 def test_valid_service_types_all_service_types():
-    """Test that valid_service_types includes all three service types (ai, s2s, memories)."""
+    """Test that valid_service_types includes all service types (ai, s2s, memories, ai-dev, memories-dev)."""
     env = Env()
     service_types = env.valid_service_types
 
     assert "ai" in service_types
     assert "s2s" in service_types
     assert "memories" in service_types
-    assert len(service_types) == 3
+    assert "ai-dev" in service_types
+    assert "memories-dev" in service_types
+    assert len(service_types) == 5
 
 
 def test_user_feature_budget_structure_consistency():
@@ -86,7 +105,7 @@ def test_user_feature_budget_structure_consistency():
     reference_keys = set(budgets["ai"].keys())
 
     # Verify all service types have the same keys
-    for service_type in ["ai", "s2s", "memories"]:
+    for service_type in ["ai", "s2s", "memories", "ai-dev", "memories-dev"]:
         assert service_type in budgets
         service_keys = set(budgets[service_type].keys())
         assert service_keys == reference_keys, (

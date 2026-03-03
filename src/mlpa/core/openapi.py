@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.openapi.utils import get_openapi
 
 from mlpa.core.classes import AssertionAuth, AttestationAuth
+from mlpa.core.config import env
 
 
 def customize_openapi(app: FastAPI, tags_metadata: list[dict]) -> None:
@@ -26,6 +27,26 @@ def customize_openapi(app: FastAPI, tags_metadata: list[dict]) -> None:
             "JWT payload for POST /v1/chat/completions with use-app-attest"
         )
         schemas["AssertionAuth"] = assert_schema
+
+        # Add header descriptions for POST /v1/chat/completions
+        paths = openapi_schema.setdefault("paths", {})
+        post_chat = paths.get("/v1/chat/completions", {}).get("post", {})
+        if post_chat:
+            params = post_chat.setdefault("parameters", [])
+            param_descriptions = {
+                "service-type": "Service type for tracking and budget. Values: "
+                f"{', '.join(env.valid_service_types)}. Use ai-dev or memories-dev for experiments (higher limits).",
+                "x-dev-authorization": "Required for ai-dev/memories-dev. Experimentation token; also requires Authorization (FxA). Without it, dev service types return 401.",
+                "authorization": "Bearer token: FxA OAuth, Play Integrity MLPA token, or App Attest JWT.",
+                "use-app-attest": "Optional. Set to true for iOS App Attest; Authorization must contain AssertionAuth JWT.",
+                "use-qa-certificates": "Optional. For App Attest QA/sandbox testing.",
+                "use-play-integrity": "Optional. Set to true for Android Play Integrity; Authorization contains MLPA token from /verify/play.",
+            }
+            for p in params:
+                name = p.get("name")
+                if name in param_descriptions:
+                    p["description"] = param_descriptions[name]
+
         app.openapi_schema = openapi_schema
         return app.openapi_schema
 

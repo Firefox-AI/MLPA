@@ -3,6 +3,7 @@ from typing import Annotated
 
 from fastapi import Header, HTTPException, Request
 
+from mlpa.core.auth.dev_auth import auth_with_key
 from mlpa.core.classes import AuthorizedChatRequest, ChatRequest, ServiceType
 from mlpa.core.config import env
 from mlpa.core.routers.appattest import app_attest_auth
@@ -15,6 +16,7 @@ async def authorize_request(
     chat_request: ChatRequest,
     authorization: Annotated[str, Header()],
     service_type: Annotated[ServiceType, Header()],
+    x_dev_authorization: Annotated[str | None, Header()] = None,
     use_app_attest: Annotated[bool | None, Header()] = None,
     use_qa_certificates: Annotated[bool | None, Header()] = None,
     use_play_integrity: Annotated[bool | None, Header()] = None,
@@ -39,6 +41,18 @@ async def authorize_request(
         play_user_id = extract_user_from_play_integrity_jwt(authorization)
         return AuthorizedChatRequest(
             user=f"{play_user_id}:{service_type.value}",
+            service_type=service_type.value,
+            **chat_request.model_dump(exclude_unset=True),
+        )
+    elif service_type.value.endswith("-dev"):
+        if x_dev_authorization is None:
+            raise HTTPException(
+                status_code=401,
+                detail="x-dev-authorization required for dev service types (ai-dev, memories-dev)",
+            )
+        fxa_profile = await auth_with_key(x_dev_authorization, authorization)
+        return AuthorizedChatRequest(
+            user=f"{fxa_profile['user']}:{service_type.value}",
             service_type=service_type.value,
             **chat_request.model_dump(exclude_unset=True),
         )
