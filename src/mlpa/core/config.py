@@ -35,11 +35,25 @@ class Env(BaseSettings):
     USER_FEATURE_BUDGET_MEMORIES_TPM_LIMIT: int = 2000
     USER_FEATURE_BUDGET_MEMORIES_BUDGET_DURATION: str = "1d"
 
+    # User Feature Budget - ai-dev service type (experimentation, batch predictions)
+    USER_FEATURE_BUDGET_AI_DEV_BUDGET_ID: str = "end-user-budget-ai-dev"
+    USER_FEATURE_BUDGET_AI_DEV_MAX_BUDGET: float = 1.0
+    USER_FEATURE_BUDGET_AI_DEV_RPM_LIMIT: int = 200
+    USER_FEATURE_BUDGET_AI_DEV_TPM_LIMIT: int = 10000
+    USER_FEATURE_BUDGET_AI_DEV_BUDGET_DURATION: str = "1d"
+
+    # User Feature Budget - memories-dev service type (experimentation)
+    USER_FEATURE_BUDGET_MEMORIES_DEV_BUDGET_ID: str = "end-user-budget-memories-dev"
+    USER_FEATURE_BUDGET_MEMORIES_DEV_MAX_BUDGET: float = 1.0
+    USER_FEATURE_BUDGET_MEMORIES_DEV_RPM_LIMIT: int = 50
+    USER_FEATURE_BUDGET_MEMORIES_DEV_TPM_LIMIT: int = 5000
+    USER_FEATURE_BUDGET_MEMORIES_DEV_BUDGET_DURATION: str = "1d"
+
     @property
     def user_feature_budget(self) -> dict[str, dict]:
         """
         User feature budget configuration by service type.
-        Returns a nested dictionary with service types (ai, s2s, memories) as keys.
+        Returns a nested dictionary with service types (ai, s2s, memories, ai-dev, memories-dev) as keys.
         Constructed from individual environment variables.
         """
         return {
@@ -63,6 +77,20 @@ class Env(BaseSettings):
                 "rpm_limit": self.USER_FEATURE_BUDGET_MEMORIES_RPM_LIMIT,
                 "tpm_limit": self.USER_FEATURE_BUDGET_MEMORIES_TPM_LIMIT,
                 "budget_duration": self.USER_FEATURE_BUDGET_MEMORIES_BUDGET_DURATION,
+            },
+            "ai-dev": {
+                "budget_id": self.USER_FEATURE_BUDGET_AI_DEV_BUDGET_ID,
+                "max_budget": self.USER_FEATURE_BUDGET_AI_DEV_MAX_BUDGET,
+                "rpm_limit": self.USER_FEATURE_BUDGET_AI_DEV_RPM_LIMIT,
+                "tpm_limit": self.USER_FEATURE_BUDGET_AI_DEV_TPM_LIMIT,
+                "budget_duration": self.USER_FEATURE_BUDGET_AI_DEV_BUDGET_DURATION,
+            },
+            "memories-dev": {
+                "budget_id": self.USER_FEATURE_BUDGET_MEMORIES_DEV_BUDGET_ID,
+                "max_budget": self.USER_FEATURE_BUDGET_MEMORIES_DEV_MAX_BUDGET,
+                "rpm_limit": self.USER_FEATURE_BUDGET_MEMORIES_DEV_RPM_LIMIT,
+                "tpm_limit": self.USER_FEATURE_BUDGET_MEMORIES_DEV_TPM_LIMIT,
+                "budget_duration": self.USER_FEATURE_BUDGET_MEMORIES_DEV_BUDGET_DURATION,
             },
         }
 
@@ -105,6 +133,9 @@ class Env(BaseSettings):
     # Access token
     MLPA_ACCESS_TOKEN_SECRET: str = "mlpa-dev-secret"
     MLPA_ACCESS_TOKEN_TTL_SECONDS: int = 86400
+
+    # Dev / experimentation auth (x-dev-authorization header)
+    MLPA_EXPERIMENTATION_AUTHORIZATION_TOKEN: str = ""
 
     # FxA
     CLIENT_ID: str = "default-client-id"

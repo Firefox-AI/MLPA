@@ -23,6 +23,7 @@ from mlpa.core.middleware import register_middleware
 from mlpa.core.openapi import customize_openapi
 from mlpa.core.pg_services.services import app_attest_pg, litellm_pg
 from mlpa.core.routers.appattest import appattest_router
+from mlpa.core.routers.dev_auth import dev_auth_router
 from mlpa.core.routers.fxa import fxa_router
 from mlpa.core.routers.health import health_router
 from mlpa.core.routers.mock import mock_router
@@ -121,6 +122,7 @@ async def get_metrics():
 app.include_router(health_router, prefix="/health")
 app.include_router(appattest_router, prefix="/verify")
 app.include_router(play_router, prefix="/verify")
+app.include_router(dev_auth_router, prefix="/dev")
 app.include_router(fxa_router, prefix="/fxa")
 app.include_router(user_router, prefix="/user")
 app.include_router(mock_router, prefix="/mock")
@@ -130,9 +132,12 @@ customize_openapi(app, tags_metadata)
 @app.post(
     "/v1/chat/completions",
     tags=["LiteLLM"],
-    description="Authorize first using App Attest or FxA. "
-    "For FxA: pass the OAuth token in Authorization. "
-    "For App Attest: set use-app-attest header and pass a Bearer JWT in Authorization (see AssertionAuth schema).",
+    description="Authorize first using App Attest, Play Integrity, FxA, or dev tier. "
+    "**Headers:** "
+    "`Authorization` (required): Bearer token — FxA OAuth token, Play Integrity MLPA token, or App Attest JWT. "
+    "`service-type` (required): One of `ai`, `s2s`, `memories`, `ai-dev`, `memories-dev` — for tracking and budget. "
+    "`x-dev-authorization` (optional): For `ai-dev`/`memories-dev` only — experimentation token; requires FxA in Authorization. "
+    "For App Attest: set `use-app-attest: true`. For Play Integrity: set `use-play-integrity: true`.",
     responses=RATE_LIMIT_ERROR_RESPONSE,
 )
 async def chat_completion(
