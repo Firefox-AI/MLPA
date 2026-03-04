@@ -20,6 +20,33 @@ class LiteLLMPGService(PGService):
         )
         return dict(user) if user else None
 
+    async def update_user_budget(self, user_id: str, budget_id: str) -> dict:
+        """Update a user's budget by linking them to a different budget tier."""
+        try:
+            async with self.pg.acquire() as conn:
+                async with conn.transaction():
+                    updated_user_record = await conn.fetchrow(
+                        'UPDATE "LiteLLM_EndUserTable" SET "budget_id" = $1 WHERE user_id = $2 RETURNING *',
+                        budget_id,
+                        user_id,
+                    )
+
+                    if updated_user_record is None:
+                        logger.error(f"User {user_id} not found for budget update.")
+                        raise HTTPException(status_code=404, detail="User not found.")
+
+                    logger.info(
+                        f"User {user_id} budget updated to {budget_id} successfully."
+                    )
+                    return dict(updated_user_record)
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"Error updating budget for user {user_id}: {e}")
+            raise HTTPException(
+                status_code=500, detail={"error": "Error updating user budget"}
+            )
+
     async def block_user(self, user_id: str, blocked: bool = True) -> dict:
         try:
             async with self.pg.acquire() as conn:

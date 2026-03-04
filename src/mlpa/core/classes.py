@@ -41,6 +41,12 @@ class UserUpdatePayload(BaseModel):
     blocked: bool | None = None
 
 
+class BudgetUpdatePayload(BaseModel):
+    """Payload for updating a user's budget tier."""
+
+    service_type: str
+
+
 # iOS App Attest
 class ChallengeResponse(BaseModel):
     challenge: str
