@@ -123,6 +123,7 @@ class Env(BaseSettings):
     # Play Integrity
     PLAY_INTEGRITY_PACKAGE_NAME: str = "org.mozilla.firefox"
     PLAY_INTEGRITY_REQUEST_TIMEOUT_SECONDS: int = 30
+    PLAY_INTEGRITY_QUOTA_PROJECT: str | None = None
     ALLOWED_PACKAGE_NAMES: set[str] = {
         "org.mozilla.fenix",
         "org.mozilla.fenix.debug",
