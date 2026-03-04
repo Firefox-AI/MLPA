@@ -23,6 +23,82 @@ def test_block_user_success(mocked_client_integration, mocker):
     assert response.json()["user_id"] == TEST_USER_ID
 
 
+def test_update_user_budget_success(mocked_client_integration, mocker):
+    """Test updating a user's budget tier successfully."""
+    from tests.mocks import MockLiteLLMPGService
+
+    mock_litellm_pg = MockLiteLLMPGService()
+    mock_litellm_pg.store_user(
+        TEST_USER_ID,
+        {"user_id": TEST_USER_ID, "blocked": False, "alias": None, "budget_id": None},
+    )
+
+    mocker.patch("mlpa.core.routers.user.user.litellm_pg", mock_litellm_pg)
+
+    response = mocked_client_integration.post(
+        f"/user/{TEST_USER_ID}/budget",
+        headers={"master_key": f"Bearer {env.MASTER_KEY}"},
+        json={"service_type": "ai-dev"},
+    )
+
+    assert response.status_code == 200
+    data = response.json()
+    assert data["user_id"] == TEST_USER_ID
+    assert data["budget_id"] == "end-user-budget-ai-dev"
+    assert data["service_type"] == "ai-dev"
+
+
+def test_update_user_budget_unauthorized(mocked_client_integration):
+    response = mocked_client_integration.post(
+        f"/user/{TEST_USER_ID}/budget",
+        headers={"master_key": "Bearer invalid-key"},
+        json={"service_type": "ai-dev"},
+    )
+
+    assert response.status_code == 401
+    assert "Unauthorized" in str(response.json())
+
+
+def test_update_user_budget_user_not_found(mocked_client_integration, mocker):
+    """Test updating budget for non-existent user returns 404."""
+    from tests.mocks import MockLiteLLMPGService
+
+    mock_litellm_pg = MockLiteLLMPGService()
+
+    mocker.patch("mlpa.core.routers.user.user.litellm_pg", mock_litellm_pg)
+
+    response = mocked_client_integration.post(
+        f"/user/{TEST_USER_ID}/budget",
+        headers={"master_key": f"Bearer {env.MASTER_KEY}"},
+        json={"service_type": "ai-dev"},
+    )
+
+    assert response.status_code == 404
+    assert "User not found" in str(response.json())
+
+
+def test_update_user_budget_invalid_service_type(mocked_client_integration, mocker):
+    """Test that invalid service_type returns 422."""
+    from tests.mocks import MockLiteLLMPGService
+
+    mock_litellm_pg = MockLiteLLMPGService()
+    mock_litellm_pg.store_user(
+        TEST_USER_ID,
+        {"user_id": TEST_USER_ID, "blocked": False, "alias": None},
+    )
+
+    mocker.patch("mlpa.core.routers.user.user.litellm_pg", mock_litellm_pg)
+
+    response = mocked_client_integration.post(
+        f"/user/{TEST_USER_ID}/budget",
+        headers={"master_key": f"Bearer {env.MASTER_KEY}"},
+        json={"service_type": "invalid-service"},
+    )
+
+    assert response.status_code == 422
+    assert "Unknown service type" in str(response.json())
+
+
 def test_block_user_unauthorized(mocked_client_integration):
     response = mocked_client_integration.post(
         f"/user/{TEST_USER_ID}/block",

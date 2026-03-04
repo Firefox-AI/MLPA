@@ -4,6 +4,7 @@ from typing import Annotated
 import httpx
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
 
+from mlpa.core.classes import BudgetUpdatePayload
 from mlpa.core.config import LITELLM_MASTER_AUTH_HEADERS, env
 from mlpa.core.http_client import get_http_client
 from mlpa.core.logger import logger
@@ -57,6 +58,32 @@ async def user_info(user_id: str):
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
     return user
+
+
+@router.post("/{user_id}/budget", tags=["User Management"])
+async def update_user_budget(
+    user_id: str,
+    payload: BudgetUpdatePayload,
+    _: Annotated[None, Depends(require_master_key)] = None,
+):
+    """Update a user's budget tier by service type (e.g. ai-dev for higher limits)."""
+    if not user_id or user_id.strip() == "":
+        raise HTTPException(status_code=404, detail="User not found")
+    if payload.service_type not in env.valid_service_types:
+        raise HTTPException(
+            status_code=422,
+            detail={
+                "error": f"Unknown service type: {payload.service_type}. "
+                f"Valid values: {', '.join(env.valid_service_types)}"
+            },
+        )
+    budget_id = env.user_feature_budget[payload.service_type]["budget_id"]
+    user = await litellm_pg.update_user_budget(user_id, budget_id)
+    return {
+        "user_id": user["user_id"],
+        "budget_id": user["budget_id"],
+        "service_type": payload.service_type,
+    }
 
 
 @router.post("/{user_id}/block", tags=["User Management"])

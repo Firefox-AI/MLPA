@@ -47,7 +47,7 @@ tags_metadata = [
     {"name": "Mock", "description": "Mock endpoints for testing purposes."},
     {
         "name": "User Management",
-        "description": "Endpoints for managing user blocking status.",
+        "description": "Endpoints for managing user blocking status and budgets.",
     },
 ]
 

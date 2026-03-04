@@ -178,6 +178,18 @@ class MockLiteLLMPGService:
         self.users[user_id]["blocked"] = blocked
         return self.users[user_id]
 
+    async def update_user_budget(self, user_id: str, budget_id: str):
+        """Mock update_user_budget method for testing."""
+        logger.debug(
+            f"mock update_user_budget called with user_id: {user_id}, budget_id: {budget_id}",
+        )
+        if user_id not in self.users:
+            from fastapi import HTTPException
+
+            raise HTTPException(status_code=404, detail="User not found")
+        self.users[user_id]["budget_id"] = budget_id
+        return self.users[user_id]
+
     async def list_users(self, limit: int = 50, offset: int = 0):
         """Mock list_users method for testing."""
         logger.debug(
