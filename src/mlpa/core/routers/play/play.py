@@ -44,13 +44,22 @@ async def _decode_integrity_token(integrity_token: str, package_name: str) -> di
     if not package_name in env.ALLOWED_PACKAGE_NAMES:
         raise HTTPException(status_code=403, detail="Package name not allowed")
 
+    # Build headers for Play Integrity API request
+    headers = {
+        "Authorization": f"Bearer {access_token}",
+        "Content-Type": "application/json",
+    }
+
+    # Set quota project if configured. The x-goog-user-project header tells Google
+    # which project to bill for API quota usage.
+    # See: https://cloud.google.com/docs/quotas/set-quota-project
+    if env.PLAY_INTEGRITY_QUOTA_PROJECT:
+        headers["x-goog-user-project"] = env.PLAY_INTEGRITY_QUOTA_PROJECT
+
     try:
         response = await client.post(
             f"https://playintegrity.googleapis.com/v1/{package_name}:decodeIntegrityToken",
-            headers={
-                "Authorization": f"Bearer {access_token}",
-                "Content-Type": "application/json",
-            },
+            headers=headers,
             json={"integrity_token": integrity_token},
             timeout=env.PLAY_INTEGRITY_REQUEST_TIMEOUT_SECONDS,
         )
