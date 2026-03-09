@@ -1,7 +1,7 @@
 PYTHON_VERSION=3.12
 VENV=.venv
 
-.PHONY: all setup install lint test run clean docs
+.PHONY: all setup install lint test run clean docs fxa-user-id
 
 all: setup
 
@@ -24,6 +24,12 @@ test:
 
 mlpa:
 	$(VENV)/bin/mlpa
+
+# Example:
+# make fxa-user-id ARGS="--token YOUR_BEARER_TOKEN"
+# make fxa-user-id ARGS="--email you@example.com --password your_password"
+fxa-user-id:
+	uv run python scripts/fxa_user_id.py $(ARGS)
 
 clean:
 	rm -rf __pycache__ .cache $(VENV)
