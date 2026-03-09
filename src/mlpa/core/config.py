@@ -28,6 +28,13 @@ class Env(BaseSettings):
     USER_FEATURE_BUDGET_S2S_TPM_LIMIT: int = 2000
     USER_FEATURE_BUDGET_S2S_BUDGET_DURATION: str = "1d"
 
+    # User Feature Budget - S2S Android service type (same values as s2s)
+    USER_FEATURE_BUDGET_S2S_ANDROID_BUDGET_ID: str = "end-user-budget-s2s-android"
+    USER_FEATURE_BUDGET_S2S_ANDROID_MAX_BUDGET: float = 0.1
+    USER_FEATURE_BUDGET_S2S_ANDROID_RPM_LIMIT: int = 40
+    USER_FEATURE_BUDGET_S2S_ANDROID_TPM_LIMIT: int = 2000
+    USER_FEATURE_BUDGET_S2S_ANDROID_BUDGET_DURATION: str = "1d"
+
     # User Feature Budget - memories service type
     USER_FEATURE_BUDGET_MEMORIES_BUDGET_ID: str = "end-user-budget-memories"
     USER_FEATURE_BUDGET_MEMORIES_MAX_BUDGET: float = 0.1
@@ -53,7 +60,7 @@ class Env(BaseSettings):
     def user_feature_budget(self) -> dict[str, dict]:
         """
         User feature budget configuration by service type.
-        Returns a nested dictionary with service types (ai, s2s, memories, ai-dev, memories-dev) as keys.
+        Returns a nested dictionary with service types (ai, s2s, s2s-android, memories, ai-dev, memories-dev) as keys.
         Constructed from individual environment variables.
         """
         return {
@@ -70,6 +77,13 @@ class Env(BaseSettings):
                 "rpm_limit": self.USER_FEATURE_BUDGET_S2S_RPM_LIMIT,
                 "tpm_limit": self.USER_FEATURE_BUDGET_S2S_TPM_LIMIT,
                 "budget_duration": self.USER_FEATURE_BUDGET_S2S_BUDGET_DURATION,
+            },
+            "s2s-android": {
+                "budget_id": self.USER_FEATURE_BUDGET_S2S_ANDROID_BUDGET_ID,
+                "max_budget": self.USER_FEATURE_BUDGET_S2S_ANDROID_MAX_BUDGET,
+                "rpm_limit": self.USER_FEATURE_BUDGET_S2S_ANDROID_RPM_LIMIT,
+                "tpm_limit": self.USER_FEATURE_BUDGET_S2S_ANDROID_TPM_LIMIT,
+                "budget_duration": self.USER_FEATURE_BUDGET_S2S_ANDROID_BUDGET_DURATION,
             },
             "memories": {
                 "budget_id": self.USER_FEATURE_BUDGET_MEMORIES_BUDGET_ID,

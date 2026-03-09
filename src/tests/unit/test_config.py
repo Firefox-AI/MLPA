@@ -84,16 +84,17 @@ def test_user_feature_budget_dev_service_types_default_values():
 
 
 def test_valid_service_types_all_service_types():
-    """Test that valid_service_types includes all service types (ai, s2s, memories, ai-dev, memories-dev)."""
+    """Test that valid_service_types includes all service types (ai, s2s, s2s-android, memories, ai-dev, memories-dev)."""
     env = Env()
     service_types = env.valid_service_types
 
     assert "ai" in service_types
     assert "s2s" in service_types
+    assert "s2s-android" in service_types
     assert "memories" in service_types
     assert "ai-dev" in service_types
     assert "memories-dev" in service_types
-    assert len(service_types) == 5
+    assert len(service_types) == 6
 
 
 def test_user_feature_budget_structure_consistency():
@@ -105,7 +106,14 @@ def test_user_feature_budget_structure_consistency():
     reference_keys = set(budgets["ai"].keys())
 
     # Verify all service types have the same keys
-    for service_type in ["ai", "s2s", "memories", "ai-dev", "memories-dev"]:
+    for service_type in [
+        "ai",
+        "s2s",
+        "s2s-android",
+        "memories",
+        "ai-dev",
+        "memories-dev",
+    ]:
         assert service_type in budgets
         service_keys = set(budgets[service_type].keys())
         assert service_keys == reference_keys, (
