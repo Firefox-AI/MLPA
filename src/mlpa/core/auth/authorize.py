@@ -8,7 +8,7 @@ from mlpa.core.classes import AuthorizedChatRequest, ChatRequest, ServiceType
 from mlpa.core.config import env
 from mlpa.core.routers.appattest import app_attest_auth
 from mlpa.core.routers.fxa import fxa_auth
-from mlpa.core.utils import extract_user_from_play_integrity_jwt, parse_app_attest_jwt
+from mlpa.core.utils import extract_user_from_access_token, parse_app_attest_jwt
 
 
 async def authorize_request(
@@ -19,7 +19,6 @@ async def authorize_request(
     x_dev_authorization: Annotated[str | None, Header()] = None,
     use_app_attest: Annotated[bool | None, Header()] = None,
     use_qa_certificates: Annotated[bool | None, Header()] = None,
-    use_play_integrity: Annotated[bool | None, Header()] = None,
 ) -> AuthorizedChatRequest:
     if not authorization:
         raise HTTPException(status_code=401, detail="Missing authorization header")
@@ -36,15 +35,8 @@ async def authorize_request(
             service_type=service_type.value,
             **chat_request.model_dump(exclude_unset=True),
         )
-    elif use_play_integrity:
-        # Google Play integrity
-        play_user_id = extract_user_from_play_integrity_jwt(authorization)
-        return AuthorizedChatRequest(
-            user=f"{play_user_id}:{service_type.value}",
-            service_type=service_type.value,
-            **chat_request.model_dump(exclude_unset=True),
-        )
     elif service_type.value.endswith("-dev"):
+        # -dev budgets
         if x_dev_authorization is None:
             raise HTTPException(
                 status_code=401,
@@ -57,11 +49,21 @@ async def authorize_request(
             **chat_request.model_dump(exclude_unset=True),
         )
     else:
-        fxa_user_id = await fxa_auth(authorization)
-        if not fxa_user_id or fxa_user_id.get("error"):
-            raise HTTPException(status_code=401, detail=fxa_user_id["error"])
-        return AuthorizedChatRequest(
-            user=f"{fxa_user_id['user']}:{service_type.value}",
-            service_type=service_type.value,
-            **chat_request.model_dump(exclude_unset=True),
-        )
+        try:
+            # Google Play integrity
+            play_user_id = extract_user_from_access_token(authorization)
+            return AuthorizedChatRequest(
+                user=f"{play_user_id}:{service_type.value}",
+                service_type=service_type.value,
+                **chat_request.model_dump(exclude_unset=True),
+            )
+        except:
+            # FxA
+            fxa_user_id = await fxa_auth(authorization)
+            if not fxa_user_id or fxa_user_id.get("error"):
+                raise HTTPException(status_code=401, detail=fxa_user_id["error"])
+            return AuthorizedChatRequest(
+                user=f"{fxa_user_id['user']}:{service_type.value}",
+                service_type=service_type.value,
+                **chat_request.model_dump(exclude_unset=True),
+            )

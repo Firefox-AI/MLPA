@@ -179,7 +179,7 @@ def raise_and_log(
         )
 
 
-def extract_user_from_play_integrity_jwt(authorization: str):
+def extract_user_from_access_token(authorization: str):
     token = authorization.removeprefix("Bearer ").split()[0]
     try:
         payload = decode(
@@ -198,7 +198,7 @@ def extract_user_from_play_integrity_jwt(authorization: str):
         )
         return payload["sub"]
     except Exception as e:
-        logger.error(f"Play Integrity JWT decode error: {e}")
+        logger.error(f"Access Token decode error: {e}")
         raise HTTPException(status_code=401, detail="Invalid MLPA access token")
 
 

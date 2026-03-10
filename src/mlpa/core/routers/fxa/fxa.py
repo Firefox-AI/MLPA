@@ -62,7 +62,7 @@ async def fxa_auth(authorization: Annotated[str | None, Header()]):
                     task.cancel()
             await asyncio.gather(*tasks, return_exceptions=True)
         logger.error(f"FxA auth error: {errors}")
-        raise HTTPException(status_code=401, detail="Invalid FxA auth")
+        raise HTTPException(status_code=401, detail="Invalid auth")
     finally:
         metrics.validate_fxa_latency.labels(
             result=result, verification_source=verification_source
