@@ -48,7 +48,7 @@ async def authorize_request(
         if x_dev_authorization is None:
             raise HTTPException(
                 status_code=401,
-                detail="x-dev-authorization required for dev service types (ai-dev, memories-dev)",
+                detail="x-dev-authorization required for dev service types (ai-dev, memories-dev, mochi-dev)",
             )
         fxa_profile = await auth_with_key(x_dev_authorization, authorization)
         return AuthorizedChatRequest(

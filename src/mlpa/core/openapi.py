@@ -35,8 +35,8 @@ def customize_openapi(app: FastAPI, tags_metadata: list[dict]) -> None:
             params = post_chat.setdefault("parameters", [])
             param_descriptions = {
                 "service-type": "Service type for tracking and budget. Values: "
-                f"{', '.join(env.valid_service_types)}. Use ai-dev or memories-dev for experiments (higher limits).",
-                "x-dev-authorization": "Required for ai-dev/memories-dev. Experimentation token; also requires Authorization (FxA). Without it, dev service types return 401.",
+                f"{', '.join(env.valid_service_types)}. Use ai-dev, memories-dev, or mochi-dev for experiments (higher limits).",
+                "x-dev-authorization": "Required for ai-dev/memories-dev/mochi-dev. Experimentation token; also requires Authorization (FxA). Without it, dev service types return 401.",
                 "authorization": "Bearer token: FxA OAuth, Play Integrity MLPA token, or App Attest JWT.",
                 "use-app-attest": "Optional. Set to true for iOS App Attest; Authorization must contain AssertionAuth JWT.",
                 "use-qa-certificates": "Optional. For App Attest QA/sandbox testing.",
