@@ -133,8 +133,8 @@ customize_openapi(app, tags_metadata)
     description="Authorize first using App Attest, Play Integrity, FxA, or dev tier. "
     "**Headers:** "
     "`Authorization` (required): Bearer token — FxA OAuth token, Play Integrity MLPA token, or App Attest JWT. "
-    "`service-type` (required): One of `ai`, `s2s`, `s2s-android`, `memories`, `ai-dev`, `memories-dev` — for tracking and budget. "
-    "`x-dev-authorization` (required for `ai-dev`/`memories-dev`): Experimentation token; also requires FxA in Authorization. Dev service types return 401 without it. "
+    "`service-type` (required): One of `ai`, `s2s`, `s2s-android`, `memories`, `ai-dev`, `memories-dev`, `mochi-dev` — for tracking and budget. "
+    "`x-dev-authorization` (required for `ai-dev`/`memories-dev`/`mochi-dev`): Experimentation token; also requires FxA in Authorization. Dev service types return 401 without it. "
     "For App Attest: set `use-app-attest: true`. For Play Integrity: set `use-play-integrity: true`.",
     responses=RATE_LIMIT_ERROR_RESPONSE,
 )

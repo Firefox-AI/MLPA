@@ -56,11 +56,17 @@ class Env(BaseSettings):
     USER_FEATURE_BUDGET_MEMORIES_DEV_TPM_LIMIT: int = 5000
     USER_FEATURE_BUDGET_MEMORIES_DEV_BUDGET_DURATION: str = "1d"
 
+    USER_FEATURE_BUDGET_MOCHI_DEV_BUDGET_ID: str = "end-user-budget-mochi-dev"
+    USER_FEATURE_BUDGET_MOCHI_DEV_MAX_BUDGET: float = 1.0
+    USER_FEATURE_BUDGET_MOCHI_DEV_RPM_LIMIT: int = 200
+    USER_FEATURE_BUDGET_MOCHI_DEV_TPM_LIMIT: int = 10000
+    USER_FEATURE_BUDGET_MOCHI_DEV_BUDGET_DURATION: str = "1d"
+
     @property
     def user_feature_budget(self) -> dict[str, dict]:
         """
         User feature budget configuration by service type.
-        Returns a nested dictionary with service types (ai, s2s, s2s-android, memories, ai-dev, memories-dev) as keys.
+        Returns a nested dictionary with service types (ai, s2s, s2s-android, memories, ai-dev, memories-dev, mochi-dev) as keys.
         Constructed from individual environment variables.
         """
         return {
@@ -105,6 +111,13 @@ class Env(BaseSettings):
                 "rpm_limit": self.USER_FEATURE_BUDGET_MEMORIES_DEV_RPM_LIMIT,
                 "tpm_limit": self.USER_FEATURE_BUDGET_MEMORIES_DEV_TPM_LIMIT,
                 "budget_duration": self.USER_FEATURE_BUDGET_MEMORIES_DEV_BUDGET_DURATION,
+            },
+            "mochi-dev": {
+                "budget_id": self.USER_FEATURE_BUDGET_MOCHI_DEV_BUDGET_ID,
+                "max_budget": self.USER_FEATURE_BUDGET_MOCHI_DEV_MAX_BUDGET,
+                "rpm_limit": self.USER_FEATURE_BUDGET_MOCHI_DEV_RPM_LIMIT,
+                "tpm_limit": self.USER_FEATURE_BUDGET_MOCHI_DEV_TPM_LIMIT,
+                "budget_duration": self.USER_FEATURE_BUDGET_MOCHI_DEV_BUDGET_DURATION,
             },
         }
 

@@ -67,10 +67,11 @@ def test_valid_service_types_includes_memories():
 
 
 def test_user_feature_budget_dev_service_types_default_values():
-    """Test that ai-dev and memories-dev have correct default values."""
+    """Test that ai-dev, memories-dev, and mochi-dev have correct default values."""
     env = Env()
     ai_dev_config = env.user_feature_budget["ai-dev"]
     memories_dev_config = env.user_feature_budget["memories-dev"]
+    mochi_dev_config = env.user_feature_budget["mochi-dev"]
 
     assert ai_dev_config["budget_id"] == "end-user-budget-ai-dev"
     assert ai_dev_config["max_budget"] == 1.0
@@ -82,9 +83,14 @@ def test_user_feature_budget_dev_service_types_default_values():
     assert memories_dev_config["rpm_limit"] == 50
     assert memories_dev_config["tpm_limit"] == 5000
 
+    assert mochi_dev_config["budget_id"] == "end-user-budget-mochi-dev"
+    assert mochi_dev_config["max_budget"] == 1.0
+    assert mochi_dev_config["rpm_limit"] == 200
+    assert mochi_dev_config["tpm_limit"] == 10000
+
 
 def test_valid_service_types_all_service_types():
-    """Test that valid_service_types includes all service types (ai, s2s, s2s-android, memories, ai-dev, memories-dev)."""
+    """Test that valid_service_types includes all service types (ai, s2s, s2s-android, memories, ai-dev, memories-dev, mochi-dev)."""
     env = Env()
     service_types = env.valid_service_types
 
@@ -94,7 +100,8 @@ def test_valid_service_types_all_service_types():
     assert "memories" in service_types
     assert "ai-dev" in service_types
     assert "memories-dev" in service_types
-    assert len(service_types) == 6
+    assert "mochi-dev" in service_types
+    assert len(service_types) == 7
 
 
 def test_user_feature_budget_structure_consistency():
@@ -113,6 +120,7 @@ def test_user_feature_budget_structure_consistency():
         "memories",
         "ai-dev",
         "memories-dev",
+        "mochi-dev",
     ]:
         assert service_type in budgets
         service_keys = set(budgets[service_type].keys())

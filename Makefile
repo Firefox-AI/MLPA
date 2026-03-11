@@ -1,7 +1,7 @@
 PYTHON_VERSION=3.12
 VENV=.venv
 
-.PHONY: all setup install lint test run clean docs fxa-user-id
+.PHONY: all setup install lint test run clean docs fxa-user-id docker-up docker-down
 
 all: setup
 
@@ -38,3 +38,11 @@ docs:
 	uv run python -c "from mlpa.run import app; import json; json.dump(app.openapi(), open('openapi.json', 'w'), indent=2)" && \
 	npx --yes @redocly/cli build-docs openapi.json -o docs/index.html && \
 	rm -f openapi.json
+
+# NOTE: for local development only
+docker-up:
+	docker-compose -f litellm_docker_compose.yaml up -d
+	bash scripts/migrate-app-attest-database-local.sh
+
+docker-down:
+	docker-compose -f litellm_docker_compose.yaml down -v
