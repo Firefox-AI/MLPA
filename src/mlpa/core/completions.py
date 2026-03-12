@@ -78,7 +78,10 @@ def _record_rejection(
     req: AuthorizedChatRequest, reason: PrometheusRejectionReason
 ) -> None:
     metrics.chat_request_rejections.labels(
-        reason=reason, model=req.model, service_type=req.service_type
+        reason=reason,
+        model=req.model,
+        service_type=req.service_type,
+        purpose=req.purpose,
     ).inc()
 
 
@@ -99,22 +102,27 @@ def _record_request_with_tools(req: AuthorizedChatRequest) -> None:
     if req.tools:
         for name in _tool_names_from_request(req.tools):
             metrics.chat_requests_with_tools.labels(
-                tool_name=name, model=req.model, service_type=req.service_type
+                tool_name=name,
+                model=req.model,
+                service_type=req.service_type,
+                purpose=req.purpose,
             ).inc()
 
 
-def _record_tool_metrics(model: str, service_type: str, tool_names: list[str]) -> None:
+def _record_tool_metrics(
+    model: str, service_type: str, purpose: str, tool_names: list[str]
+) -> None:
     n_calls = len(tool_names)
     for name in tool_names:
         metrics.chat_tool_calls.labels(
-            tool_name=name, model=model, service_type=service_type
+            tool_name=name, model=model, service_type=service_type, purpose=purpose
         ).inc()
         metrics.chat_completions_with_tools.labels(
-            tool_name=name, model=model, service_type=service_type
+            tool_name=name, model=model, service_type=service_type, purpose=purpose
         ).inc()
         # Histogram: one observation per completion = total tool calls in that completion.
         metrics.chat_tool_calls_per_completion.labels(
-            tool_name=name, model=model, service_type=service_type
+            tool_name=name, model=model, service_type=service_type, purpose=purpose
         ).observe(n_calls)
 
 
@@ -127,7 +135,8 @@ async def stream_completion(authorized_chat_request: AuthorizedChatRequest):
     _record_request_with_tools(authorized_chat_request)
     body = {
         **authorized_chat_request.model_dump(
-            exclude={"max_completion_tokens", "service_type"}, exclude_none=True
+            exclude={"max_completion_tokens", "service_type", "purpose"},
+            exclude_none=True,
         ),
         "max_tokens": authorized_chat_request.max_completion_tokens,
         "stream": True,
@@ -240,22 +249,26 @@ async def stream_completion(authorized_chat_request: AuthorizedChatRequest):
                     type="prompt",
                     model=authorized_chat_request.model,
                     service_type=authorized_chat_request.service_type,
+                    purpose=authorized_chat_request.purpose,
                 ).inc(prompt_tokens)
                 metrics.chat_tokens_per_request.labels(
                     type="prompt",
                     model=authorized_chat_request.model,
                     service_type=authorized_chat_request.service_type,
+                    purpose=authorized_chat_request.purpose,
                 ).observe(prompt_tokens)
             if completion_tokens > 0:
                 metrics.chat_tokens.labels(
                     type="completion",
                     model=authorized_chat_request.model,
                     service_type=authorized_chat_request.service_type,
+                    purpose=authorized_chat_request.purpose,
                 ).inc(completion_tokens)
                 metrics.chat_tokens_per_request.labels(
                     type="completion",
                     model=authorized_chat_request.model,
                     service_type=authorized_chat_request.service_type,
+                    purpose=authorized_chat_request.purpose,
                 ).observe(completion_tokens)
             tool_names = [
                 tool_calls_accum[i]["function"].get("name") or "unknown"
@@ -264,6 +277,7 @@ async def stream_completion(authorized_chat_request: AuthorizedChatRequest):
             _record_tool_metrics(
                 authorized_chat_request.model,
                 authorized_chat_request.service_type,
+                authorized_chat_request.purpose,
                 tool_names,
             )
             result = PrometheusResult.SUCCESS
@@ -282,6 +296,7 @@ async def stream_completion(authorized_chat_request: AuthorizedChatRequest):
             result=result,
             model=authorized_chat_request.model,
             service_type=authorized_chat_request.service_type,
+            purpose=authorized_chat_request.purpose,
         ).observe(time.perf_counter() - start_time)
 
 
@@ -293,7 +308,8 @@ async def get_completion(authorized_chat_request: AuthorizedChatRequest):
     _record_request_with_tools(authorized_chat_request)
     body = {
         **authorized_chat_request.model_dump(
-            exclude={"max_completion_tokens", "service_type"}, exclude_none=True
+            exclude={"max_completion_tokens", "service_type", "purpose"},
+            exclude_none=True,
         ),
         "max_tokens": authorized_chat_request.max_completion_tokens,
         "stream": False,
@@ -356,21 +372,25 @@ async def get_completion(authorized_chat_request: AuthorizedChatRequest):
             type="prompt",
             model=authorized_chat_request.model,
             service_type=authorized_chat_request.service_type,
+            purpose=authorized_chat_request.purpose,
         ).inc(prompt_tokens)
         metrics.chat_tokens_per_request.labels(
             type="prompt",
             model=authorized_chat_request.model,
             service_type=authorized_chat_request.service_type,
+            purpose=authorized_chat_request.purpose,
         ).observe(prompt_tokens)
         metrics.chat_tokens.labels(
             type="completion",
             model=authorized_chat_request.model,
             service_type=authorized_chat_request.service_type,
+            purpose=authorized_chat_request.purpose,
         ).inc(completion_tokens)
         metrics.chat_tokens_per_request.labels(
             type="completion",
             model=authorized_chat_request.model,
             service_type=authorized_chat_request.service_type,
+            purpose=authorized_chat_request.purpose,
         ).observe(completion_tokens)
         tool_calls = (
             data.get("choices", [{}])[0].get("message", {}).get("tool_calls") or []
@@ -381,6 +401,7 @@ async def get_completion(authorized_chat_request: AuthorizedChatRequest):
         _record_tool_metrics(
             authorized_chat_request.model,
             authorized_chat_request.service_type,
+            authorized_chat_request.purpose,
             tool_names,
         )
         result = PrometheusResult.SUCCESS
@@ -394,4 +415,5 @@ async def get_completion(authorized_chat_request: AuthorizedChatRequest):
             result=result,
             model=authorized_chat_request.model,
             service_type=authorized_chat_request.service_type,
+            purpose=authorized_chat_request.purpose,
         ).observe(time.perf_counter() - start_time)

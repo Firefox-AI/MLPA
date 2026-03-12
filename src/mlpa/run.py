@@ -134,6 +134,7 @@ customize_openapi(app, tags_metadata)
     "**Headers:** "
     "`Authorization` (required): Bearer token — FxA OAuth token, Play Integrity MLPA token, or App Attest JWT. "
     "`service-type` (required): One of `ai`, `s2s`, `s2s-android`, `memories`, `ai-dev`, `memories-dev`, `mochi-dev` — for tracking and budget. "
+    "`purpose` (required for ai/ai-dev/mochi-dev/memories/memories-dev): One of `chat`, `title-generation`, `convo-starters-sidebar` for AI; `memory-generation` for memories; omit for s2s. "
     "`x-dev-authorization` (required for `ai-dev`/`memories-dev`/`mochi-dev`): Experimentation token; also requires FxA in Authorization. Dev service types return 401 without it. "
     "For App Attest: set `use-app-attest: true`. For Play Integrity: set `use-play-integrity: true`.",
     responses=RATE_LIMIT_ERROR_RESPONSE,

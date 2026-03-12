@@ -11,11 +11,30 @@ from mlpa.core.routers.fxa import fxa_auth
 from mlpa.core.utils import extract_user_from_play_integrity_jwt, parse_app_attest_jwt
 
 
+def _resolve_purpose(service_type_value: str, purpose_header: str | None) -> str:
+    """Validate purpose header and return value; raise HTTPException if invalid."""
+    valid = env.valid_purposes_for_service_type(service_type_value)
+    requires = env.service_type_requires_purpose(service_type_value)
+    purpose = (purpose_header or "").strip()
+    if requires:
+        if not purpose or purpose not in valid:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"Header 'purpose' is required for service-type '{service_type_value}'. "
+                    f"Valid values: {', '.join(valid)}"
+                ),
+            )
+        return purpose
+    return ""  # Service types without purposes use empty string
+
+
 async def authorize_request(
     request: Request,
     chat_request: ChatRequest,
     authorization: Annotated[str, Header()],
     service_type: Annotated[ServiceType, Header()],
+    purpose: Annotated[str | None, Header()] = None,
     x_dev_authorization: Annotated[str | None, Header()] = None,
     use_app_attest: Annotated[bool | None, Header()] = None,
     use_qa_certificates: Annotated[bool | None, Header()] = None,
@@ -23,6 +42,7 @@ async def authorize_request(
 ) -> AuthorizedChatRequest:
     if not authorization:
         raise HTTPException(status_code=401, detail="Missing authorization header")
+    purpose_value = _resolve_purpose(service_type.value, purpose)
     if use_app_attest:
         # Apple App Attest
         body_bytes = await request.body()
@@ -34,6 +54,7 @@ async def authorize_request(
         return AuthorizedChatRequest(
             user=f"{assertionAuth.key_id_b64}:{service_type.value}",  # "user" is key_id_b64 from app attest
             service_type=service_type.value,
+            purpose=purpose_value,
             **chat_request.model_dump(exclude_unset=True),
         )
     elif use_play_integrity:
@@ -42,6 +63,7 @@ async def authorize_request(
         return AuthorizedChatRequest(
             user=f"{play_user_id}:{service_type.value}",
             service_type=service_type.value,
+            purpose=purpose_value,
             **chat_request.model_dump(exclude_unset=True),
         )
     elif service_type.value.endswith("-dev"):
@@ -54,6 +76,7 @@ async def authorize_request(
         return AuthorizedChatRequest(
             user=f"{fxa_profile['user']}:{service_type.value}",
             service_type=service_type.value,
+            purpose=purpose_value,
             **chat_request.model_dump(exclude_unset=True),
         )
     else:
@@ -63,5 +86,6 @@ async def authorize_request(
         return AuthorizedChatRequest(
             user=f"{fxa_user_id['user']}:{service_type.value}",
             service_type=service_type.value,
+            purpose=purpose_value,
             **chat_request.model_dump(exclude_unset=True),
         )

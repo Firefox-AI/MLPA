@@ -128,6 +128,34 @@ class Env(BaseSettings):
         """
         return list(self.user_feature_budget.keys())
 
+    @property
+    def service_type_purposes(self) -> dict[str, list[str]]:
+        """
+        Valid purpose values per service type (for the purpose header and Prometheus).
+        AI-related types: chat, title-generation, convo-starters-sidebar.
+        Memories types: memory-generation.
+        s2s types: no purposes (empty list → purpose header not required, use empty value).
+        """
+        ai_purposes = ["chat", "title-generation", "convo-starters-sidebar"]
+        memories_purposes = ["memory-generation"]
+        return {
+            "ai": ai_purposes,
+            "ai-dev": ai_purposes,
+            "mochi-dev": ai_purposes,
+            "memories": memories_purposes,
+            "memories-dev": memories_purposes,
+            "s2s": [],
+            "s2s-android": [],
+        }
+
+    def valid_purposes_for_service_type(self, service_type: str) -> list[str]:
+        """Return valid purpose values for a service type (empty if purpose not used)."""
+        return self.service_type_purposes.get(service_type, [])
+
+    def service_type_requires_purpose(self, service_type: str) -> bool:
+        """True if the purpose header is mandatory for this service type."""
+        return len(self.valid_purposes_for_service_type(service_type)) > 0
+
     # Logging
     LOG_JSON: bool = False  # Set to True for GKE deployment
     LOGURU_LEVEL: str = "INFO"

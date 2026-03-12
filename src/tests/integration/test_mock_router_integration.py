@@ -19,7 +19,11 @@ class TestMockRouterIntegration:
         """Test successful request to /mock/chat/completions endpoint."""
         response = mocked_client_integration.post(
             "/mock/chat/completions",
-            headers={"authorization": f"Bearer {TEST_FXA_TOKEN}", "service-type": "ai"},
+            headers={
+                "authorization": f"Bearer {TEST_FXA_TOKEN}",
+                "service-type": "ai",
+                "purpose": "chat",
+            },
             json=sample_chat_request,
         )
 
@@ -38,7 +42,11 @@ class TestMockRouterIntegration:
         """Test streaming request to /mock/chat/completions endpoint."""
         response = mocked_client_integration.post(
             "/mock/chat/completions",
-            headers={"authorization": f"Bearer {TEST_FXA_TOKEN}", "service-type": "ai"},
+            headers={
+                "authorization": f"Bearer {TEST_FXA_TOKEN}",
+                "service-type": "ai",
+                "purpose": "chat",
+            },
             json={
                 **sample_chat_request,
                 "stream": True,
@@ -57,7 +65,7 @@ class TestMockRouterIntegration:
         """Test /mock/chat/completions endpoint with missing authentication."""
         response = mocked_client_integration.post(
             "/mock/chat/completions",
-            headers={"service-type": "ai"},
+            headers={"service-type": "ai", "purpose": "chat"},
             json=sample_chat_request,
         )
 
@@ -67,7 +75,11 @@ class TestMockRouterIntegration:
         """Test /mock/chat/completions endpoint with invalid authentication."""
         response = mocked_client_integration.post(
             "/mock/chat/completions",
-            headers={"authorization": "Bearer invalid-token", "service-type": "ai"},
+            headers={
+                "authorization": "Bearer invalid-token",
+                "service-type": "ai",
+                "purpose": "chat",
+            },
             json={
                 "model": MOCK_MODEL_NAME,
                 "messages": [{"role": "user", "content": "Hello"}],
@@ -108,6 +120,7 @@ class TestMockRouterIntegration:
                 headers={
                     "authorization": f"Bearer {TEST_FXA_TOKEN}",
                     "service-type": "ai",
+                    "purpose": "chat",
                 },
                 json=sample_chat_request,
             )
@@ -137,6 +150,7 @@ class TestMockRouterIntegration:
                 headers={
                     "authorization": f"Bearer {TEST_FXA_TOKEN}",
                     "service-type": "ai",
+                    "purpose": "chat",
                 },
                 json={
                     "model": MOCK_MODEL_NAME,

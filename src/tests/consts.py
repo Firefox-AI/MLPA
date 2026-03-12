@@ -10,6 +10,7 @@ TEST_BUNDLE_ID = "com.test.bundle"
 SAMPLE_REQUEST = AuthorizedChatRequest(
     user="test-user-123:ai",
     service_type="ai",
+    purpose="chat",
     model="test-model",
     messages=[{"role": "user", "content": "Hello"}],
     temperature=0.7,

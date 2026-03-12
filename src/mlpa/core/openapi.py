@@ -33,9 +33,16 @@ def customize_openapi(app: FastAPI, tags_metadata: list[dict]) -> None:
         post_chat = paths.get("/v1/chat/completions", {}).get("post", {})
         if post_chat:
             params = post_chat.setdefault("parameters", [])
+            purpose_required = [
+                st
+                for st in env.valid_service_types
+                if env.service_type_requires_purpose(st)
+            ]
             param_descriptions = {
                 "service-type": "Service type for tracking and budget. Values: "
                 f"{', '.join(env.valid_service_types)}. Use ai-dev, memories-dev, or mochi-dev for experiments (higher limits).",
+                "purpose": "Purpose for Prometheus and product tracking. Required for "
+                f"{', '.join(purpose_required)}. AI: chat, title-generation, convo-starters-sidebar. Memories: memory-generation. Omit or leave empty for s2s, s2s-android.",
                 "x-dev-authorization": "Required for ai-dev/memories-dev/mochi-dev. Experimentation token; also requires Authorization (FxA). Without it, dev service types return 401.",
                 "authorization": "Bearer token: FxA OAuth, Play Integrity MLPA token, or App Attest JWT.",
                 "use-app-attest": "Optional. Set to true for iOS App Attest; Authorization must contain AssertionAuth JWT.",

@@ -104,6 +104,50 @@ def test_valid_service_types_all_service_types():
     assert len(service_types) == 7
 
 
+def test_service_type_purposes_ai_and_memories():
+    """Test service_type_purposes: AI types have chat/title-generation/convo-starters-sidebar, memories have memory-generation."""
+    env = Env()
+    purposes = env.service_type_purposes
+    ai_purposes = ["chat", "title-generation", "convo-starters-sidebar"]
+    assert purposes["ai"] == ai_purposes
+    assert purposes["ai-dev"] == ai_purposes
+    assert purposes["mochi-dev"] == ai_purposes
+    assert purposes["memories"] == ["memory-generation"]
+    assert purposes["memories-dev"] == ["memory-generation"]
+
+
+def test_service_type_purposes_s2s_empty():
+    """Test that s2s and s2s-android have no purposes (empty list)."""
+    env = Env()
+    purposes = env.service_type_purposes
+    assert purposes["s2s"] == []
+    assert purposes["s2s-android"] == []
+
+
+def test_service_type_requires_purpose():
+    """Test that purpose is required for ai/ai-dev/mochi-dev/memories/memories-dev, not for s2s."""
+    env = Env()
+    assert env.service_type_requires_purpose("ai") is True
+    assert env.service_type_requires_purpose("ai-dev") is True
+    assert env.service_type_requires_purpose("mochi-dev") is True
+    assert env.service_type_requires_purpose("memories") is True
+    assert env.service_type_requires_purpose("memories-dev") is True
+    assert env.service_type_requires_purpose("s2s") is False
+    assert env.service_type_requires_purpose("s2s-android") is False
+
+
+def test_valid_purposes_for_service_type():
+    """Test valid_purposes_for_service_type returns correct list per service type."""
+    env = Env()
+    assert set(env.valid_purposes_for_service_type("ai")) == {
+        "chat",
+        "title-generation",
+        "convo-starters-sidebar",
+    }
+    assert env.valid_purposes_for_service_type("memories") == ["memory-generation"]
+    assert env.valid_purposes_for_service_type("s2s") == []
+
+
 def test_user_feature_budget_structure_consistency():
     """Test that all service types have the same structure in user_feature_budget."""
     env = Env()
