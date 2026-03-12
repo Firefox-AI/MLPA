@@ -9,6 +9,12 @@ class PrometheusResult(StrEnum):
     ERROR = "error"
 
 
+class PrometheusRejectionReason(StrEnum):
+    BUDGET_EXCEEDED = "budget_exceeded"
+    RATE_LIMITED = "rate_limited"
+    PAYLOAD_TOO_LARGE = "payload_too_large"
+
+
 BUCKETS_FAST_AUTH = (0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, float("inf"))
 BUCKETS_AUTH = (0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, float("inf"))
 BUCKETS_FXA = (0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, float("inf"))
@@ -76,6 +82,7 @@ class PrometheusMetrics:
     chat_completions_with_tools: Counter
     chat_tool_calls_per_completion: Histogram
     chat_requests_with_tools: Counter
+    chat_request_rejections: Counter
 
 
 metrics = PrometheusMetrics(
@@ -170,5 +177,10 @@ metrics = PrometheusMetrics(
         "mlpa_chat_requests_with_tools_total",
         "Number of chat requests that included a tools payload.",
         ["tool_name", "model", "service_type"],
+    ),
+    chat_request_rejections=Counter(
+        "mlpa_chat_request_rejections_total",
+        "Number of chat requests rejected due to budget, rate limit, or payload size.",
+        ["reason", "model", "service_type"],
     ),
 )

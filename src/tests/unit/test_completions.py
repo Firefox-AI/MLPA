@@ -15,7 +15,7 @@ from mlpa.core.config import (
     LITELLM_COMPLETIONS_URL,
     env,
 )
-from mlpa.core.prometheus_metrics import PrometheusResult
+from mlpa.core.prometheus_metrics import PrometheusRejectionReason, PrometheusResult
 from tests.consts import SAMPLE_REQUEST, SUCCESSFUL_CHAT_RESPONSE
 
 
@@ -254,6 +254,13 @@ async def test_get_completion_budget_limit_exceeded_429(mocker):
     assert exc_info.value.detail == {"error": 1}  # ERROR_CODE_BUDGET_LIMIT_EXCEEDED
     assert exc_info.value.headers == {"Retry-After": "86400"}
 
+    mock_metrics.chat_request_rejections.labels.assert_called_once_with(
+        reason=PrometheusRejectionReason.BUDGET_EXCEEDED,
+        model=SAMPLE_REQUEST.model,
+        service_type=SAMPLE_REQUEST.service_type,
+    )
+    mock_metrics.chat_request_rejections.labels().inc.assert_called_once()
+
     # Verify latency metric was observed with ERROR
     mock_metrics.chat_completion_latency.labels.assert_called_once_with(
         result=PrometheusResult.ERROR,
@@ -299,6 +306,13 @@ async def test_get_completion_budget_limit_exceeded_400(mocker):
     assert exc_info.value.detail == {"error": 1}  # ERROR_CODE_BUDGET_LIMIT_EXCEEDED
     assert exc_info.value.headers == {"Retry-After": "86400"}
 
+    mock_metrics.chat_request_rejections.labels.assert_called_once_with(
+        reason=PrometheusRejectionReason.BUDGET_EXCEEDED,
+        model=SAMPLE_REQUEST.model,
+        service_type=SAMPLE_REQUEST.service_type,
+    )
+    mock_metrics.chat_request_rejections.labels().inc.assert_called_once()
+
 
 async def test_get_completion_rate_limit_exceeded(mocker):
     """
@@ -336,6 +350,13 @@ async def test_get_completion_rate_limit_exceeded(mocker):
     assert exc_info.value.status_code == 429
     assert exc_info.value.detail == {"error": 2}  # ERROR_CODE_RATE_LIMIT_EXCEEDED
     assert exc_info.value.headers == {"Retry-After": "60"}
+
+    mock_metrics.chat_request_rejections.labels.assert_called_once_with(
+        reason=PrometheusRejectionReason.RATE_LIMITED,
+        model=SAMPLE_REQUEST.model,
+        service_type=SAMPLE_REQUEST.service_type,
+    )
+    mock_metrics.chat_request_rejections.labels().inc.assert_called_once()
 
 
 async def test_get_completion_400_non_rate_limit_error(mocker):
@@ -438,6 +459,12 @@ async def test_get_completion_context_window_exceeded(mocker):
     assert exc_info.value.detail == {"error": ERROR_CODE_REQUEST_TOO_LARGE}
     mock_logger.warning.assert_called_once()
     assert "Context window exceeded" in str(mock_logger.warning.call_args)
+    mock_metrics.chat_request_rejections.labels.assert_called_once_with(
+        reason=PrometheusRejectionReason.PAYLOAD_TOO_LARGE,
+        model=SAMPLE_REQUEST.model,
+        service_type=SAMPLE_REQUEST.service_type,
+    )
+    mock_metrics.chat_request_rejections.labels().inc.assert_called_once()
     mock_metrics.chat_completion_latency.labels.assert_called_once_with(
         result=PrometheusResult.ERROR,
         model=SAMPLE_REQUEST.model,
@@ -508,6 +535,12 @@ async def test_stream_completion_budget_limit_exceeded_429(
     )
     mock_logger.warning.assert_called_once()
     assert "Budget limit exceeded" in str(mock_logger.warning.call_args)
+    mock_metrics.chat_request_rejections.labels.assert_called_once_with(
+        reason=PrometheusRejectionReason.BUDGET_EXCEEDED,
+        model=SAMPLE_REQUEST.model,
+        service_type=SAMPLE_REQUEST.service_type,
+    )
+    mock_metrics.chat_request_rejections.labels().inc.assert_called_once()
     mock_metrics.chat_completion_latency.labels.assert_called_once_with(
         result=PrometheusResult.ERROR,
         model=SAMPLE_REQUEST.model,
@@ -549,6 +582,12 @@ async def test_stream_completion_budget_limit_exceeded_400(
     )
     mock_logger.warning.assert_called_once()
     assert "Budget limit exceeded" in str(mock_logger.warning.call_args)
+    mock_metrics.chat_request_rejections.labels.assert_called_once_with(
+        reason=PrometheusRejectionReason.BUDGET_EXCEEDED,
+        model=SAMPLE_REQUEST.model,
+        service_type=SAMPLE_REQUEST.service_type,
+    )
+    mock_metrics.chat_request_rejections.labels().inc.assert_called_once()
     mock_metrics.chat_completion_latency.labels.assert_called_once_with(
         result=PrometheusResult.ERROR,
         model=SAMPLE_REQUEST.model,
@@ -588,6 +627,12 @@ async def test_stream_completion_rate_limit_exceeded(httpx_mock: HTTPXMock, mock
     )
     mock_logger.warning.assert_called_once()
     assert "Rate limit exceeded" in str(mock_logger.warning.call_args)
+    mock_metrics.chat_request_rejections.labels.assert_called_once_with(
+        reason=PrometheusRejectionReason.RATE_LIMITED,
+        model=SAMPLE_REQUEST.model,
+        service_type=SAMPLE_REQUEST.service_type,
+    )
+    mock_metrics.chat_request_rejections.labels().inc.assert_called_once()
     mock_metrics.chat_completion_latency.labels.assert_called_once_with(
         result=PrometheusResult.ERROR,
         model=SAMPLE_REQUEST.model,
@@ -622,6 +667,12 @@ async def test_stream_completion_context_window_exceeded(httpx_mock: HTTPXMock, 
     )
     mock_logger.warning.assert_called_once()
     assert "Context window exceeded" in str(mock_logger.warning.call_args)
+    mock_metrics.chat_request_rejections.labels.assert_called_once_with(
+        reason=PrometheusRejectionReason.PAYLOAD_TOO_LARGE,
+        model=SAMPLE_REQUEST.model,
+        service_type=SAMPLE_REQUEST.service_type,
+    )
+    mock_metrics.chat_request_rejections.labels().inc.assert_called_once()
     mock_metrics.chat_completion_latency.labels.assert_called_once_with(
         result=PrometheusResult.ERROR,
         model=SAMPLE_REQUEST.model,

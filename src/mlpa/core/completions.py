@@ -18,7 +18,11 @@ from mlpa.core.config import (
 )
 from mlpa.core.http_client import get_http_client
 from mlpa.core.logger import logger
-from mlpa.core.prometheus_metrics import PrometheusResult, metrics
+from mlpa.core.prometheus_metrics import (
+    PrometheusRejectionReason,
+    PrometheusResult,
+    metrics,
+)
 from mlpa.core.utils import is_context_window_error, is_rate_limit_error, raise_and_log
 
 # Global default tokenizer - initialized once at module load time
@@ -37,6 +41,15 @@ def get_default_tokenizer() -> tiktoken.Encoding:
         except KeyError:
             _global_default_tokenizer = tiktoken.get_encoding("cl100k_base")
     return _global_default_tokenizer
+
+
+_RATE_LIMIT_REJECTION: dict[int, tuple[PrometheusRejectionReason, str]] = {
+    ERROR_CODE_BUDGET_LIMIT_EXCEEDED: (
+        PrometheusRejectionReason.BUDGET_EXCEEDED,
+        "86400",
+    ),
+    ERROR_CODE_RATE_LIMIT_EXCEEDED: (PrometheusRejectionReason.RATE_LIMITED, "60"),
+}
 
 
 def _parse_rate_limit_error(error_text: str, user: str) -> int | None:
@@ -61,20 +74,12 @@ def _parse_rate_limit_error(error_text: str, user: str) -> int | None:
     return None
 
 
-def _handle_rate_limit_error(error_text: str, user: str) -> None:
-    error_code = _parse_rate_limit_error(error_text, user)
-    if error_code == ERROR_CODE_BUDGET_LIMIT_EXCEEDED:
-        raise HTTPException(
-            status_code=429,
-            detail={"error": ERROR_CODE_BUDGET_LIMIT_EXCEEDED},
-            headers={"Retry-After": "86400"},
-        )
-    if error_code == ERROR_CODE_RATE_LIMIT_EXCEEDED:
-        raise HTTPException(
-            status_code=429,
-            detail={"error": ERROR_CODE_RATE_LIMIT_EXCEEDED},
-            headers={"Retry-After": "60"},
-        )
+def _record_rejection(
+    req: AuthorizedChatRequest, reason: PrometheusRejectionReason
+) -> None:
+    metrics.chat_request_rejections.labels(
+        reason=reason, model=req.model, service_type=req.service_type
+    ).inc()
 
 
 def _tool_names_from_request(tools: list) -> list[str]:
@@ -162,7 +167,9 @@ async def stream_completion(authorized_chat_request: AuthorizedChatRequest):
                     error_code = _parse_rate_limit_error(
                         error_text_str, authorized_chat_request.user
                     )
-                    if error_code is not None:
+                    if error_code in _RATE_LIMIT_REJECTION:
+                        reason, _ = _RATE_LIMIT_REJECTION[error_code]
+                        _record_rejection(authorized_chat_request, reason)
                         yield f'data: {{"error": {error_code}}}\n\n'.encode()
                         return
 
@@ -172,6 +179,10 @@ async def stream_completion(authorized_chat_request: AuthorizedChatRequest):
                 ):
                     logger.warning(
                         f"Context window exceeded for user {authorized_chat_request.user}"
+                    )
+                    _record_rejection(
+                        authorized_chat_request,
+                        PrometheusRejectionReason.PAYLOAD_TOO_LARGE,
                     )
                     yield f'data: {{"error": {ERROR_CODE_REQUEST_TOO_LARGE}}}\n\n'.encode()
                     return
@@ -303,11 +314,24 @@ async def get_completion(authorized_chat_request: AuthorizedChatRequest):
         except httpx.HTTPStatusError as e:
             error_text = e.response.text
             if e.response.status_code in {400, 429}:
-                _handle_rate_limit_error(error_text, authorized_chat_request.user)
+                error_code = _parse_rate_limit_error(
+                    error_text, authorized_chat_request.user
+                )
+                if error_code in _RATE_LIMIT_REJECTION:
+                    reason, retry_after = _RATE_LIMIT_REJECTION[error_code]
+                    _record_rejection(authorized_chat_request, reason)
+                    raise HTTPException(
+                        status_code=429,
+                        detail={"error": error_code},
+                        headers={"Retry-After": retry_after},
+                    )
             # Context window exceeded: detect by error text or upstream 413
             if e.response.status_code == 413 or is_context_window_error(error_text):
                 logger.warning(
                     f"Context window exceeded for user {authorized_chat_request.user}"
+                )
+                _record_rejection(
+                    authorized_chat_request, PrometheusRejectionReason.PAYLOAD_TOO_LARGE
                 )
                 raise HTTPException(
                     status_code=413,
