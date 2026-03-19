@@ -268,3 +268,41 @@ def test_list_users_empty_result(mocked_client_integration, mocker):
     data = response.json()
     assert data["total"] == 0
     assert len(data["users"]) == 0
+
+
+def test_count_users_by_service_type_success(mocked_client_integration, mocker):
+    from tests.mocks import MockLiteLLMPGService
+
+    mock_litellm_pg = MockLiteLLMPGService()
+    mock_litellm_pg.store_user(
+        "user1:ai", {"user_id": "user1:ai", "blocked": False, "alias": None}
+    )
+    mock_litellm_pg.store_user(
+        "user2:ai", {"user_id": "user2:ai", "blocked": False, "alias": None}
+    )
+    mock_litellm_pg.store_user(
+        "user3:s2s",
+        {"user_id": "user3:s2s", "blocked": False, "alias": None},
+    )
+
+    mocker.patch("mlpa.core.routers.user.user.litellm_pg", mock_litellm_pg)
+
+    response = mocked_client_integration.get(
+        "/user/counts-by-service-type",
+        headers={"master_key": f"Bearer {env.MASTER_KEY}"},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["total_users"] == 3
+    assert data["service_type_counts"]["ai"] == 2
+    assert data["service_type_counts"]["s2s"] == 1
+
+
+def test_count_users_by_service_type_unauthorized(mocked_client_integration):
+    response = mocked_client_integration.get(
+        "/user/counts-by-service-type",
+        headers={"master_key": "Bearer invalid-key"},
+    )
+
+    assert response.status_code == 401
+    assert "Unauthorized" in str(response.json())

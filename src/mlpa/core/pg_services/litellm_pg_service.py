@@ -98,6 +98,44 @@ class LiteLLMPGService(PGService):
                 status_code=500, detail={"error": "Error listing users"}
             )
 
+    async def count_users_by_service_type(self) -> dict:
+        """
+        Return total user counts grouped by service_type.
+
+        LiteLLM stores users by `user_id` which is formatted as:
+        `{base_user_id}:{service_type}`.
+        """
+        try:
+            rows = await self.pg.fetch(
+                """
+                SELECT
+                    split_part(user_id, ':', 2) AS service_type,
+                    COUNT(*)::int AS total_users
+                FROM "LiteLLM_EndUserTable"
+                WHERE position(':' in user_id) > 0
+                GROUP BY service_type
+                """
+            )
+
+            service_type_counts: dict[str, int] = {}
+            for row in rows:
+                service_type = row.get("service_type")
+                if not service_type:
+                    continue
+                service_type_counts[str(service_type)] = int(row.get("total_users", 0))
+
+            total_users = sum(service_type_counts.values())
+            return {
+                "service_type_counts": service_type_counts,
+                "total_users": int(total_users),
+            }
+        except Exception as e:
+            logger.error(f"Error counting users by service type: {e}")
+            raise HTTPException(
+                status_code=500,
+                detail={"error": "Error counting users by service type"},
+            )
+
     async def create_budget(self):
         """
         Create end user budgets from configuration.
