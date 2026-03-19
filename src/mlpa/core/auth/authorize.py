@@ -16,17 +16,31 @@ def _resolve_purpose(service_type_value: str, purpose_header: str | None) -> str
     valid = env.valid_purposes_for_service_type(service_type_value)
     requires = env.service_type_requires_purpose(service_type_value)
     purpose = (purpose_header or "").strip()
-    if requires:
-        if not purpose or purpose not in valid:
+
+    if purpose:
+        if purpose not in valid:
             raise HTTPException(
                 status_code=400,
                 detail=(
-                    f"Header 'purpose' is required for service-type '{service_type_value}'. "
+                    f"Invalid header 'purpose' for service-type '{service_type_value}'. "
                     f"Valid values: {', '.join(valid)}"
                 ),
             )
         return purpose
-    return ""  # Service types without purposes use empty string
+
+    # If enforcement is enabled, require the header for service types that
+    # have a configured purpose allowlist.
+    if requires and env.MLPA_REQUIRE_PURPOSE_HEADER:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Header 'purpose' is required for service-type '{service_type_value}'. "
+                f"Valid values: {', '.join(valid)}"
+            ),
+        )
+
+    # NOTE: missing purpose is allowed.
+    return ""
 
 
 async def authorize_request(

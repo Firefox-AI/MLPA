@@ -7,6 +7,12 @@ class Env(BaseSettings):
     APP_ATTEST_PRODUCTION: bool = False
     PORT: int | None = 8080
 
+    # Purpose header enforcement/backwards-compatibility:
+    # when false (default), the `purpose` header is optional for all service types.
+    # when true, the `purpose` header becomes mandatory for service types that
+    # have a non-empty configured purpose allowlist.
+    MLPA_REQUIRE_PURPOSE_HEADER: bool = False
+
     # LiteLLM
     MASTER_KEY: str = "sk-default"  # Bypasses LiteLLM.max_budget, use MLPA_VIRTUAL_KEY (virtual key) for completion requests
     MLPA_VIRTUAL_KEY: str = "sk-virtual"  # Enforces LiteLLM.max_budget

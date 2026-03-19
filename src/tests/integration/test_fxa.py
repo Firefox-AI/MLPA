@@ -22,8 +22,8 @@ def test_missing_service_type(mocked_client_integration):
     assert response.status_code == 422
 
 
-def test_ai_missing_purpose_returns_400(mocked_client_integration):
-    """Service-type ai requires purpose header; missing purpose returns 400."""
+def test_ai_missing_purpose_is_allowed_by_default(mocked_client_integration):
+    """Service-type ai purpose header is optional by default."""
     response = mocked_client_integration.post(
         "/v1/chat/completions",
         headers={
@@ -32,8 +32,8 @@ def test_ai_missing_purpose_returns_400(mocked_client_integration):
         },
         json={"messages": [{"role": "user", "content": "Hello"}]},
     )
-    assert response.status_code == 400
-    assert "purpose" in str(response.json().get("detail", "")).lower()
+    assert response.status_code == 200
+    assert response.json() == SUCCESSFUL_CHAT_RESPONSE
 
 
 def test_ai_invalid_purpose_returns_400(mocked_client_integration):
