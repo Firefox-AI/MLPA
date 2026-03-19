@@ -37,6 +37,14 @@ async def list_users(
     return await litellm_pg.list_users(limit=limit, offset=offset)
 
 
+@router.get("/counts-by-service-type", tags=["User Management"])
+async def count_users_by_service_type(
+    _: Annotated[None, Depends(require_master_key)] = None,
+):
+    """Get total user counts grouped by service_type."""
+    return await litellm_pg.count_users_by_service_type()
+
+
 @router.get("/{user_id}", tags=["User"])
 async def user_info(user_id: str):
     if not user_id or user_id.strip() == "":

@@ -205,6 +205,23 @@ class MockLiteLLMPGService:
             "offset": offset,
         }
 
+    async def count_users_by_service_type(self) -> dict:
+        """Mock count_users_by_service_type grouped by service_type."""
+        service_type_counts: dict[str, int] = {}
+        for user_id in self.users.keys():
+            service_type = user_id.split(":")[1] if ":" in user_id else ""
+            if not service_type:
+                continue
+            service_type_counts[service_type] = (
+                service_type_counts.get(service_type, 0) + 1
+            )
+
+        total_users = sum(service_type_counts.values())
+        return {
+            "service_type_counts": service_type_counts,
+            "total_users": total_users,
+        }
+
 
 class MockFxAService:
     def __init__(self, client_id: str, client_secret: str, fxa_url: str):
