@@ -26,12 +26,16 @@ async def instrument_requests_middleware(request: Request, call_next):
             route = request.scope.get("route")
             endpoint = route.path if route else request.url.path
             service_type = request.headers.get("service-type", "NA")
+            purpose = request.headers.get("purpose", "")
 
             metrics.request_latency.labels(
                 method=request.method, endpoint=endpoint
             ).observe(time.perf_counter() - start_time)
             metrics.requests_total.labels(
-                method=request.method, endpoint=endpoint, service_type=service_type
+                method=request.method,
+                endpoint=endpoint,
+                service_type=service_type,
+                purpose=purpose,
             ).inc()
             metrics.response_status_codes.labels(status_code=response.status_code).inc()
             return response

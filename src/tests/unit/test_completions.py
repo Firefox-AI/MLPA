@@ -62,6 +62,7 @@ async def test_get_completion_success(mocker):
         type="prompt",
         model=SAMPLE_REQUEST.model,
         service_type=SAMPLE_REQUEST.service_type,
+        purpose=SAMPLE_REQUEST.purpose,
     )
     mock_metrics.chat_tokens.labels().inc.assert_any_call(
         SUCCESSFUL_CHAT_RESPONSE["usage"]["prompt_tokens"]
@@ -71,6 +72,7 @@ async def test_get_completion_success(mocker):
         type="completion",
         model=SAMPLE_REQUEST.model,
         service_type=SAMPLE_REQUEST.service_type,
+        purpose=SAMPLE_REQUEST.purpose,
     )
     mock_metrics.chat_tokens.labels().inc.assert_any_call(
         SUCCESSFUL_CHAT_RESPONSE["usage"]["completion_tokens"]
@@ -81,6 +83,7 @@ async def test_get_completion_success(mocker):
         result=PrometheusResult.SUCCESS,
         model=SAMPLE_REQUEST.model,
         service_type=SAMPLE_REQUEST.service_type,
+        purpose=SAMPLE_REQUEST.purpose,
     )
     mock_metrics.chat_completion_latency.labels().observe.assert_called_once()
 
@@ -123,6 +126,7 @@ async def test_get_completion_http_error(mocker):
         result=PrometheusResult.ERROR,
         model=SAMPLE_REQUEST.model,
         service_type=SAMPLE_REQUEST.service_type,
+        purpose=SAMPLE_REQUEST.purpose,
     )
     mock_metrics.chat_completion_latency.labels().observe.assert_called_once()
 
@@ -156,6 +160,7 @@ async def test_get_completion_network_error(mocker):
         result=PrometheusResult.ERROR,
         model=SAMPLE_REQUEST.model,
         service_type=SAMPLE_REQUEST.service_type,
+        purpose=SAMPLE_REQUEST.purpose,
     )
     mock_metrics.chat_completion_latency.labels().observe.assert_called_once()
 
@@ -200,12 +205,14 @@ async def test_stream_completion_success(httpx_mock: HTTPXMock, mocker):
         type="prompt",
         model=SAMPLE_REQUEST.model,
         service_type=SAMPLE_REQUEST.service_type,
+        purpose=SAMPLE_REQUEST.purpose,
     )
     mock_metrics.chat_tokens.labels().inc.assert_any_call(10)
     mock_metrics.chat_tokens.labels.assert_any_call(
         type="completion",
         model=SAMPLE_REQUEST.model,
         service_type=SAMPLE_REQUEST.service_type,
+        purpose=SAMPLE_REQUEST.purpose,
     )
     mock_metrics.chat_tokens.labels().inc.assert_any_call(25)
 
@@ -213,6 +220,7 @@ async def test_stream_completion_success(httpx_mock: HTTPXMock, mocker):
         result=PrometheusResult.SUCCESS,
         model=SAMPLE_REQUEST.model,
         service_type=SAMPLE_REQUEST.service_type,
+        purpose=SAMPLE_REQUEST.purpose,
     )
     mock_metrics.chat_completion_latency.labels().observe.assert_called_once()
 
@@ -258,6 +266,7 @@ async def test_get_completion_budget_limit_exceeded_429(mocker):
         reason=PrometheusRejectionReason.BUDGET_EXCEEDED,
         model=SAMPLE_REQUEST.model,
         service_type=SAMPLE_REQUEST.service_type,
+        purpose=SAMPLE_REQUEST.purpose,
     )
     mock_metrics.chat_request_rejections.labels().inc.assert_called_once()
 
@@ -266,6 +275,7 @@ async def test_get_completion_budget_limit_exceeded_429(mocker):
         result=PrometheusResult.ERROR,
         model=SAMPLE_REQUEST.model,
         service_type=SAMPLE_REQUEST.service_type,
+        purpose=SAMPLE_REQUEST.purpose,
     )
 
 
@@ -310,6 +320,7 @@ async def test_get_completion_budget_limit_exceeded_400(mocker):
         reason=PrometheusRejectionReason.BUDGET_EXCEEDED,
         model=SAMPLE_REQUEST.model,
         service_type=SAMPLE_REQUEST.service_type,
+        purpose=SAMPLE_REQUEST.purpose,
     )
     mock_metrics.chat_request_rejections.labels().inc.assert_called_once()
 
@@ -355,6 +366,7 @@ async def test_get_completion_rate_limit_exceeded(mocker):
         reason=PrometheusRejectionReason.RATE_LIMITED,
         model=SAMPLE_REQUEST.model,
         service_type=SAMPLE_REQUEST.service_type,
+        purpose=SAMPLE_REQUEST.purpose,
     )
     mock_metrics.chat_request_rejections.labels().inc.assert_called_once()
 
@@ -463,12 +475,14 @@ async def test_get_completion_context_window_exceeded(mocker):
         reason=PrometheusRejectionReason.PAYLOAD_TOO_LARGE,
         model=SAMPLE_REQUEST.model,
         service_type=SAMPLE_REQUEST.service_type,
+        purpose=SAMPLE_REQUEST.purpose,
     )
     mock_metrics.chat_request_rejections.labels().inc.assert_called_once()
     mock_metrics.chat_completion_latency.labels.assert_called_once_with(
         result=PrometheusResult.ERROR,
         model=SAMPLE_REQUEST.model,
         service_type=SAMPLE_REQUEST.service_type,
+        purpose=SAMPLE_REQUEST.purpose,
     )
 
 
@@ -539,12 +553,14 @@ async def test_stream_completion_budget_limit_exceeded_429(
         reason=PrometheusRejectionReason.BUDGET_EXCEEDED,
         model=SAMPLE_REQUEST.model,
         service_type=SAMPLE_REQUEST.service_type,
+        purpose=SAMPLE_REQUEST.purpose,
     )
     mock_metrics.chat_request_rejections.labels().inc.assert_called_once()
     mock_metrics.chat_completion_latency.labels.assert_called_once_with(
         result=PrometheusResult.ERROR,
         model=SAMPLE_REQUEST.model,
         service_type=SAMPLE_REQUEST.service_type,
+        purpose=SAMPLE_REQUEST.purpose,
     )
 
 
@@ -586,12 +602,14 @@ async def test_stream_completion_budget_limit_exceeded_400(
         reason=PrometheusRejectionReason.BUDGET_EXCEEDED,
         model=SAMPLE_REQUEST.model,
         service_type=SAMPLE_REQUEST.service_type,
+        purpose=SAMPLE_REQUEST.purpose,
     )
     mock_metrics.chat_request_rejections.labels().inc.assert_called_once()
     mock_metrics.chat_completion_latency.labels.assert_called_once_with(
         result=PrometheusResult.ERROR,
         model=SAMPLE_REQUEST.model,
         service_type=SAMPLE_REQUEST.service_type,
+        purpose=SAMPLE_REQUEST.purpose,
     )
 
 
@@ -631,12 +649,14 @@ async def test_stream_completion_rate_limit_exceeded(httpx_mock: HTTPXMock, mock
         reason=PrometheusRejectionReason.RATE_LIMITED,
         model=SAMPLE_REQUEST.model,
         service_type=SAMPLE_REQUEST.service_type,
+        purpose=SAMPLE_REQUEST.purpose,
     )
     mock_metrics.chat_request_rejections.labels().inc.assert_called_once()
     mock_metrics.chat_completion_latency.labels.assert_called_once_with(
         result=PrometheusResult.ERROR,
         model=SAMPLE_REQUEST.model,
         service_type=SAMPLE_REQUEST.service_type,
+        purpose=SAMPLE_REQUEST.purpose,
     )
 
 
@@ -671,12 +691,14 @@ async def test_stream_completion_context_window_exceeded(httpx_mock: HTTPXMock, 
         reason=PrometheusRejectionReason.PAYLOAD_TOO_LARGE,
         model=SAMPLE_REQUEST.model,
         service_type=SAMPLE_REQUEST.service_type,
+        purpose=SAMPLE_REQUEST.purpose,
     )
     mock_metrics.chat_request_rejections.labels().inc.assert_called_once()
     mock_metrics.chat_completion_latency.labels.assert_called_once_with(
         result=PrometheusResult.ERROR,
         model=SAMPLE_REQUEST.model,
         service_type=SAMPLE_REQUEST.service_type,
+        purpose=SAMPLE_REQUEST.purpose,
     )
 
 
@@ -718,6 +740,7 @@ async def test_stream_completion_400_non_rate_limit_error(
         result=PrometheusResult.ERROR,
         model=SAMPLE_REQUEST.model,
         service_type=SAMPLE_REQUEST.service_type,
+        purpose=SAMPLE_REQUEST.purpose,
     )
 
 
@@ -753,6 +776,7 @@ async def test_stream_completion_429_non_rate_limit_error(
         result=PrometheusResult.ERROR,
         model=SAMPLE_REQUEST.model,
         service_type=SAMPLE_REQUEST.service_type,
+        purpose=SAMPLE_REQUEST.purpose,
     )
 
 
@@ -783,6 +807,7 @@ async def test_stream_completion_429_invalid_json(httpx_mock: HTTPXMock, mocker)
         result=PrometheusResult.ERROR,
         model=SAMPLE_REQUEST.model,
         service_type=SAMPLE_REQUEST.service_type,
+        purpose=SAMPLE_REQUEST.purpose,
     )
 
 
@@ -811,6 +836,7 @@ async def test_stream_completion_exception_after_streaming_started(
         result=PrometheusResult.ERROR,
         model=SAMPLE_REQUEST.model,
         service_type=SAMPLE_REQUEST.service_type,
+        purpose=SAMPLE_REQUEST.purpose,
     )
     mock_metrics.chat_completion_latency.labels().observe.assert_called_once()
 
@@ -842,6 +868,7 @@ async def test_get_completion_preserves_tools(mocker):
     request_with_tools = AuthorizedChatRequest(
         user="test-user-123:ai",
         service_type="ai",
+        purpose="chat",
         model="test-model",
         messages=[
             {"role": "user", "content": "What mario sites did i look at yesterday?"}
@@ -905,6 +932,7 @@ async def test_stream_completion_preserves_tools(httpx_mock: HTTPXMock, mocker):
     request_with_tools = AuthorizedChatRequest(
         user="test-user-123:ai",
         service_type="ai",
+        purpose="chat",
         model="test-model",
         messages=[
             {"role": "user", "content": "What mario sites did i look at yesterday?"}

@@ -80,6 +80,9 @@ class PlayIntegrityRequest(BaseModel):
 class AuthorizedChatRequest(ChatRequest):
     user: str
     service_type: str
+    purpose: str = (
+        ""  # From header; empty for service types without defined purposes (e.g. s2s)
+    )
 
 
 # Dynamically create ServiceType enum from config

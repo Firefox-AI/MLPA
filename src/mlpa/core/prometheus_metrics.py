@@ -92,7 +92,7 @@ metrics = PrometheusMetrics(
     requests_total=Counter(
         "mlpa_requests_total",
         "Total number of requests handled by the proxy.",
-        ["method", "endpoint", "service_type"],
+        ["method", "endpoint", "service_type", "purpose"],
     ),
     response_status_codes=Counter(
         "mlpa_response_status_codes_total",
@@ -137,7 +137,7 @@ metrics = PrometheusMetrics(
     chat_completion_latency=Histogram(
         "mlpa_chat_completion_latency_seconds",
         "Chat completion latency in seconds.",
-        ["result", "model", "service_type"],
+        ["result", "model", "service_type", "purpose"],
         buckets=BUCKETS_COMPLETION,
     ),
     chat_completion_ttft=Histogram(
@@ -149,38 +149,38 @@ metrics = PrometheusMetrics(
     chat_tokens=Counter(
         "mlpa_chat_tokens",
         "Number of tokens for chat completions.",
-        ["type", "model", "service_type"],
+        ["type", "model", "service_type", "purpose"],
     ),
     chat_tokens_per_request=Histogram(
         "mlpa_chat_tokens_per_request",
         "Distribution of tokens per chat completion request.",
-        ["type", "model", "service_type"],
+        ["type", "model", "service_type", "purpose"],
         buckets=BUCKETS_TOKENS,
     ),
     chat_tool_calls=Counter(
         "mlpa_chat_tool_calls_total",
         "Total number of LLM tool invocations.",
-        ["tool_name", "model", "service_type"],
+        ["tool_name", "model", "service_type", "purpose"],
     ),
     chat_completions_with_tools=Counter(
         "mlpa_chat_completions_with_tools_total",
         "Number of completions that contained at least one tool call.",
-        ["tool_name", "model", "service_type"],
+        ["tool_name", "model", "service_type", "purpose"],
     ),
     chat_tool_calls_per_completion=Histogram(
         "mlpa_chat_tool_calls_per_completion",
         "Distribution of tool calls per completion.",
-        ["tool_name", "model", "service_type"],
+        ["tool_name", "model", "service_type", "purpose"],
         buckets=BUCKETS_TOOL_CALLS,
     ),
     chat_requests_with_tools=Counter(
         "mlpa_chat_requests_with_tools_total",
         "Number of chat requests that included a tools payload.",
-        ["tool_name", "model", "service_type"],
+        ["tool_name", "model", "service_type", "purpose"],
     ),
     chat_request_rejections=Counter(
         "mlpa_chat_request_rejections_total",
         "Number of chat requests rejected due to budget, rate limit, or payload size.",
-        ["reason", "model", "service_type"],
+        ["reason", "model", "service_type", "purpose"],
     ),
 )

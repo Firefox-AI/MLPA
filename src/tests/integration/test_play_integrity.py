@@ -75,6 +75,7 @@ def test_chat_with_play_integrity_token_success(mocked_client_integration):
             "authorization": f"Bearer {access_token}",
             "use-play-integrity": "true",
             "service-type": "ai",
+            "purpose": "chat",
         },
         json=SAMPLE_CHAT_REQUEST.model_dump(exclude_unset=True),
     )

@@ -16,6 +16,7 @@ def test_request_size_under_limit(mocked_client_integration):
         headers={
             "authorization": f"Bearer {TEST_FXA_TOKEN}",
             "service-type": "ai",
+            "purpose": "chat",
         },
         json=small_payload,
     )
@@ -42,6 +43,7 @@ def test_request_size_over_limit(mocked_client_integration):
             headers={
                 "authorization": f"Bearer {TEST_FXA_TOKEN}",
                 "service-type": "ai",
+                "purpose": "chat",
                 "content-length": str(oversized_size),
             },
             json=large_payload,
@@ -52,6 +54,7 @@ def test_request_size_over_limit(mocked_client_integration):
             headers={
                 "authorization": f"Bearer {TEST_FXA_TOKEN}",
                 "service-type": "ai",
+                "purpose": "chat",
             },
             json=large_payload,
         )
@@ -69,6 +72,7 @@ def test_request_size_exactly_at_limit(mocked_client_integration):
         headers={
             "authorization": f"Bearer {TEST_FXA_TOKEN}",
             "service-type": "ai",
+            "purpose": "chat",
             "content-length": str(max_size),
         },
         json={"messages": [{"role": "user", "content": "test"}]},
@@ -100,6 +104,7 @@ def test_request_size_limit_with_invalid_content_length(mocked_client_integratio
         headers={
             "authorization": f"Bearer {TEST_FXA_TOKEN}",
             "service-type": "ai",
+            "purpose": "chat",
             "content-length": "invalid",
         },
         json={"messages": [{"role": "user", "content": "test"}]},
