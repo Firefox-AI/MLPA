@@ -8,6 +8,7 @@ from fastapi import HTTPException
 from pyattest.testutils.factories.attestation import apple as apple_factory
 
 from mlpa.core.classes import AuthorizedChatRequest, ChatRequest
+from mlpa.core.config import ERROR_CODE_MAX_USERS_REACHED, env
 from mlpa.core.logger import logger
 from mlpa.core.routers.appattest.appattest import validate_challenge
 from mlpa.core.utils import b64decode_safe, parse_app_attest_jwt
@@ -73,6 +74,26 @@ async def mock_app_attest_auth(app_attest_jwt: str):
 async def mock_get_or_create_user(mock_litellm_pg, user_id: str):
     user = await mock_litellm_pg.get_user(user_id)
     if not user:
+        # Match real admission semantics:
+        # - cap-managed service types reserve base identity slots
+        # - independent service types bypass
+        base_identity, _sep, service_type = user_id.partition(":")
+        if (
+            env.MLPA_ENFORCE_SIGNIN_CAP
+            and service_type in env.MLPA_CAPPED_SERVICE_TYPES
+        ):
+            admitted, newly_claimed = await mock_litellm_pg.admit_managed_base_identity(
+                base_identity=base_identity
+            )
+            if not admitted:
+                raise HTTPException(
+                    status_code=403,
+                    detail={
+                        "error": ERROR_CODE_MAX_USERS_REACHED,
+                        "message": "Maximum signed-in users reached",
+                    },
+                )
+
         mock_litellm_pg.store_user(user_id, {"data": "testdata"})
         user = await mock_litellm_pg.get_user(user_id)
         return user, True
@@ -136,6 +157,9 @@ class MockLiteLLMPGService:
         self.db_url = "test_litellm"
         self.connected = True
         self.users = {}
+        # Simulate DB-backed admission state:
+        # each managed base identity (e.g. "{auth_id}" for ai/memories) consumes one slot.
+        self.managed_capacity_claims: set[str] = set()
 
     async def connect(self):
         logger.debug(
@@ -159,12 +183,18 @@ class MockLiteLLMPGService:
         logger.debug(
             f"mock store_user called with user_id: {user_id}, data: {data}",
         )
+
         self.users[user_id] = data
 
     async def create_budget(self):
         """Mock create_budget method for testing."""
         logger.debug("mock create_budget called")
         return []
+
+    async def ensure_capacity_state(self):
+        """Mock ensure_capacity_state method for testing."""
+        logger.debug("mock ensure_capacity_state called")
+        # No-op: the in-memory store_user/admission logic simulates capacity.
 
     async def block_user(self, user_id: str, blocked: bool = True):
         """Mock block_user method for testing."""
@@ -204,6 +234,38 @@ class MockLiteLLMPGService:
             "limit": limit,
             "offset": offset,
         }
+
+    async def admit_managed_base_identity(
+        self, base_identity: str
+    ) -> tuple[bool, bool]:
+        """Mock DB-backed admission: reserve a managed base identity slot."""
+        if not env.MLPA_ENFORCE_SIGNIN_CAP:
+            return True, False
+        if base_identity in self.managed_capacity_claims:
+            return True, False
+        if len(self.managed_capacity_claims) >= env.MLPA_MAX_SIGNED_IN_USERS:
+            return False, False
+        self.managed_capacity_claims.add(base_identity)
+        return True, True
+
+    async def maybe_release_managed_base_identity_if_no_managed_users(
+        self, base_identity: str
+    ) -> None:
+        """Release a managed capacity claim if no managed service rows exist for the base identity."""
+        if not env.MLPA_ENFORCE_SIGNIN_CAP:
+            return
+        if base_identity not in self.managed_capacity_claims:
+            return
+
+        managed_service_types = env.MLPA_CAPPED_SERVICE_TYPES
+        has_managed_user_rows = any(
+            (p := uid.partition(":"))[0] == base_identity
+            and p[2] in managed_service_types
+            for uid in self.users
+            if ":" in uid
+        )
+        if not has_managed_user_rows:
+            self.managed_capacity_claims.remove(base_identity)
 
     async def count_users_by_service_type(self) -> dict:
         """Mock count_users_by_service_type grouped by service_type."""

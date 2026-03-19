@@ -177,3 +177,225 @@ class LiteLLMPGService(PGService):
                 logger.error(
                     f"Error creating budget for service_type={service_type}, budget_id={budget_config.get('budget_id', 'unknown')}: {e}"
                 )
+
+    async def ensure_capacity_state(self) -> None:
+        """
+        Ensure the singleton capacity row and base-identity claim table exist.
+
+        Reconciles the claim table with current LiteLLM end-user rows for
+        cap-managed service types on every startup so the counter reflects
+        reality (handles external writes and config changes).
+        """
+        managed_service_types = list(env.MLPA_CAPPED_SERVICE_TYPES)
+
+        async with self.pg.acquire() as conn:
+            async with conn.transaction():
+                await conn.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS mlpa_user_capacity (
+                        id SMALLINT PRIMARY KEY CHECK (id = 1),
+                        max_identities BIGINT NOT NULL CHECK (max_identities >= 0),
+                        current_identities BIGINT NOT NULL CHECK (current_identities >= 0),
+                        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                    );
+                    """
+                )
+                await conn.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS mlpa_user_capacity_identities (
+                        base_identity TEXT PRIMARY KEY,
+                        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                    );
+                    """
+                )
+
+                await conn.execute(
+                    """
+                    INSERT INTO mlpa_user_capacity (id, max_identities, current_identities)
+                    VALUES (1, $1, 0)
+                    ON CONFLICT (id) DO UPDATE SET
+                        max_identities = EXCLUDED.max_identities,
+                        updated_at = NOW()
+                    """,
+                    env.MLPA_MAX_SIGNED_IN_USERS,
+                )
+
+                # Serialize seeding and reconciliation so concurrent app startups
+                # do not race on the claim table.
+                await conn.fetchrow(
+                    "SELECT 1 FROM mlpa_user_capacity WHERE id = 1 FOR UPDATE"
+                )
+
+                # Reconcile claims with current LiteLLM end-user rows for cap-managed service types.
+                # This handles cases where the claim table is stale (e.g. external writes).
+                await conn.execute(
+                    """
+                    INSERT INTO mlpa_user_capacity_identities (base_identity)
+                    SELECT DISTINCT split_part(user_id, ':', 1) AS base_identity
+                    FROM "LiteLLM_EndUserTable"
+                    WHERE position(':' in user_id) > 0
+                      AND split_part(user_id, ':', 2) = ANY($1::text[])
+                      AND (
+                        $2::boolean = false
+                        OR blocked IS NULL
+                        OR blocked = FALSE
+                      )
+                    ON CONFLICT (base_identity) DO NOTHING
+                    """,
+                    managed_service_types,
+                    env.MLPA_CAP_EXCLUDE_BLOCKED_USERS,
+                )
+
+                seeded_claims = await conn.fetchval(
+                    "SELECT COUNT(*) FROM mlpa_user_capacity_identities"
+                )
+                await conn.execute(
+                    """
+                    UPDATE mlpa_user_capacity
+                    SET current_identities = $1,
+                        updated_at = NOW()
+                    WHERE id = 1
+                    """,
+                    seeded_claims,
+                )
+
+    async def admit_managed_base_identity(
+        self, base_identity: str
+    ) -> tuple[bool, bool]:
+        """
+        Admit a cap-managed base identity.
+
+        Returns:
+          (admitted, newly_claimed)
+        """
+        if not env.MLPA_ENFORCE_SIGNIN_CAP:
+            return True, False
+
+        async with self.pg.acquire() as conn:
+            async with conn.transaction():
+                await conn.execute(
+                    f"SET LOCAL lock_timeout = '{env.MLPA_ADMISSION_LOCK_TIMEOUT_MS}ms'"
+                )
+                capacity_row = await conn.fetchrow(
+                    """
+                    SELECT max_identities, current_identities
+                    FROM mlpa_user_capacity
+                    WHERE id = 1
+                    FOR UPDATE
+                    """
+                )
+                if capacity_row is None:
+                    raise HTTPException(
+                        status_code=500,
+                        detail="Capacity state not initialized",
+                    )
+
+                already_claimed = await conn.fetchval(
+                    """
+                    SELECT 1
+                    FROM mlpa_user_capacity_identities
+                    WHERE base_identity = $1
+                    """,
+                    base_identity,
+                )
+                if already_claimed:
+                    return True, False
+
+                max_identities = int(capacity_row["max_identities"])
+                current_identities = int(capacity_row["current_identities"])
+                if current_identities >= max_identities:
+                    return False, False
+
+                await conn.execute(
+                    """
+                    INSERT INTO mlpa_user_capacity_identities (base_identity)
+                    VALUES ($1)
+                    """,
+                    base_identity,
+                )
+                await conn.execute(
+                    """
+                    UPDATE mlpa_user_capacity
+                    SET current_identities = current_identities + 1,
+                        updated_at = NOW()
+                    WHERE id = 1
+                    """
+                )
+                return True, True
+
+    async def maybe_release_managed_base_identity_if_no_managed_users(
+        self, base_identity: str
+    ) -> None:
+        """
+        Release a claim if the base identity currently has no cap-managed
+        LiteLLM end-user rows.
+        """
+        if not env.MLPA_ENFORCE_SIGNIN_CAP:
+            return
+
+        managed_service_types = list(env.MLPA_CAPPED_SERVICE_TYPES)
+
+        async with self.pg.acquire() as conn:
+            async with conn.transaction():
+                await conn.execute(
+                    f"SET LOCAL lock_timeout = '{env.MLPA_ADMISSION_LOCK_TIMEOUT_MS}ms'"
+                )
+                capacity_row = await conn.fetchrow(
+                    """
+                    SELECT max_identities, current_identities
+                    FROM mlpa_user_capacity
+                    WHERE id = 1
+                    FOR UPDATE
+                    """
+                )
+                if capacity_row is None:
+                    return
+
+                claimed = await conn.fetchval(
+                    """
+                    SELECT 1
+                    FROM mlpa_user_capacity_identities
+                    WHERE base_identity = $1
+                    """,
+                    base_identity,
+                )
+                if not claimed:
+                    return
+
+                has_managed_user_rows = await conn.fetchval(
+                    """
+                    SELECT EXISTS(
+                        SELECT 1
+                        FROM "LiteLLM_EndUserTable"
+                        WHERE position(':' in user_id) > 0
+                          AND split_part(user_id, ':', 1) = $1
+                          AND split_part(user_id, ':', 2) = ANY($2::text[])
+                          AND (
+                            $3::boolean = false
+                            OR blocked IS NULL
+                            OR blocked = FALSE
+                          )
+                    )
+                    """,
+                    base_identity,
+                    managed_service_types,
+                    env.MLPA_CAP_EXCLUDE_BLOCKED_USERS,
+                )
+                if has_managed_user_rows:
+                    return
+
+                await conn.execute(
+                    """
+                    DELETE FROM mlpa_user_capacity_identities
+                    WHERE base_identity = $1
+                    """,
+                    base_identity,
+                )
+                await conn.execute(
+                    """
+                    UPDATE mlpa_user_capacity
+                    SET current_identities = GREATEST(current_identities - 1, 0),
+                        updated_at = NOW()
+                    WHERE id = 1
+                    """
+                )
