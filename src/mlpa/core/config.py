@@ -9,16 +9,12 @@ class Env(BaseSettings):
 
     # User signup capacity gate (managed service types only)
     # Controlled by infra (env var), enforced without race conditions in DB.
-    MLPA_MAX_SIGNED_IN_USERS: int = 1_000_000
+    MLPA_MAX_SIGNED_IN_USERS: int = 3
     MLPA_ENFORCE_SIGNIN_CAP: bool = True
     # Service types that share admission capacity.
     # Example: `ai` and `memories` are coupled; `s2s`/`s2s-android` can bypass.
     MLPA_CAPPED_SERVICE_TYPES: set[str] = {"ai", "memories"}
     MLPA_ADMISSION_LOCK_TIMEOUT_MS: int = 5000
-
-    # Whether cap-managed capacity should exclude end-user rows that are
-    # explicitly marked as blocked in LiteLLM.
-    MLPA_CAP_EXCLUDE_BLOCKED_USERS: bool = True
 
     # Purpose header enforcement/backwards-compatibility:
     # when false (default), the `purpose` header is optional for all service types.

@@ -183,8 +183,8 @@ class LiteLLMPGService(PGService):
         Ensure the singleton capacity row and base-identity claim table exist.
 
         Reconciles the claim table with current LiteLLM end-user rows for
-        cap-managed service types on every startup so the counter reflects
-        reality (handles external writes and config changes).
+        cap-managed service types on every startup (blocked rows included) so
+        the counter reflects reality after external writes and config changes.
         """
         managed_service_types = list(env.MLPA_CAPPED_SERVICE_TYPES)
 
@@ -226,8 +226,9 @@ class LiteLLMPGService(PGService):
                     "SELECT 1 FROM mlpa_user_capacity WHERE id = 1 FOR UPDATE"
                 )
 
-                # Reconcile claims with current LiteLLM end-user rows for cap-managed service types.
-                # This handles cases where the claim table is stale (e.g. external writes).
+                # Rebuild claims from LiteLLM so the counter matches reality after deletes
+                # or manual DB edits. Blocked rows still count toward capacity.
+                await conn.execute("DELETE FROM mlpa_user_capacity_identities")
                 await conn.execute(
                     """
                     INSERT INTO mlpa_user_capacity_identities (base_identity)
@@ -235,15 +236,8 @@ class LiteLLMPGService(PGService):
                     FROM "LiteLLM_EndUserTable"
                     WHERE position(':' in user_id) > 0
                       AND split_part(user_id, ':', 2) = ANY($1::text[])
-                      AND (
-                        $2::boolean = false
-                        OR blocked IS NULL
-                        OR blocked = FALSE
-                      )
-                    ON CONFLICT (base_identity) DO NOTHING
                     """,
                     managed_service_types,
-                    env.MLPA_CAP_EXCLUDE_BLOCKED_USERS,
                 )
 
                 seeded_claims = await conn.fetchval(
@@ -327,8 +321,8 @@ class LiteLLMPGService(PGService):
         self, base_identity: str
     ) -> None:
         """
-        Release a claim if the base identity currently has no cap-managed
-        LiteLLM end-user rows.
+        Release a claim if the base identity has no cap-managed LiteLLM end-user
+        rows (blocked rows still count — delete/unblock+delete in LiteLLM to release).
         """
         if not env.MLPA_ENFORCE_SIGNIN_CAP:
             return
@@ -370,16 +364,10 @@ class LiteLLMPGService(PGService):
                         WHERE position(':' in user_id) > 0
                           AND split_part(user_id, ':', 1) = $1
                           AND split_part(user_id, ':', 2) = ANY($2::text[])
-                          AND (
-                            $3::boolean = false
-                            OR blocked IS NULL
-                            OR blocked = FALSE
-                          )
                     )
                     """,
                     base_identity,
                     managed_service_types,
-                    env.MLPA_CAP_EXCLUDE_BLOCKED_USERS,
                 )
                 if has_managed_user_rows:
                     return

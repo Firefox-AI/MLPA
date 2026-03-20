@@ -88,10 +88,7 @@ async def mock_get_or_create_user(mock_litellm_pg, user_id: str):
             if not admitted:
                 raise HTTPException(
                     status_code=403,
-                    detail={
-                        "error": ERROR_CODE_MAX_USERS_REACHED,
-                        "message": "Maximum signed-in users reached",
-                    },
+                    detail={"error": ERROR_CODE_MAX_USERS_REACHED},
                 )
 
         mock_litellm_pg.store_user(user_id, {"data": "testdata"})
