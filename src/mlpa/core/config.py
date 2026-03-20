@@ -9,8 +9,8 @@ class Env(BaseSettings):
 
     # User signup capacity gate (managed service types only)
     # Controlled by infra (env var), enforced without race conditions in DB.
-    MLPA_MAX_SIGNED_IN_USERS: int = 3
-    MLPA_ENFORCE_SIGNIN_CAP: bool = True
+    MLPA_MAX_SIGNED_IN_USERS: int = 1000000
+    MLPA_ENFORCE_SIGNIN_CAP: bool = False
     # Service types that share admission capacity.
     # Example: `ai` and `memories` are coupled; `s2s`/`s2s-android` can bypass.
     MLPA_CAPPED_SERVICE_TYPES: set[str] = {"ai", "memories"}
