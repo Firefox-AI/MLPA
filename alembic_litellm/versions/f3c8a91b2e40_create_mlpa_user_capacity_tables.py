@@ -19,8 +19,9 @@ depends_on: Union[str, Sequence[str], None] = None
 
 
 def upgrade() -> None:
+    # IF NOT EXISTS: DBs that already had these tables from pre-Alembic MLPA still stamp this revision.
     op.execute("""
-        CREATE TABLE mlpa_user_capacity (
+        CREATE TABLE IF NOT EXISTS mlpa_user_capacity (
             id SMALLINT PRIMARY KEY CHECK (id = 1),
             max_identities BIGINT NOT NULL CHECK (max_identities >= 0),
             current_identities BIGINT NOT NULL CHECK (current_identities >= 0),
@@ -28,7 +29,7 @@ def upgrade() -> None:
         )
     """)
     op.execute("""
-        CREATE TABLE mlpa_user_capacity_identities (
+        CREATE TABLE IF NOT EXISTS mlpa_user_capacity_identities (
             base_identity TEXT PRIMARY KEY,
             created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
         )
@@ -37,9 +38,10 @@ def upgrade() -> None:
     op.execute("""
         INSERT INTO mlpa_user_capacity (id, max_identities, current_identities)
         VALUES (1, 1000000, 0)
+        ON CONFLICT (id) DO NOTHING
     """)
 
 
 def downgrade() -> None:
-    op.drop_table("mlpa_user_capacity_identities")
-    op.drop_table("mlpa_user_capacity")
+    op.execute("DROP TABLE IF EXISTS mlpa_user_capacity_identities")
+    op.execute("DROP TABLE IF EXISTS mlpa_user_capacity")

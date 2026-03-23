@@ -1,5 +1,8 @@
 #!/bin/bash
 
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+cd "${ROOT}"
+
 # Load environment variables from .env file if it exists
 if [ -f .env ]; then
     set -a
@@ -49,7 +52,7 @@ echo ""
 echo "Running Alembic migrations (LiteLLM DB / MLPA tables)..."
 echo "Using LITELLM_DATABASE_URL: postgresql://${DB_USERNAME}:***@${DB_HOST}:${DB_PORT}/${LITELLM_DB_NAME}"
 
-alembic -c alembic_litellm.ini -x sqlalchemy.url="${LITELLM_DATABASE_URL}" upgrade head
+uv run alembic -c alembic_litellm.ini -x sqlalchemy.url="${LITELLM_DATABASE_URL}" upgrade head
 
 if [ $? -eq 0 ]; then
     echo "✅ LiteLLM DB migrations completed successfully"
