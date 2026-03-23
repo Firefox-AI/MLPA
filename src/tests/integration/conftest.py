@@ -16,7 +16,12 @@ from tests.mocks import (
 
 
 @pytest.fixture
-def mocked_client_integration(mocker):
+def use_real_get_or_create_user():
+    return False
+
+
+@pytest.fixture
+def mocked_client_integration(mocker, use_real_get_or_create_user):
     """
     This fixture mocks the database services and provides a TestClient.
     """
@@ -36,6 +41,7 @@ def mocked_client_integration(mocker):
     mocker.patch("mlpa.core.routers.health.health.app_attest_pg", mock_app_attest_pg)
     mocker.patch("mlpa.run.litellm_pg", mock_litellm_pg)
     mocker.patch("mlpa.core.routers.health.health.litellm_pg", mock_litellm_pg)
+    mocker.patch("mlpa.core.utils.litellm_pg", mock_litellm_pg)
 
     mocker.patch("mlpa.core.routers.fxa.fxa.client", mock_fxa_client)
 
@@ -73,21 +79,22 @@ def mocked_client_integration(mocker):
     )
 
     mocker.patch(
-        "mlpa.run.get_or_create_user",
-        lambda *args, **kwargs: mock_get_or_create_user(
-            mock_litellm_pg, *args, **kwargs
-        ),
-    )
-    mocker.patch(
-        "mlpa.core.routers.mock.mock.get_or_create_user",
-        lambda *args, **kwargs: mock_get_or_create_user(
-            mock_litellm_pg, *args, **kwargs
-        ),
-    )
-    mocker.patch(
         "mlpa.run.get_completion",
         side_effect=mock_get_completion,
     )
 
+    if not use_real_get_or_create_user:
+        mocker.patch(
+            "mlpa.run.get_or_create_user",
+            lambda *args, **kwargs: mock_get_or_create_user(
+                mock_litellm_pg, *args, **kwargs
+            ),
+        )
+        mocker.patch(
+            "mlpa.core.routers.mock.mock.get_or_create_user",
+            lambda *args, **kwargs: mock_get_or_create_user(
+                mock_litellm_pg, *args, **kwargs
+            ),
+        )
     with TestClient(main_app.app) as client:
         yield client

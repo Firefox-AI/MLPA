@@ -67,6 +67,7 @@ async def lifespan(app: FastAPI):
         app_attest_connected = True
 
         await litellm_pg.create_budget()
+        await litellm_pg.ensure_capacity_state()
 
         yield
     finally:
