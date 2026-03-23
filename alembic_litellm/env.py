@@ -6,6 +6,10 @@ from mlpa.core.config import env
 config = context.config
 target_metadata = None
 
+# LiteLLM's DB may already use default `alembic_version` (LiteLLM Alembic) or other tools.
+# Use a dedicated table so MLPA's revision chain is independent and upgrade head always runs.
+MLPA_LITELLM_VERSION_TABLE = "mlpa_litellm_alembic_version"
+
 
 def get_effective_url() -> str:
     """Deploy passes -x sqlalchemy.url=...; otherwise URL is built from MLPA env (e.g. .env)."""
@@ -22,6 +26,7 @@ def run_migrations_offline() -> None:
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
+        version_table=MLPA_LITELLM_VERSION_TABLE,
     )
 
     with context.begin_transaction():
@@ -38,7 +43,11 @@ def run_migrations_online() -> None:
     )
 
     with connectable.connect() as connection:
-        context.configure(connection=connection, target_metadata=target_metadata)
+        context.configure(
+            connection=connection,
+            target_metadata=target_metadata,
+            version_table=MLPA_LITELLM_VERSION_TABLE,
+        )
 
         with context.begin_transaction():
             context.run_migrations()
