@@ -180,17 +180,35 @@ class LiteLLMPGService(PGService):
 
     async def ensure_capacity_state(self) -> None:
         """
-        Reconcile capacity state with LiteLLM end-user rows.
+        Ensure the singleton capacity row and base-identity claim table exist.
 
-        Schema is created by Alembic on LITELLM_DB_NAME (see alembic_litellm/).
-        On each startup: upserts max_identities from config, rebuilds the claim
-        table from cap-managed service types (blocked rows included) so the
-        counter matches reality after external writes and config changes.
+        Reconciles the claim table with current LiteLLM end-user rows for
+        cap-managed service types on every startup (blocked rows included) so
+        the counter reflects reality after external writes and config changes.
         """
         managed_service_types = list(env.MLPA_CAPPED_SERVICE_TYPES)
 
         async with self.pg.acquire() as conn:
             async with conn.transaction():
+                await conn.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS mlpa_user_capacity (
+                        id SMALLINT PRIMARY KEY CHECK (id = 1),
+                        max_identities BIGINT NOT NULL CHECK (max_identities >= 0),
+                        current_identities BIGINT NOT NULL CHECK (current_identities >= 0),
+                        updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                    );
+                    """
+                )
+                await conn.execute(
+                    """
+                    CREATE TABLE IF NOT EXISTS mlpa_user_capacity_identities (
+                        base_identity TEXT PRIMARY KEY,
+                        created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+                    );
+                    """
+                )
+
                 await conn.execute(
                     """
                     INSERT INTO mlpa_user_capacity (id, max_identities, current_identities)

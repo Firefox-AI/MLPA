@@ -44,8 +44,7 @@ bash scripts/create-app-attest-database.sh
 ```
 
 ```bash
-uv run alembic -c alembic_litellm.ini upgrade head
-uv run alembic -c alembic_appattest.ini upgrade head
+uv run alembic upgrade head
 ```
 
 LiteLLM will be accessible at `localhost:4000` and `localhost:4000/ui`.

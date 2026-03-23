@@ -14,7 +14,7 @@ export PGPASSWORD="${DB_PASSWORD}"
 APP_ATTEST_DATABASE_URL="postgresql://${DB_USERNAME}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT}/${APP_ATTEST_DB_NAME}"
 
 echo "[mlpa-appattest-migrate] Starting (host=${DB_HOST} port=${DB_PORT} database=${APP_ATTEST_DB_NAME} user=${DB_USERNAME})"
-echo "[mlpa-appattest-migrate] Alembic config: alembic_appattest.ini"
+echo "[mlpa-appattest-migrate] Alembic config: alembic.ini"
 
 echo "[mlpa-appattest-migrate] Checking if database exists..."
 if psql -d postgres -tAc "SELECT 1 FROM pg_database WHERE datname='${APP_ATTEST_DB_NAME}'" | grep -qx 1; then
@@ -26,6 +26,6 @@ else
 fi
 
 echo "[mlpa-appattest-migrate] Running Alembic upgrade head (Alembic messages follow)..."
-alembic --raiseerr -c alembic_appattest.ini -x sqlalchemy.url="${APP_ATTEST_DATABASE_URL}" upgrade head 2>&1
+alembic --raiseerr -c alembic.ini -x sqlalchemy.url="${APP_ATTEST_DATABASE_URL}" upgrade head 2>&1
 
 echo "[mlpa-appattest-migrate] Finished successfully."

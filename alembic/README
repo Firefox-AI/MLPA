@@ -1,0 +1,6 @@
+# Alembic migration (app_attest database)
+
+1. URL comes from `alembic/env.py` (`mlpa.core.config.env`) or `-x sqlalchemy.url=...` in `scripts/migrate-app-attest-database.sh`.
+1. New revision: `uv run alembic revision -m "revision name"` then edit `alembic/versions/....py`.
+1. Apply: `uv run alembic upgrade head` (or `bash scripts/migrate-app-attest-database-local.sh` for local Docker).
+1. Revert one step: `uv run alembic downgrade -1`
