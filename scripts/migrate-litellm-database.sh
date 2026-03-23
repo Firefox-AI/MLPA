@@ -26,8 +26,6 @@ else
   echo "[mlpa-litellm-migrate] Database created."
 fi
 
-echo "[mlpa-litellm-migrate] Running: alembic -c alembic_litellm.ini upgrade head (URL passed via -x, not logged)"
-# Alembic logs to stderr; both streams are visible in kubectl logs.
-alembic -c alembic_litellm.ini -x sqlalchemy.url="${LITELLM_DATABASE_URL}" upgrade head
+alembic --raiseerr -c alembic_litellm.ini -x sqlalchemy.url="${LITELLM_DATABASE_URL}" upgrade head
 
 echo "[mlpa-litellm-migrate] Finished successfully."

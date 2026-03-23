@@ -25,7 +25,6 @@ else
   echo "[mlpa-appattest-migrate] Database created."
 fi
 
-echo "[mlpa-appattest-migrate] Running: alembic -c alembic_appattest.ini upgrade head (URL passed via -x, not logged)"
-alembic -c alembic_appattest.ini -x sqlalchemy.url="${APP_ATTEST_DATABASE_URL}" upgrade head
+alembic --raiseerr -c alembic_appattest.ini -x sqlalchemy.url="${APP_ATTEST_DATABASE_URL}" upgrade head
 
 echo "[mlpa-appattest-migrate] Finished successfully."
