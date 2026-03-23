@@ -54,7 +54,7 @@ echo ""
 echo "Running Alembic migrations..."
 echo "Using APP_ATTEST_DATABASE_URL: postgresql://${DB_USERNAME}:***@${DB_HOST}:${DB_PORT}/${APP_ATTEST_DB_NAME}"
 
-alembic -x sqlalchemy.url="${APP_ATTEST_DATABASE_URL}" upgrade head
+alembic -c alembic.ini -x sqlalchemy.url="${APP_ATTEST_DATABASE_URL}" upgrade head
 
 if [ $? -eq 0 ]; then
     echo "✅ Migrations completed successfully"

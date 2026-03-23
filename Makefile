@@ -42,6 +42,7 @@ docs:
 # NOTE: for local development only
 docker-up:
 	docker-compose -f litellm_docker_compose.yaml up -d
+	bash scripts/migrate-litellm-database-local.sh
 	bash scripts/migrate-app-attest-database-local.sh
 
 docker-down:
