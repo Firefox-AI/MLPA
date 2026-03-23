@@ -1,6 +1,0 @@
-# Alembic migration
-
-1. Set `alembic.ini.sqlalchemy.url` to DB server `/app_attest` DB url
-1. Use `alembic revision -m "revision name"` to create a new revision. Edit the `1234_revision_name_table.py` file.
-1. Run `alembic upgrade head` to migrate DB
-1. (Run `alembic downgrade -1` to revert migration)
