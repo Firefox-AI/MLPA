@@ -7,6 +7,15 @@ class Env(BaseSettings):
     APP_ATTEST_PRODUCTION: bool = False
     PORT: int | None = 8080
 
+    # User signup capacity gate (managed service types only)
+    # Controlled by infra (env var), enforced without race conditions in DB.
+    MLPA_MAX_SIGNED_IN_USERS: int = 1000000
+    MLPA_ENFORCE_SIGNIN_CAP: bool = False
+    # Service types that share admission capacity.
+    # Example: `ai` and `memories` are coupled; `s2s`/`s2s-android` can bypass.
+    MLPA_CAPPED_SERVICE_TYPES: set[str] = {"ai", "memories"}
+    MLPA_ADMISSION_LOCK_TIMEOUT_MS: int = 5000
+
     # Purpose header enforcement/backwards-compatibility:
     # when false (default), the `purpose` header is optional for all service types.
     # when true, the `purpose` header becomes mandatory for service types that
@@ -273,6 +282,7 @@ LITELLM_COMPLETION_AUTH_HEADERS = {
 ERROR_CODE_BUDGET_LIMIT_EXCEEDED: int = 1
 ERROR_CODE_RATE_LIMIT_EXCEEDED: int = 2
 ERROR_CODE_REQUEST_TOO_LARGE: int = 3
+ERROR_CODE_MAX_USERS_REACHED: int = 4
 
 RATE_LIMIT_ERROR_RESPONSE = {
     429: {
@@ -325,6 +335,30 @@ RATE_LIMIT_ERROR_RESPONSE = {
                     "required": ["error"],
                 },
                 "example": {"error": ERROR_CODE_REQUEST_TOO_LARGE},
+            }
+        },
+    },
+    403: {
+        "description": "Forbidden - Maximum signed-in users reached",
+        "content": {
+            "application/json": {
+                "schema": {
+                    "type": "object",
+                    "properties": {
+                        "error": {
+                            "type": "integer",
+                            "description": "Error code: 4 for maximum signed-in users reached",
+                        }
+                    },
+                    "required": ["error"],
+                },
+                "examples": {
+                    "max_users_reached": {
+                        "summary": "Maximum signed-in users reached",
+                        "value": {"error": ERROR_CODE_MAX_USERS_REACHED},
+                        "description": "New sign-ins for cap-managed service types are rejected because capacity is full.",
+                    }
+                },
             }
         },
     },
