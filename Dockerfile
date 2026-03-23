@@ -12,7 +12,7 @@ COPY . .
 # Create directory for QA certificates with appropriate permissions
 RUN mkdir -p /tmp/qa_certificates && chmod 777 /tmp/qa_certificates
 
-# Run appattest database migration script
+# App Attest database migration script (deploy Job)
 RUN chmod +x /app/scripts/migrate-app-attest-database.sh
 
 # Install dependencies
