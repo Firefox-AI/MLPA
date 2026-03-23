@@ -61,6 +61,18 @@ BUCKETS_TOKENS = (
     25000,
     float("inf"),
 )
+BUCKETS_LITELLM_ATTEMPTS = (0, 1, 2, 3, 5, float("inf"))
+BUCKETS_LITELLM_COST_USD = (
+    0,
+    1e-6,
+    1e-5,
+    1e-4,
+    1e-3,
+    1e-2,
+    1e-1,
+    1,
+    float("inf"),
+)
 
 
 @dataclass
@@ -83,6 +95,12 @@ class PrometheusMetrics:
     chat_tool_calls_per_completion: Histogram
     chat_requests_with_tools: Counter
     chat_request_rejections: Counter
+    litellm_routed_completions: Counter
+    litellm_attempted_fallbacks: Histogram
+    litellm_attempted_retries: Histogram
+    litellm_reported_duration_seconds: Histogram
+    litellm_reported_cost_usd: Histogram
+    litellm_routed_tokens: Counter
 
 
 metrics = PrometheusMetrics(
@@ -182,5 +200,46 @@ metrics = PrometheusMetrics(
         "mlpa_chat_request_rejections_total",
         "Number of chat requests rejected due to budget, rate limit, or payload size.",
         ["reason", "model", "service_type", "purpose"],
+    ),
+    litellm_routed_completions=Counter(
+        "mlpa_litellm_routed_completions_total",
+        "Successful chat completions with LiteLLM routing labels from response headers.",
+        ["requested_model", "backend", "service_type", "purpose", "fallback_used"],
+    ),
+    litellm_attempted_fallbacks=Histogram(
+        "mlpa_litellm_attempted_fallbacks",
+        "LiteLLM-reported fallback attempts per successful completion (from x-litellm-attempted-fallbacks).",
+        ["requested_model", "backend", "service_type", "purpose"],
+        buckets=BUCKETS_LITELLM_ATTEMPTS,
+    ),
+    litellm_attempted_retries=Histogram(
+        "mlpa_litellm_attempted_retries",
+        "LiteLLM-reported retry attempts per successful completion (from x-litellm-attempted-retries).",
+        ["requested_model", "backend", "service_type", "purpose"],
+        buckets=BUCKETS_LITELLM_ATTEMPTS,
+    ),
+    litellm_reported_duration_seconds=Histogram(
+        "mlpa_litellm_reported_duration_seconds",
+        "LiteLLM proxy-reported request duration in seconds (x-litellm-response-duration-ms / 1000).",
+        ["requested_model", "backend", "service_type", "purpose", "fallback_used"],
+        buckets=BUCKETS_COMPLETION,
+    ),
+    litellm_reported_cost_usd=Histogram(
+        "mlpa_litellm_reported_cost_usd",
+        "LiteLLM-reported cost in USD per successful completion (x-litellm-response-cost).",
+        ["requested_model", "backend", "service_type", "purpose", "fallback_used"],
+        buckets=BUCKETS_LITELLM_COST_USD,
+    ),
+    litellm_routed_tokens=Counter(
+        "mlpa_litellm_routed_tokens_total",
+        "Token counts attributed to LiteLLM winning backend (from usage, same completion as routing headers).",
+        [
+            "type",
+            "requested_model",
+            "backend",
+            "service_type",
+            "purpose",
+            "fallback_used",
+        ],
     ),
 )
