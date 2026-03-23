@@ -1,6 +1,6 @@
 # Alembic migration (App Attest database)
 
-1. URL defaults live in `alembic_appattest.ini`; deploy scripts override with `-x sqlalchemy.url=...`.
+1. DB URL is built in `alembic_appattest/env.py` from `mlpa.core.config.env` (`DB_*`, `APP_ATTEST_DB_NAME`, e.g. via `.env`). Deploy scripts may override with `-x sqlalchemy.url=...`.
 1. New revision: `uv run alembic -c alembic_appattest.ini revision -m "revision name"` then edit `alembic_appattest/versions/....py`.
 1. Apply: `uv run alembic -c alembic_appattest.ini upgrade head`
 1. Revert one step: `uv run alembic -c alembic_appattest.ini downgrade -1`

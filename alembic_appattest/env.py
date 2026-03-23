@@ -1,23 +1,18 @@
-from logging.config import fileConfig
-
 from alembic import context
-from alembic.config import Config
 from sqlalchemy import engine_from_config, pool
 
 from mlpa.core.config import env
 
-default_app_attest_url = f"{env.PG_DB_URL.rstrip('/')}/{env.APP_ATTEST_DB_NAME}"
-
-alembic_cfg = Config()
-alembic_cfg.set_main_option("sqlalchemy.url", default_app_attest_url)
-
-config = alembic_cfg
+config = context.config
 target_metadata = None
 
 
 def get_effective_url() -> str:
+    """Deploy passes -x sqlalchemy.url=...; otherwise URL is built from MLPA env (e.g. .env)."""
     x_args = context.get_x_argument(as_dictionary=True) or {}
-    return x_args.get("sqlalchemy.url") or config.get_main_option("sqlalchemy.url")
+    return x_args.get("sqlalchemy.url") or (
+        f"{env.PG_DB_URL.rstrip('/')}/{env.APP_ATTEST_DB_NAME}"
+    )
 
 
 def run_migrations_offline() -> None:
