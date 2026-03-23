@@ -20,7 +20,7 @@ This creates a virtual environment in `.venv/`, installs dependencies, and insta
 
 2. `sh ./scripts/create-app-attest-database.sh`
 
-3. `alembic upgrade head`
+3. Migrate both DBs (repo root): `bash scripts/migrate-litellm-database-local.sh` and `bash scripts/migrate-app-attest-database-local.sh` (they run `uv run alembic -c alembic_litellm.ini` / `alembic_appattest.ini`)
 
 4. Set `MLPA_DEBUG=true` in the `config.py` or `.env` file
 
