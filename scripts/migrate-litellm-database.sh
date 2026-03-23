@@ -26,8 +26,6 @@ else
   echo "[mlpa-litellm-migrate] Database created."
 fi
 
-# Alembic logs to stderr; merge to stdout so platforms that only ingest stdout show migration output.
-echo "[mlpa-litellm-migrate] Running Alembic upgrade head (Alembic messages follow)..."
-alembic --raiseerr -c alembic_litellm.ini -x sqlalchemy.url="${LITELLM_DATABASE_URL}" upgrade head 2>&1
+alembic --raiseerr -c alembic_litellm.ini -x sqlalchemy.url="${LITELLM_DATABASE_URL}" upgrade head
 
 echo "[mlpa-litellm-migrate] Finished successfully."

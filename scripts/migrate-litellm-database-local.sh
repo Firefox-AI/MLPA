@@ -48,7 +48,6 @@ LITELLM_DATABASE_URL="postgresql://${DB_USERNAME}:${DB_PASSWORD}@${DB_HOST}:${DB
 echo ""
 echo "[mlpa-litellm-migrate-local] Target (password redacted): postgresql://${DB_USERNAME}:***@${DB_HOST}:${DB_PORT}/${LITELLM_DB_NAME}"
 
-echo "[mlpa-litellm-migrate-local] Running Alembic upgrade head (Alembic messages follow)..."
-uv run alembic --raiseerr -c alembic_litellm.ini -x sqlalchemy.url="${LITELLM_DATABASE_URL}" upgrade head 2>&1
+uv run alembic --raiseerr -c alembic_litellm.ini -x sqlalchemy.url="${LITELLM_DATABASE_URL}" upgrade head
 
 echo "✅ LiteLLM DB migrations completed successfully"

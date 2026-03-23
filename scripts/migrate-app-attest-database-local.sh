@@ -48,7 +48,6 @@ APP_ATTEST_DATABASE_URL="postgresql://${DB_USERNAME}:${DB_PASSWORD}@${DB_HOST}:$
 echo ""
 echo "[mlpa-appattest-migrate-local] Target (password redacted): postgresql://${DB_USERNAME}:***@${DB_HOST}:${DB_PORT}/${APP_ATTEST_DB_NAME}"
 
-echo "[mlpa-appattest-migrate-local] Running Alembic upgrade head (Alembic messages follow)..."
-uv run alembic --raiseerr -c alembic_appattest.ini -x sqlalchemy.url="${APP_ATTEST_DATABASE_URL}" upgrade head 2>&1
+uv run alembic --raiseerr -c alembic_appattest.ini -x sqlalchemy.url="${APP_ATTEST_DATABASE_URL}" upgrade head
 
 echo "✅ Migrations completed successfully"
