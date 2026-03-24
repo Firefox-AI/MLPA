@@ -281,6 +281,19 @@ class MockLiteLLMPGService:
             "total_users": total_users,
         }
 
+    async def get_signup_cap_status(self) -> dict:
+        current = len(self.managed_capacity_claims)
+        max_i = env.MLPA_MAX_SIGNED_IN_USERS
+        return {
+            "enforce_signin_cap": env.MLPA_ENFORCE_SIGNIN_CAP,
+            "capped_service_types": sorted(env.MLPA_CAPPED_SERVICE_TYPES),
+            "max_signed_in_users": max_i,
+            "current_managed_identities": current,
+            "slots_remaining": max(0, max_i - current),
+            "capacity_updated_at": None,
+            "capacity_row_missing": False,
+        }
+
 
 class MockFxAService:
     def __init__(self, client_id: str, client_secret: str, fxa_url: str):

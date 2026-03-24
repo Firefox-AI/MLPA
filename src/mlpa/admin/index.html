@@ -67,13 +67,13 @@
       <h2 class="text-sm font-semibold text-gray-700 uppercase tracking-wide mb-4">Authentication</h2>
       <div class="flex gap-3 items-end">
         <div class="flex-1">
-          <label for="masterKeyInput" class="block text-sm font-medium text-gray-700 mb-1.5">
-            Master Key
+          <label for="uiAccessKeyInput" class="block text-sm font-medium text-gray-700 mb-1.5">
+            UI access key
           </label>
           <input
-            id="masterKeyInput"
+            id="uiAccessKeyInput"
             type="password"
-            placeholder="Paste your master key here…"
+            placeholder="Secret from MLPA_UI_ACCESS_KEY (no &quot;Bearer&quot; prefix)…"
             class="w-full rounded-lg border border-gray-300 px-4 py-2.5 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-mozilla-500 focus:border-transparent transition"
             autocomplete="off"
             spellcheck="false"
@@ -118,6 +118,12 @@
         </div>
       </div>
 
+      <!-- Managed signup cap (capped service types only) -->
+      <div id="signupCapSection" class="hidden mb-6">
+        <h3 class="text-sm font-medium text-gray-600 mb-3">Managed signup cap</h3>
+        <div id="signupCapBody" class="rounded-xl border p-4 text-sm"></div>
+      </div>
+
       <!-- By service type -->
       <div>
         <h3 class="text-sm font-medium text-gray-600 mb-3">Breakdown by Service Type</h3>
@@ -159,30 +165,42 @@
 
     async function loadDashboard() {
       clearError();
-      const key = document.getElementById('masterKeyInput').value.trim();
+      const key = document.getElementById('uiAccessKeyInput').value.trim();
       if (!key) {
-        showError('Please enter a master key.');
+        showError('Please enter the UI access key (MLPA_UI_ACCESS_KEY).');
         return;
       }
 
       document.getElementById('statsCard').classList.add('hidden');
       document.getElementById('loadingCard').classList.remove('hidden');
 
+      const headers = { 'mlpa_ui_access_key': `Bearer ${key}` };
+
       try {
-        const res = await fetch('/user/counts-by-service-type', {
-          headers: { 'master_key': `Bearer ${key}` },
-        });
+        const [countsRes, capRes] = await Promise.all([
+          fetch('/user/counts-by-service-type', { headers }),
+          fetch('/user/signup-cap-status', { headers }),
+        ]);
 
-        if (res.status === 401) {
-          showError('Invalid master key — request was rejected (401 Unauthorized).');
+        if (countsRes.status === 401 || capRes.status === 401) {
+          showError('Invalid UI access key — request was rejected (401 Unauthorized).');
           return;
         }
-        if (!res.ok) {
-          showError(`Request failed: ${res.status} ${res.statusText}`);
+        if (!countsRes.ok) {
+          showError(`Request failed: ${countsRes.status} ${countsRes.statusText}`);
           return;
         }
 
-        renderStats(await res.json());
+        const countsData = await countsRes.json();
+        let capData = null;
+        let capError = null;
+        if (capRes.ok) {
+          capData = await capRes.json();
+        } else {
+          capError = `${capRes.status} ${capRes.statusText}`;
+        }
+
+        renderStats(countsData, capData, capError);
       } catch (err) {
         showError(`Network error: ${err.message}`);
       } finally {
@@ -190,10 +208,105 @@
       }
     }
 
-    function renderStats(data) {
+    function formatInt(n) {
+      if (typeof n !== 'number' || !Number.isFinite(n)) return String(n);
+      const s = Math.trunc(n).toString();
+      return s.replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+    }
+
+    function escapeHtml(s) {
+      if (s == null) return '';
+      return String(s)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;');
+    }
+
+    function renderSignupCap(capData, capError) {
+      const section = document.getElementById('signupCapSection');
+      const body = document.getElementById('signupCapBody');
+      section.classList.remove('hidden');
+
+      if (!capData && !capError) {
+        body.className =
+          'rounded-xl border border-gray-200 bg-gray-50 p-4 text-gray-600';
+        body.textContent = 'Signup cap status was not returned.';
+        return;
+      }
+
+      if (capError) {
+        body.className =
+          'rounded-xl border border-amber-200 bg-amber-50 p-4 text-amber-900';
+        body.innerHTML = `<p class="font-medium">Could not load signup cap</p><p class="text-amber-800/90 mt-1">${escapeHtml(capError)}</p>`;
+        return;
+      }
+
+      if (capData.capacity_row_missing) {
+        body.className =
+          'rounded-xl border border-amber-200 bg-amber-50 p-4 text-amber-900';
+        body.innerHTML =
+          '<p class="font-medium">Capacity state missing</p><p class="text-amber-800/90 mt-1">The capacity table has no row yet. Restart MLPA so startup can initialize it.</p>';
+        return;
+      }
+
+      const enforced = capData.enforce_signin_cap;
+      const cur = capData.current_managed_identities;
+      const max = capData.max_signed_in_users;
+      const remaining = capData.slots_remaining;
+      const types = escapeHtml((capData.capped_service_types || []).join(', '));
+      const pct = max > 0 ? Math.min(100, Math.round((cur / max) * 100)) : 0;
+
+      const badgeEnforced =
+        '<span class="inline-flex items-center rounded-md bg-emerald-100 px-2 py-0.5 text-xs font-medium text-emerald-800">Enforcement on</span>';
+      const badgeOff =
+        '<span class="inline-flex items-center rounded-md bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-700">Enforcement off</span>';
+
+      const barColor =
+        enforced && remaining === 0
+          ? 'bg-red-500'
+          : enforced && pct >= 90
+            ? 'bg-amber-500'
+            : 'bg-mozilla-500';
+
+      body.className =
+        'rounded-xl border border-gray-200 bg-white p-4 text-gray-800 shadow-sm';
+      body.innerHTML = `
+        <div class="flex flex-wrap items-center justify-between gap-2 mb-3">
+          <span class="text-gray-600 font-medium">Capped identities</span>
+          ${enforced ? badgeEnforced : badgeOff}
+        </div>
+        <p class="text-2xl font-bold text-gray-900 tabular-nums mb-1">
+          ${formatInt(cur)} <span class="text-lg font-normal text-gray-400">/</span> ${formatInt(max)}
+        </p>
+        <p class="text-xs text-gray-500 mb-3">
+          Distinct FxA users who have (or had) a <code class="text-gray-600">${types || '—'}</code> end-user row, e.g. made at least 1 call. S2S and other types do not consume this pool.
+        </p>
+        <div class="flex items-center justify-between text-xs text-gray-600 mb-1">
+          <span>Utilization</span>
+          <span class="tabular-nums font-medium">${pct}%</span>
+        </div>
+        <div class="bg-gray-100 rounded-full h-2 overflow-hidden mb-3">
+          <div class="bar-fill ${barColor} h-2 rounded-full" style="width: ${pct}%"></div>
+        </div>
+        <p class="text-sm text-gray-700">
+          <span class="text-gray-500">Slots remaining:</span>
+          <strong class="tabular-nums">${enforced ? formatInt(remaining) : '—'}</strong>
+          ${enforced ? '' : '<span class="text-gray-400"> (MLPA_ENFORCE_SIGNIN_CAP is false — tracked for visibility only; new signups are not blocked)</span>'}
+        </p>
+        ${
+          capData.capacity_updated_at
+            ? `<p class="text-xs text-gray-400 mt-2">Counter last reconciled: ${escapeHtml(capData.capacity_updated_at)}</p>`
+            : ''
+        }
+      `;
+    }
+
+    function renderStats(data, capData, capError) {
       const { service_type_counts, total_users } = data;
 
-      document.getElementById('totalUsers').textContent = total_users.toLocaleString();
+      document.getElementById('totalUsers').textContent = formatInt(total_users);
+      renderSignupCap(capData, capError);
 
       const list = document.getElementById('serviceTypeList');
       list.innerHTML = '';
@@ -212,14 +325,14 @@
           <div class="w-40 shrink-0">
             <span class="inline-flex items-center gap-1.5 text-sm font-medium text-gray-700">
               <span class="w-2 h-2 rounded-full ${meta.color} shrink-0"></span>
-              ${meta.label}
+              ${escapeHtml(meta.label)}
             </span>
           </div>
           <div class="flex-1 bg-gray-100 rounded-full h-2 overflow-hidden">
             <div class="bar-fill ${meta.color} h-2 rounded-full" style="width: ${pct}%"></div>
           </div>
           <div class="w-24 text-right shrink-0">
-            <span class="text-sm font-semibold text-gray-800">${count.toLocaleString()}</span>
+            <span class="text-sm font-semibold text-gray-800">${formatInt(count)}</span>
             <span class="text-xs text-gray-400 ml-1">${sharePct}%</span>
           </div>
         `;
@@ -236,7 +349,7 @@
       statsCard.classList.add('fade-in');
     }
 
-    document.getElementById('masterKeyInput').addEventListener('keydown', e => {
+    document.getElementById('uiAccessKeyInput').addEventListener('keydown', e => {
       if (e.key === 'Enter') loadDashboard();
     });
   </script>

@@ -27,6 +27,21 @@ def require_master_key(
         raise HTTPException(status_code=401, detail={"error": "Unauthorized"})
 
 
+def require_ui_access_key(
+    mlpa_ui_access_key: Annotated[str, Header(alias="mlpa_ui_access_key")],
+) -> None:
+    try:
+        if not secrets.compare_digest(
+            mlpa_ui_access_key, f"Bearer {env.MLPA_UI_ACCESS_KEY}"
+        ):
+            raise HTTPException(status_code=401, detail={"error": "Unauthorized"})
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"UI access key verification failed: {e}")
+        raise HTTPException(status_code=401, detail={"error": "Unauthorized"})
+
+
 @router.get("", tags=["User Management"])
 async def list_users(
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
@@ -39,10 +54,18 @@ async def list_users(
 
 @router.get("/counts-by-service-type", tags=["User Management"])
 async def count_users_by_service_type(
-    _: Annotated[None, Depends(require_master_key)] = None,
+    _: Annotated[None, Depends(require_ui_access_key)] = None,
 ):
-    """Get total user counts grouped by service_type."""
+    """Get total user counts grouped by service_type (MLPA_UI_ACCESS_KEY, not MASTER_KEY)."""
     return await litellm_pg.count_users_by_service_type()
+
+
+@router.get("/signup-cap-status", tags=["User Management"])
+async def signup_cap_status(
+    _: Annotated[None, Depends(require_ui_access_key)] = None,
+):
+    """Managed signup capacity for capped service types (MLPA_UI_ACCESS_KEY)."""
+    return await litellm_pg.get_signup_cap_status()
 
 
 @router.get("/{user_id}", tags=["User"])

@@ -136,6 +136,50 @@ class LiteLLMPGService(PGService):
                 detail={"error": "Error counting users by service type"},
             )
 
+    async def get_signup_cap_status(self) -> dict:
+        """
+        Managed signup capacity: distinct base identities with any capped service type row.
+        Mirrors mlpa_user_capacity / mlpa_user_capacity_identities (updated at startup and on admit/release).
+        """
+        try:
+            row = await self.pg.fetchrow(
+                """
+                SELECT max_identities, current_identities, updated_at
+                FROM mlpa_user_capacity
+                WHERE id = 1
+                """
+            )
+        except Exception as e:
+            logger.error(f"Error reading signup cap state: {e}")
+            raise HTTPException(
+                status_code=500,
+                detail={"error": "Error reading signup cap state"},
+            )
+
+        if row is None:
+            return {
+                "enforce_signin_cap": env.MLPA_ENFORCE_SIGNIN_CAP,
+                "capped_service_types": sorted(env.MLPA_CAPPED_SERVICE_TYPES),
+                "max_signed_in_users": env.MLPA_MAX_SIGNED_IN_USERS,
+                "current_managed_identities": None,
+                "slots_remaining": None,
+                "capacity_updated_at": None,
+                "capacity_row_missing": True,
+            }
+
+        max_i = int(row["max_identities"])
+        cur = int(row["current_identities"])
+        updated_at = row["updated_at"]
+        return {
+            "enforce_signin_cap": env.MLPA_ENFORCE_SIGNIN_CAP,
+            "capped_service_types": sorted(env.MLPA_CAPPED_SERVICE_TYPES),
+            "max_signed_in_users": max_i,
+            "current_managed_identities": cur,
+            "slots_remaining": max(0, max_i - cur),
+            "capacity_updated_at": updated_at.isoformat() if updated_at else None,
+            "capacity_row_missing": False,
+        }
+
     async def create_budget(self):
         """
         Create end user budgets from configuration.

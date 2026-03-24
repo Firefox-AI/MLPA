@@ -10,7 +10,7 @@ class Env(BaseSettings):
     # User signup capacity gate (managed service types only)
     # Controlled by infra (env var), enforced without race conditions in DB.
     MLPA_MAX_SIGNED_IN_USERS: int = 1000000
-    MLPA_ENFORCE_SIGNIN_CAP: bool = False
+    MLPA_ENFORCE_SIGNIN_CAP: bool = True
     # Service types that share admission capacity.
     # Example: `ai` and `memories` are coupled; `s2s`/`s2s-android` can bypass.
     MLPA_CAPPED_SERVICE_TYPES: set[str] = {"ai", "memories"}
@@ -24,6 +24,8 @@ class Env(BaseSettings):
 
     # LiteLLM
     MASTER_KEY: str = "sk-default"  # Bypasses LiteLLM.max_budget, use MLPA_VIRTUAL_KEY (virtual key) for completion requests
+    # Read-only admin dashboard (`/admin`) and GET /user/counts-by-service-type; not LiteLLM's master key
+    MLPA_UI_ACCESS_KEY: str = "sk-ui-access-default"
     MLPA_VIRTUAL_KEY: str = "sk-virtual"  # Enforces LiteLLM.max_budget
     OPENAI_API_KEY: str = "sk-add-your-key"
     LITELLM_API_BASE: str = "http://localhost:4000"
