@@ -68,6 +68,13 @@ def _record_rejection(
     ).inc()
 
 
+def record_chat_request_rejection(
+    req: AuthorizedChatRequest, reason: PrometheusRejectionReason
+) -> None:
+    """Increment chat_request_rejections for failures outside completions (e.g. signup cap)."""
+    _record_rejection(req, reason)
+
+
 def _tool_names_from_request(tools: list) -> list[str]:
     """Extract function names from OpenAI-format tools list."""
     names = []
@@ -109,10 +116,10 @@ def _record_litellm_routing_metrics(
             fallback_used=fallback_used,
         ).observe(snapshot.response_duration_ms / 1000.0)
     if snapshot.response_cost_usd is not None:
-        metrics.litellm_reported_cost_usd.labels(
+        metrics.litellm_reported_cost_usd_total.labels(
             **labels_base,
             fallback_used=fallback_used,
-        ).observe(snapshot.response_cost_usd)
+        ).inc(snapshot.response_cost_usd)
     if prompt_tokens > 0:
         metrics.litellm_routed_tokens.labels(
             type="prompt",
@@ -392,7 +399,6 @@ async def get_completion(authorized_chat_request: AuthorizedChatRequest):
                 )
             raise_and_log(e)
         litellm_routing_snapshot = parse_litellm_routing_headers(response.headers)
-        logger.info(response.headers)
         data = response.json()
         usage = data.get("usage", {})
         prompt_tokens = usage.get("prompt_tokens", 0)

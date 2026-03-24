@@ -13,6 +13,7 @@ class PrometheusRejectionReason(StrEnum):
     BUDGET_EXCEEDED = "budget_exceeded"
     RATE_LIMITED = "rate_limited"
     PAYLOAD_TOO_LARGE = "payload_too_large"
+    SIGNUP_CAP_EXCEEDED = "signup_cap_exceeded"
 
 
 BUCKETS_FAST_AUTH = (0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, float("inf"))
@@ -62,17 +63,6 @@ BUCKETS_TOKENS = (
     float("inf"),
 )
 BUCKETS_LITELLM_ATTEMPTS = (0, 1, 2, 3, 5, float("inf"))
-BUCKETS_LITELLM_COST_USD = (
-    0,
-    1e-6,
-    1e-5,
-    1e-4,
-    1e-3,
-    1e-2,
-    1e-1,
-    1,
-    float("inf"),
-)
 
 
 @dataclass
@@ -99,7 +89,7 @@ class PrometheusMetrics:
     litellm_attempted_fallbacks: Histogram
     litellm_attempted_retries: Histogram
     litellm_reported_duration_seconds: Histogram
-    litellm_reported_cost_usd: Histogram
+    litellm_reported_cost_usd_total: Counter
     litellm_routed_tokens: Counter
 
 
@@ -198,7 +188,7 @@ metrics = PrometheusMetrics(
     ),
     chat_request_rejections=Counter(
         "mlpa_chat_request_rejections_total",
-        "Number of chat requests rejected due to budget, rate limit, or payload size.",
+        "Number of chat requests rejected due to budget, rate limit, payload size, or managed-user signup cap.",
         ["reason", "model", "service_type", "purpose"],
     ),
     litellm_routed_completions=Counter(
@@ -224,11 +214,10 @@ metrics = PrometheusMetrics(
         ["requested_model", "backend", "service_type", "purpose", "fallback_used"],
         buckets=BUCKETS_COMPLETION,
     ),
-    litellm_reported_cost_usd=Histogram(
-        "mlpa_litellm_reported_cost_usd",
-        "LiteLLM-reported cost in USD per successful completion (x-litellm-response-cost).",
+    litellm_reported_cost_usd_total=Counter(
+        "mlpa_litellm_reported_cost_usd_total",
+        "Cumulative LiteLLM-reported spend in USD (x-litellm-response-cost); use increase() over a range for windowed sums.",
         ["requested_model", "backend", "service_type", "purpose", "fallback_used"],
-        buckets=BUCKETS_LITELLM_COST_USD,
     ),
     litellm_routed_tokens=Counter(
         "mlpa_litellm_routed_tokens_total",

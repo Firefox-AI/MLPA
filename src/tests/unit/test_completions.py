@@ -135,11 +135,11 @@ async def test_get_completion_success(mocker):
     mock_metrics.litellm_reported_duration_seconds.labels.return_value.observe.assert_called_once_with(
         2.0
     )
-    mock_metrics.litellm_reported_cost_usd.labels.assert_called_once_with(
+    mock_metrics.litellm_reported_cost_usd_total.labels.assert_called_once_with(
         **routing,
         fallback_used="false",
     )
-    mock_metrics.litellm_reported_cost_usd.labels.return_value.observe.assert_called_once_with(
+    mock_metrics.litellm_reported_cost_usd_total.labels.return_value.inc.assert_called_once_with(
         0.001
     )
     mock_metrics.litellm_routed_tokens.labels.assert_any_call(
@@ -209,7 +209,7 @@ async def test_get_completion_litellm_routing_skips_invalid_optional_headers(moc
     await get_completion(SAMPLE_REQUEST)
 
     mock_metrics.litellm_reported_duration_seconds.labels.assert_not_called()
-    mock_metrics.litellm_reported_cost_usd.labels.assert_not_called()
+    mock_metrics.litellm_reported_cost_usd_total.labels.assert_not_called()
 
 
 async def test_get_completion_litellm_routing_skips_negative_duration_ms(mocker):
@@ -386,11 +386,11 @@ async def test_stream_completion_success(httpx_mock: HTTPXMock, mocker):
     mock_metrics.litellm_reported_duration_seconds.labels.return_value.observe.assert_called_once_with(
         2.0
     )
-    mock_metrics.litellm_reported_cost_usd.labels.assert_called_once_with(
+    mock_metrics.litellm_reported_cost_usd_total.labels.assert_called_once_with(
         **routing,
         fallback_used="false",
     )
-    mock_metrics.litellm_reported_cost_usd.labels.return_value.observe.assert_called_once_with(
+    mock_metrics.litellm_reported_cost_usd_total.labels.return_value.inc.assert_called_once_with(
         0.001
     )
     mock_metrics.litellm_routed_tokens.labels.assert_any_call(

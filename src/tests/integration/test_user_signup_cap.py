@@ -128,6 +128,10 @@ def test_managed_cap_rejects_new_identities_and_s2s_bypasses(
         assert resp3.status_code == 403
         assert resp3.json()["detail"]["error"] == 4
 
+        metrics_resp = mocked_client_integration.get("/metrics")
+        assert metrics_resp.status_code == 200
+        assert 'reason="signup_cap_exceeded"' in metrics_resp.text
+
         # Coupling: memories for the same base identity should be allowed.
         resp4 = mocked_client_integration.post(
             "/v1/chat/completions",
