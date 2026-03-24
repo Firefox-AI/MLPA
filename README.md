@@ -20,7 +20,7 @@ This creates a virtual environment in `.venv/`, installs dependencies, and insta
 
 2. `sh ./scripts/create-app-attest-database.sh`
 
-3. `alembic upgrade head`
+3. Migrate app_attest (repo root): `bash scripts/migrate-app-attest-database-local.sh` or `uv run alembic upgrade head`
 
 4. Set `MLPA_DEBUG=true` in the `config.py` or `.env` file
 

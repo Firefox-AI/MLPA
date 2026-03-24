@@ -9,9 +9,14 @@ from fxa.oauth import Client
 from jwtoxide import DecodingKey, ValidationOptions, decode, encode
 
 from mlpa.core.classes import AssertionAuth, AttestationAuth
-from mlpa.core.config import LITELLM_MASTER_AUTH_HEADERS, env
+from mlpa.core.config import (
+    ERROR_CODE_MAX_USERS_REACHED,
+    LITELLM_MASTER_AUTH_HEADERS,
+    env,
+)
 from mlpa.core.http_client import get_http_client
 from mlpa.core.logger import logger
+from mlpa.core.pg_services.services import litellm_pg
 
 
 async def get_or_create_user(user_id: str):
@@ -21,13 +26,16 @@ async def get_or_create_user(user_id: str):
     Returns:
         [user_info: dict, was_created: bool]
     """
-    service_type = user_id.split(":")[1]
+    base_identity, _sep, service_type = user_id.partition(":")
+    if not service_type:
+        raise HTTPException(status_code=400, detail={"error": "Invalid user_id format"})
 
     # Get the appropriate budget_id from config based on service_type
     user_feature_budgets = env.user_feature_budget
     budget_id = user_feature_budgets[service_type]["budget_id"]
 
     client = get_http_client()
+    claimed_new_identity = False
     try:
         params = {"end_user_id": user_id}
         response = await client.get(
@@ -38,6 +46,21 @@ async def get_or_create_user(user_id: str):
         user = response.json()
 
         if not user.get("user_id"):
+            # Enforce managed service types user capacity with DB-backed admission control.
+            if (
+                env.MLPA_ENFORCE_SIGNIN_CAP
+                and service_type in env.MLPA_CAPPED_SERVICE_TYPES
+            ):
+                admitted, newly_claimed = await litellm_pg.admit_managed_base_identity(
+                    base_identity=base_identity
+                )
+                if not admitted:
+                    raise HTTPException(
+                        status_code=403,
+                        detail={"error": ERROR_CODE_MAX_USERS_REACHED},
+                    )
+                claimed_new_identity = newly_claimed
+
             await client.post(
                 f"{env.LITELLM_API_BASE}/customer/new",
                 json={"user_id": user_id, "budget_id": budget_id},
@@ -48,9 +71,36 @@ async def get_or_create_user(user_id: str):
                 params=params,
                 headers=LITELLM_MASTER_AUTH_HEADERS,
             )
-            return [response.json(), True]
+
+            created_user = response.json()
+            if not created_user.get("user_id"):
+                # Admission may have succeeded but LiteLLM user creation did not.
+                # Release the reserved slot to avoid claim/cap drift.
+                if claimed_new_identity:
+                    await litellm_pg.maybe_release_managed_base_identity_if_no_managed_users(
+                        base_identity=base_identity
+                    )
+                raise HTTPException(
+                    status_code=500,
+                    detail={"error": "User creation failed after admission"},
+                )
+
+            return [created_user, True]
         return [user, False]
+    except HTTPException:
+        raise
     except Exception as e:
+        if claimed_new_identity:
+            try:
+                await (
+                    litellm_pg.maybe_release_managed_base_identity_if_no_managed_users(
+                        base_identity=base_identity
+                    )
+                )
+            except Exception as release_e:
+                logger.error(
+                    f"Failed releasing managed capacity claim for base_identity={base_identity}: {release_e}"
+                )
         logger.error(f"Error fetching or creating user {user_id}: {e}")
         raise HTTPException(
             status_code=500, detail={"error": f"Error fetching user info"}

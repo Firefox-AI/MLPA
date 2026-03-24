@@ -1,5 +1,6 @@
 import json
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Annotated, Optional
 
 import sentry_sdk
@@ -7,6 +8,7 @@ import uvicorn
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.exception_handlers import http_exception_handler
 from fastapi.responses import StreamingResponse
+from fastapi.staticfiles import StaticFiles
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
 from mlpa.core.auth.authorize import authorize_request
@@ -65,6 +67,7 @@ async def lifespan(app: FastAPI):
         app_attest_connected = True
 
         await litellm_pg.create_budget()
+        await litellm_pg.ensure_capacity_state()
 
         yield
     finally:
@@ -125,6 +128,12 @@ app.include_router(fxa_router, prefix="/fxa")
 app.include_router(user_router, prefix="/user")
 app.include_router(mock_router, prefix="/mock")
 customize_openapi(app, tags_metadata)
+
+app.mount(
+    "/admin",
+    StaticFiles(directory=Path(__file__).parent / "admin", html=True),
+    name="admin",
+)
 
 
 CHAT_COMPLETION_DESCRIPTION = """
