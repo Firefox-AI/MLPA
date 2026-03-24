@@ -24,6 +24,8 @@ class Env(BaseSettings):
 
     # LiteLLM
     MASTER_KEY: str = "sk-default"  # Bypasses LiteLLM.max_budget, use MLPA_VIRTUAL_KEY (virtual key) for completion requests
+    # Read-only admin dashboard (`/admin`) and GET /user/counts-by-service-type; not LiteLLM's master key
+    MLPA_UI_ACCESS_KEY: str = "sk-ui-access-default"
     MLPA_VIRTUAL_KEY: str = "sk-virtual"  # Enforces LiteLLM.max_budget
     OPENAI_API_KEY: str = "sk-add-your-key"
     LITELLM_API_BASE: str = "http://localhost:4000"
