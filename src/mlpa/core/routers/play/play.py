@@ -11,6 +11,7 @@ from google.auth.transport.requests import Request
 from mlpa.core.classes import PlayIntegrityRequest
 from mlpa.core.config import env
 from mlpa.core.http_client import get_http_client
+from mlpa.core.prometheus_metrics import PrometheusResult, metrics
 from mlpa.core.utils import issue_mlpa_access_token, raise_and_log
 
 router = APIRouter()
@@ -103,20 +104,32 @@ def _validate_integrity_payload(payload: dict, expected_hash: str) -> None:
 
 @router.post("/play", tags=["Play Integrity"])
 async def verify_play_integrity(payload: PlayIntegrityRequest):
-    decoded = await _decode_integrity_token(
-        payload.integrity_token, payload.package_name
-    )
-    token_payload = decoded.get("tokenPayloadExternal") or decoded.get("tokenPayload")
-    if not token_payload:
-        raise HTTPException(status_code=401, detail="Invalid Play Integrity token")
+    try:
+        result = PrometheusResult.ERROR
+        decoded = await _decode_integrity_token(
+            payload.integrity_token, payload.package_name
+        )
+        token_payload = decoded.get("tokenPayloadExternal") or decoded.get(
+            "tokenPayload"
+        )
+        if not token_payload:
+            raise HTTPException(status_code=401, detail="Invalid Play Integrity token")
 
-    expected_hash = hashlib.sha256(payload.user_id.encode("utf-8")).hexdigest()
+        expected_hash = hashlib.sha256(payload.user_id.encode("utf-8")).hexdigest()
 
-    _validate_integrity_payload(token_payload, expected_hash)
+        _validate_integrity_payload(token_payload, expected_hash)
 
-    access_token = issue_mlpa_access_token(payload.user_id)
-    return {
-        "access_token": access_token,
-        "token_type": "Bearer",
-        "expires_in": env.MLPA_ACCESS_TOKEN_TTL_SECONDS,
-    }
+        access_token = issue_mlpa_access_token(payload.user_id)
+        return {
+            "access_token": access_token,
+            "token_type": "Bearer",
+            "expires_in": env.MLPA_ACCESS_TOKEN_TTL_SECONDS,
+        }
+    except Exception:
+        result = PrometheusResult.ERROR
+        raise
+    finally:
+        metrics.play_verifications_total.inc()
+        metrics.validate_play_latency.labels(
+            result=result,
+        ).inc()

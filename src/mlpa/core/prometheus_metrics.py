@@ -151,12 +151,10 @@ metrics = PrometheusMetrics(
     play_verifications_total=Counter(
         "mlpa_play_verifications_total",
         "Total number of Play Integrity token verifications.",
-        ["verification_source"],
     ),
     access_verifications_total=Counter(
         "mlpa_access_verifications_total",
         "Total number of Access token verifications.",
-        ["verification_source"],
     ),
     chat_completion_latency=Histogram(
         "mlpa_chat_completion_latency_seconds",
