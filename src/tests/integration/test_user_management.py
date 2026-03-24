@@ -289,7 +289,7 @@ def test_count_users_by_service_type_success(mocked_client_integration, mocker):
 
     response = mocked_client_integration.get(
         "/user/counts-by-service-type",
-        headers={"master_key": f"Bearer {env.MASTER_KEY}"},
+        headers={"mlpa_ui_access_key": f"Bearer {env.MLPA_UI_ACCESS_KEY}"},
     )
     assert response.status_code == 200
     data = response.json()
@@ -301,8 +301,55 @@ def test_count_users_by_service_type_success(mocked_client_integration, mocker):
 def test_count_users_by_service_type_unauthorized(mocked_client_integration):
     response = mocked_client_integration.get(
         "/user/counts-by-service-type",
-        headers={"master_key": "Bearer invalid-key"},
+        headers={"mlpa_ui_access_key": "Bearer invalid-key"},
     )
 
     assert response.status_code == 401
     assert "Unauthorized" in str(response.json())
+
+
+def test_count_users_by_service_type_rejects_master_key(mocked_client_integration):
+    """Admin dashboard uses MLPA_UI_ACCESS_KEY; MASTER_KEY must not unlock counts."""
+    response = mocked_client_integration.get(
+        "/user/counts-by-service-type",
+        headers={"master_key": f"Bearer {env.MASTER_KEY}"},
+    )
+    assert response.status_code == 422
+
+
+def test_signup_cap_status_success(mocked_client_integration, mocker):
+    from tests.mocks import MockLiteLLMPGService
+
+    mock_litellm_pg = MockLiteLLMPGService()
+    mock_litellm_pg.managed_capacity_claims.add("fxa-user-a")
+    mock_litellm_pg.managed_capacity_claims.add("fxa-user-b")
+    mocker.patch("mlpa.core.routers.user.user.litellm_pg", mock_litellm_pg)
+
+    response = mocked_client_integration.get(
+        "/user/signup-cap-status",
+        headers={"mlpa_ui_access_key": f"Bearer {env.MLPA_UI_ACCESS_KEY}"},
+    )
+    assert response.status_code == 200
+    data = response.json()
+    assert data["capacity_row_missing"] is False
+    assert data["current_managed_identities"] == 2
+    assert data["max_signed_in_users"] == env.MLPA_MAX_SIGNED_IN_USERS
+    assert data["slots_remaining"] == max(0, env.MLPA_MAX_SIGNED_IN_USERS - 2)
+    assert set(data["capped_service_types"]) == env.MLPA_CAPPED_SERVICE_TYPES
+    assert data["enforce_signin_cap"] == env.MLPA_ENFORCE_SIGNIN_CAP
+
+
+def test_signup_cap_status_unauthorized(mocked_client_integration):
+    response = mocked_client_integration.get(
+        "/user/signup-cap-status",
+        headers={"mlpa_ui_access_key": "Bearer wrong"},
+    )
+    assert response.status_code == 401
+
+
+def test_signup_cap_status_rejects_master_key(mocked_client_integration):
+    response = mocked_client_integration.get(
+        "/user/signup-cap-status",
+        headers={"master_key": f"Bearer {env.MASTER_KEY}"},
+    )
+    assert response.status_code == 422
