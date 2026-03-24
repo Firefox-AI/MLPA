@@ -81,7 +81,7 @@ def _tool_names_from_request(tools: list) -> list[str]:
     for t in tools or []:
         if not isinstance(t, dict):
             continue
-        fn = t.get("function") or {}
+        fn = t.get("function", {})
         name = fn.get("name")
         names.append(name or "unknown")
     return names
