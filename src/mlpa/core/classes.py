@@ -90,27 +90,11 @@ class AuthorizedChatRequest(ChatRequest):
 ServiceType = enum.Enum("ServiceType", [(st, st) for st in env.valid_service_types])
 
 
-def _litellm_backend_enum_member_name(backend_id: str) -> str:
-    """Valid Python identifier for enum member names."""
-    return backend_id.upper().replace("-", "_").replace(".", "_")
-
-
-# Backend labels for LiteLLM routing metrics; members match matcher dict keys plus unknown
-LitellmBackend = enum.Enum(
-    "LitellmBackend",
-    [
-        (_litellm_backend_enum_member_name(bid), bid)
-        for bid in env.litellm_backend_api_base_matchers.keys()
-    ]
-    + [("UNKNOWN", "unknown")],
-)
-
-
 @dataclass(frozen=True)
 class LitellmRoutingSnapshot:
     """Parsed LiteLLM proxy response headers for routing / fallback metrics."""
 
-    backend: LitellmBackend
+    backend: str
     attempted_fallbacks: int
     attempted_retries: int
     response_duration_ms: float | None

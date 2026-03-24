@@ -7,38 +7,25 @@ See https://docs.litellm.ai/docs/proxy/response_headers
 import math
 from typing import Mapping
 
-from mlpa.core.classes import LitellmBackend, LitellmRoutingSnapshot
+from mlpa.core.classes import LitellmRoutingSnapshot
 from mlpa.core.config import (
     LITELLM_HEADER_ATTEMPTED_FALLBACKS,
     LITELLM_HEADER_ATTEMPTED_RETRIES,
     LITELLM_HEADER_MODEL_API_BASE,
     LITELLM_HEADER_RESPONSE_COST,
     LITELLM_HEADER_RESPONSE_DURATION_MS,
-    env,
 )
 
 
-def _litellm_backend_for_id(backend_id: str) -> LitellmBackend:
-    for m in LitellmBackend:
-        if m.value == backend_id:
-            return m
-    return LitellmBackend.UNKNOWN
-
-
-def normalize_litellm_api_base(api_base: str | None) -> LitellmBackend:
+def litellm_model_api_base_from_header(raw: str | None) -> str:
     """
-    Map LiteLLM x-litellm-model-api-base to a low-cardinality backend label.
+    Value of x-litellm-model-api-base for metrics (verbatim aside from outer strip).
+    Missing or blank -> "unknown".
     """
-    if not api_base or not isinstance(api_base, str):
-        return LitellmBackend.UNKNOWN
-    s = api_base.strip().lower()
-    if not s:
-        return LitellmBackend.UNKNOWN
-    for backend_id, substrings in env.litellm_backend_api_base_matchers.items():
-        for sub in substrings:
-            if sub.lower() in s:
-                return _litellm_backend_for_id(backend_id)
-    return LitellmBackend.UNKNOWN
+    if raw is None or not isinstance(raw, str):
+        return "unknown"
+    s = raw.strip()
+    return s if s else "unknown"
 
 
 def _safe_int_header(headers: Mapping[str, str], name: str) -> int:
@@ -69,7 +56,7 @@ def parse_litellm_routing_headers(headers: Mapping[str, str]) -> LitellmRoutingS
     Build a snapshot from httpx response headers (case-insensitive keys via httpx).
     """
     api_base = headers.get(LITELLM_HEADER_MODEL_API_BASE)
-    backend = normalize_litellm_api_base(api_base)
+    backend = litellm_model_api_base_from_header(api_base)
     fallbacks = _safe_int_header(headers, LITELLM_HEADER_ATTEMPTED_FALLBACKS)
     retries = _safe_int_header(headers, LITELLM_HEADER_ATTEMPTED_RETRIES)
     duration_ms = _safe_float_header(headers, LITELLM_HEADER_RESPONSE_DURATION_MS)

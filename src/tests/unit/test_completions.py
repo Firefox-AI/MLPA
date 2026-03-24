@@ -39,7 +39,7 @@ def _sample_litellm_response_headers(**overrides: str) -> httpx.Headers:
 def _litellm_routing_label_base():
     return {
         "requested_model": SAMPLE_REQUEST.model,
-        "backend": "together",
+        "backend": "https://api.together.xyz/v1",
         "service_type": SAMPLE_REQUEST.service_type,
         "purpose": SAMPLE_REQUEST.purpose,
     }
@@ -177,7 +177,7 @@ async def test_get_completion_litellm_routing_with_fallback(mocker):
 
     routing = {
         "requested_model": SAMPLE_REQUEST.model,
-        "backend": "vertex",
+        "backend": "https://us-central1-aiplatform.googleapis.com/v1/projects/p/locations/us-central1/publishers/google/models/gemini-pro:predict",
         "service_type": SAMPLE_REQUEST.service_type,
         "purpose": SAMPLE_REQUEST.purpose,
     }

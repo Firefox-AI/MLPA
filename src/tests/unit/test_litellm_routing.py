@@ -1,7 +1,6 @@
 import httpx
 import pytest
 
-from mlpa.core.classes import LitellmBackend
 from mlpa.core.config import (
     LITELLM_HEADER_ATTEMPTED_FALLBACKS,
     LITELLM_HEADER_ATTEMPTED_RETRIES,
@@ -10,7 +9,7 @@ from mlpa.core.config import (
     LITELLM_HEADER_RESPONSE_DURATION_MS,
 )
 from mlpa.core.litellm_routing import (
-    normalize_litellm_api_base,
+    litellm_model_api_base_from_header,
     parse_litellm_routing_headers,
 )
 
@@ -18,30 +17,24 @@ from mlpa.core.litellm_routing import (
 @pytest.mark.parametrize(
     ("api_base", "expected"),
     [
-        (None, LitellmBackend.UNKNOWN),
-        ("", LitellmBackend.UNKNOWN),
-        ("   ", LitellmBackend.UNKNOWN),
-        (
-            "https://api.together.xyz/v1",
-            LitellmBackend.TOGETHER,
-        ),
+        (None, "unknown"),
+        ("", "unknown"),
+        ("   ", "unknown"),
+        ("https://api.together.xyz/v1", "https://api.together.xyz/v1"),
         (
             "HTTPS://API.TOGETHER.XYZ/V1/chat",
-            LitellmBackend.TOGETHER,
+            "HTTPS://API.TOGETHER.XYZ/V1/chat",
         ),
         (
             "https://us-central1-aiplatform.googleapis.com/v1/projects/p/locations/us-central1/endpoints/e:predict",
-            LitellmBackend.VERTEX,
+            "https://us-central1-aiplatform.googleapis.com/v1/projects/p/locations/us-central1/endpoints/e:predict",
         ),
-        (
-            "https://example.com",
-            LitellmBackend.UNKNOWN,
-        ),
-        ("not-a-url", LitellmBackend.UNKNOWN),
+        ("https://example.com", "https://example.com"),
+        ("not-a-url", "not-a-url"),
     ],
 )
-def test_normalize_litellm_api_base(api_base, expected):
-    assert normalize_litellm_api_base(api_base) == expected
+def test_litellm_model_api_base_from_header(api_base, expected):
+    assert litellm_model_api_base_from_header(api_base) == expected
 
 
 def test_parse_litellm_routing_headers_full():
@@ -55,7 +48,7 @@ def test_parse_litellm_routing_headers_full():
         }
     )
     snap = parse_litellm_routing_headers(h)
-    assert snap.backend == LitellmBackend.TOGETHER
+    assert snap.backend == "https://api.together.xyz/v1"
     assert snap.attempted_fallbacks == 1
     assert snap.attempted_retries == 2
     assert snap.response_duration_ms == 123.5
@@ -64,7 +57,7 @@ def test_parse_litellm_routing_headers_full():
 
 def test_parse_litellm_routing_headers_missing():
     snap = parse_litellm_routing_headers(httpx.Headers({}))
-    assert snap.backend == LitellmBackend.UNKNOWN
+    assert snap.backend == "unknown"
     assert snap.attempted_fallbacks == 0
     assert snap.attempted_retries == 0
     assert snap.response_duration_ms is None

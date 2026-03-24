@@ -139,17 +139,6 @@ class Env(BaseSettings):
         }
 
     @cached_property
-    def litellm_backend_api_base_matchers(self) -> dict[str, list[str]]:
-        """
-        Backend label -> substrings matched (case-insensitive) against
-        x-litellm-model-api-base. Dict insertion order determines precedence; first match wins.
-        """
-        return {
-            "together": ["together.xyz"],
-            "vertex": ["googleapis.com", "aiplatform"],
-        }
-
-    @cached_property
     def valid_service_types(self) -> list[str]:
         """
         Returns a list of valid service types from user_feature_budget configuration.

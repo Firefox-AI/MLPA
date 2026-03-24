@@ -89,7 +89,7 @@ def _record_litellm_routing_metrics(
     fallback_used = "true" if snapshot.attempted_fallbacks > 0 else "false"
     labels_base = {
         "requested_model": req.model,
-        "backend": snapshot.backend.value,
+        "backend": snapshot.backend,
         "service_type": req.service_type,
         "purpose": req.purpose,
     }
