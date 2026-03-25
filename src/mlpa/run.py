@@ -15,11 +15,10 @@ from mlpa.core.auth.authorize import authorize_request
 from mlpa.core.classes import AuthorizedChatRequest
 from mlpa.core.completions import (
     get_completion,
-    record_chat_request_rejection,
+    get_or_create_user_for_completion,
     stream_completion,
 )
 from mlpa.core.config import (
-    ERROR_CODE_MAX_USERS_REACHED,
     RATE_LIMIT_ERROR_RESPONSE,
     SENSITIVE_FIELDS_TO_SCRUB_FROM_SENTRY,
     env,
@@ -29,14 +28,12 @@ from mlpa.core.logger import logger, setup_logger
 from mlpa.core.middleware import register_middleware
 from mlpa.core.openapi import customize_openapi
 from mlpa.core.pg_services.services import app_attest_pg, litellm_pg
-from mlpa.core.prometheus_metrics import PrometheusRejectionReason
 from mlpa.core.routers.appattest import appattest_router
 from mlpa.core.routers.fxa import fxa_router
 from mlpa.core.routers.health import health_router
 from mlpa.core.routers.mock import mock_router
 from mlpa.core.routers.play import play_router
 from mlpa.core.routers.user import user_router
-from mlpa.core.utils import get_or_create_user
 
 tags_metadata = [
     {"name": "Health", "description": "Health check endpoints."},
@@ -173,19 +170,7 @@ async def chat_completion(
             status_code=400,
             detail={"error": "User not found from authorization response."},
         )
-    try:
-        user, _ = await get_or_create_user(user_id)
-    except HTTPException as exc:
-        if (
-            exc.status_code == 403
-            and isinstance(exc.detail, dict)
-            and exc.detail.get("error") == ERROR_CODE_MAX_USERS_REACHED
-        ):
-            record_chat_request_rejection(
-                authorized_chat_request,
-                PrometheusRejectionReason.SIGNUP_CAP_EXCEEDED,
-            )
-        raise
+    user, _ = await get_or_create_user_for_completion(user_id, authorized_chat_request)
     if user.get("blocked"):
         raise HTTPException(status_code=403, detail={"error": "User is blocked."})
 

@@ -33,7 +33,7 @@ def _safe_int_header(headers: Mapping[str, str], name: str) -> int:
     if raw is None:
         return 0
     try:
-        return int(float(str(raw).strip()))
+        return int(raw.strip())
     except (ValueError, TypeError):
         return 0
 
@@ -43,7 +43,7 @@ def _safe_float_header(headers: Mapping[str, str], name: str) -> float | None:
     if raw is None:
         return None
     try:
-        value = float(str(raw).strip())
+        value = float(raw.strip())
     except (ValueError, TypeError):
         return None
     if not math.isfinite(value):
@@ -60,11 +60,7 @@ def parse_litellm_routing_headers(headers: Mapping[str, str]) -> LitellmRoutingS
     fallbacks = _safe_int_header(headers, LITELLM_HEADER_ATTEMPTED_FALLBACKS)
     retries = _safe_int_header(headers, LITELLM_HEADER_ATTEMPTED_RETRIES)
     duration_ms = _safe_float_header(headers, LITELLM_HEADER_RESPONSE_DURATION_MS)
-    if duration_ms is not None and duration_ms < 0:
-        duration_ms = None
     cost = _safe_float_header(headers, LITELLM_HEADER_RESPONSE_COST)
-    if cost is not None and cost < 0:
-        cost = None
     return LitellmRoutingSnapshot(
         backend=backend,
         attempted_fallbacks=fallbacks,

@@ -1,15 +1,13 @@
 import json
 import time
-from functools import lru_cache
-from typing import Optional
 
 import httpx
-import tiktoken
 from fastapi import HTTPException
 
 from mlpa.core.classes import AuthorizedChatRequest, LitellmRoutingSnapshot
 from mlpa.core.config import (
     ERROR_CODE_BUDGET_LIMIT_EXCEEDED,
+    ERROR_CODE_MAX_USERS_REACHED,
     ERROR_CODE_RATE_LIMIT_EXCEEDED,
     ERROR_CODE_REQUEST_TOO_LARGE,
     LITELLM_COMPLETION_AUTH_HEADERS,
@@ -24,7 +22,12 @@ from mlpa.core.prometheus_metrics import (
     PrometheusResult,
     metrics,
 )
-from mlpa.core.utils import is_context_window_error, is_rate_limit_error, raise_and_log
+from mlpa.core.utils import (
+    get_or_create_user,
+    is_context_window_error,
+    is_rate_limit_error,
+    raise_and_log,
+)
 
 _RATE_LIMIT_REJECTION: dict[int, tuple[PrometheusRejectionReason, str]] = {
     ERROR_CODE_BUDGET_LIMIT_EXCEEDED: (
@@ -75,6 +78,20 @@ def record_chat_request_rejection(
     _record_rejection(req, reason)
 
 
+async def get_or_create_user_for_completion(user_id: str, req: AuthorizedChatRequest):
+    """Wraps get_or_create_user and records a signup-cap rejection metric if applicable."""
+    try:
+        return await get_or_create_user(user_id)
+    except HTTPException as exc:
+        if (
+            exc.status_code == 403
+            and isinstance(exc.detail, dict)
+            and exc.detail.get("error") == ERROR_CODE_MAX_USERS_REACHED
+        ):
+            _record_rejection(req, PrometheusRejectionReason.SIGNUP_CAP_EXCEEDED)
+        raise
+
+
 def _tool_names_from_request(tools: list) -> list[str]:
     """Extract function names from OpenAI-format tools list."""
     names = []
@@ -105,10 +122,10 @@ def _record_litellm_routing_metrics(
         fallback_used=fallback_used,
     ).inc()
     metrics.litellm_attempted_fallbacks.labels(**labels_base).observe(
-        float(snapshot.attempted_fallbacks)
+        snapshot.attempted_fallbacks
     )
     metrics.litellm_attempted_retries.labels(**labels_base).observe(
-        float(snapshot.attempted_retries)
+        snapshot.attempted_retries
     )
     if snapshot.response_duration_ms is not None:
         metrics.litellm_reported_duration_seconds.labels(

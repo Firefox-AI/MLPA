@@ -9,10 +9,9 @@ from fxa.errors import TrustError
 
 from mlpa.core.auth.authorize import authorize_request
 from mlpa.core.classes import AuthorizedChatRequest, ChatRequest
-from mlpa.core.completions import record_chat_request_rejection
-from mlpa.core.config import ERROR_CODE_MAX_USERS_REACHED, env
-from mlpa.core.prometheus_metrics import PrometheusRejectionReason
-from mlpa.core.utils import get_fxa_client, get_or_create_user
+from mlpa.core.completions import get_or_create_user_for_completion
+from mlpa.core.config import env
+from mlpa.core.utils import get_fxa_client
 from tests.consts import MOCK_CHAT_RESPONSE, MOCK_STREAMING_CHUNKS
 
 router = APIRouter()
@@ -86,19 +85,7 @@ async def chat_completion(
             detail={"error": "User not found from authorization response."},
         )
 
-    try:
-        user, _ = await get_or_create_user(user_id)
-    except HTTPException as exc:
-        if (
-            exc.status_code == 403
-            and isinstance(exc.detail, dict)
-            and exc.detail.get("error") == ERROR_CODE_MAX_USERS_REACHED
-        ):
-            record_chat_request_rejection(
-                authorized_chat_request,
-                PrometheusRejectionReason.SIGNUP_CAP_EXCEEDED,
-            )
-        raise
+    user, _ = await get_or_create_user_for_completion(user_id, authorized_chat_request)
     if user.get("blocked"):
         raise HTTPException(status_code=403, detail={"error": "User is blocked."})
 
