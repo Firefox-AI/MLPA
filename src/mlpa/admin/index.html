@@ -118,6 +118,28 @@
         </div>
       </div>
 
+      <!-- Managed signup cap -->
+      <div class="mb-6 hidden">
+        <h3 class="text-sm font-medium text-gray-600 mb-3">Managed signup cap</h3>
+        <div id="capCard" class="rounded-xl border border-gray-200 p-5">
+          <div class="flex items-center justify-between mb-3">
+            <p class="text-sm font-semibold text-gray-700">Capped identities</p>
+            <span id="capEnforcement" class="text-xs font-semibold px-2.5 py-1 rounded-full"></span>
+          </div>
+          <p id="capNumbers" class="text-3xl font-bold text-gray-900 mb-1">—</p>
+          <p id="capDescription" class="text-xs text-gray-500 mb-4"></p>
+          <div class="flex items-center justify-between text-xs text-gray-500 mb-1">
+            <span>Utilization</span>
+            <span id="capUtilPct">—</span>
+          </div>
+          <div class="w-full bg-gray-100 rounded-full h-2 overflow-hidden mb-3">
+            <div id="capUtilBar" class="bar-fill bg-blue-500 h-2 rounded-full" style="width: 0%"></div>
+          </div>
+          <p id="capSlots" class="text-sm text-gray-700 mb-1"></p>
+          <p id="capReconciled" class="text-xs text-gray-400"></p>
+        </div>
+      </div>
+
       <!-- By service type -->
       <div>
         <h3 class="text-sm font-medium text-gray-600 mb-3">Breakdown by Service Type</h3>
@@ -169,20 +191,23 @@
       document.getElementById('loadingCard').classList.remove('hidden');
 
       try {
-        const res = await fetch('/user/counts-by-service-type', {
-          headers: { 'mlpa_ui_access_key': `Bearer ${key}` },
-        });
+        const headers = { 'mlpa_ui_access_key': `Bearer ${key}` };
+        const [countsRes, capRes] = await Promise.all([
+          fetch('/user/counts-by-service-type', { headers }),
+          fetch('/user/signup-cap-status', { headers }),
+        ]);
 
-        if (res.status === 401) {
+        if (countsRes.status === 401) {
           showError('Invalid UI access key — request was rejected (401 Unauthorized).');
           return;
         }
-        if (!res.ok) {
-          showError(`Request failed: ${res.status} ${res.statusText}`);
+        if (!countsRes.ok) {
+          showError(`Request failed: ${countsRes.status} ${countsRes.statusText}`);
           return;
         }
 
-        renderStats(await res.json());
+        renderStats(await countsRes.json());
+        if (capRes.ok) renderCapStatus(await capRes.json());
       } catch (err) {
         showError(`Network error: ${err.message}`);
       } finally {
@@ -234,6 +259,60 @@
       const statsCard = document.getElementById('statsCard');
       statsCard.classList.remove('hidden');
       statsCard.classList.add('fade-in');
+    }
+
+    function fmtNum(n) {
+      return String(n).replace(/\B(?=(\d{3})+(?!\d))/g, '\u00a0');
+    }
+
+    function renderCapStatus(data) {
+      const {
+        enforce_signin_cap,
+        capped_service_types,
+        max_signed_in_users,
+        current_managed_identities,
+        slots_remaining,
+        capacity_updated_at,
+        capacity_row_missing,
+      } = data;
+
+      const capSection = document.querySelector('#capCard').closest('div.mb-6');
+      if (!enforce_signin_cap) {
+        capSection.classList.add('hidden');
+        return;
+      }
+      capSection.classList.remove('hidden');
+
+      document.getElementById('capEnforcement').textContent = 'Enforcement on';
+      document.getElementById('capEnforcement').className =
+        'text-xs font-semibold px-2.5 py-1 rounded-full bg-green-100 text-green-700';
+
+      const cur = current_managed_identities ?? 0;
+      const max = max_signed_in_users ?? 0;
+      document.getElementById('capNumbers').textContent =
+        `${fmtNum(cur)} / ${fmtNum(max)}`;
+
+      const typesList = (capped_service_types ?? []).join(', ');
+      document.getElementById('capDescription').innerHTML =
+        `Distinct FxA users who have (or had) a <code class="font-mono bg-gray-100 px-1 py-0.5 rounded text-xs">${typesList}</code> end-user row, e.g. made at least 1 call. S2S and other types do not consume this pool.`;
+
+      const utilPct = max > 0 ? (cur / max) * 100 : 0;
+      document.getElementById('capUtilPct').textContent = `${utilPct.toFixed(1)}%`;
+      document.getElementById('capUtilBar').style.width = `${Math.min(utilPct, 100)}%`;
+
+      if (slots_remaining !== null && slots_remaining !== undefined) {
+        document.getElementById('capSlots').innerHTML =
+          `Slots remaining: <strong>${fmtNum(slots_remaining)}</strong>`;
+      }
+
+      if (capacity_updated_at) {
+        document.getElementById('capReconciled').textContent =
+          `Counter last reconciled: ${capacity_updated_at}`;
+      }
+
+      if (capacity_row_missing) {
+        document.getElementById('capCard').classList.add('border-amber-200', 'bg-amber-50');
+      }
     }
 
     document.getElementById('masterKeyInput').addEventListener('keydown', e => {
