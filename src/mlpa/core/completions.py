@@ -1,15 +1,13 @@
 import json
 import time
-from functools import lru_cache
-from typing import Optional
 
 import httpx
-import tiktoken
 from fastapi import HTTPException
 
-from mlpa.core.classes import AuthorizedChatRequest
+from mlpa.core.classes import AuthorizedChatRequest, LitellmRoutingSnapshot
 from mlpa.core.config import (
     ERROR_CODE_BUDGET_LIMIT_EXCEEDED,
+    ERROR_CODE_MAX_USERS_REACHED,
     ERROR_CODE_RATE_LIMIT_EXCEEDED,
     ERROR_CODE_REQUEST_TOO_LARGE,
     LITELLM_COMPLETION_AUTH_HEADERS,
@@ -17,31 +15,19 @@ from mlpa.core.config import (
     env,
 )
 from mlpa.core.http_client import get_http_client
+from mlpa.core.litellm_routing import parse_litellm_routing_headers
 from mlpa.core.logger import logger
 from mlpa.core.prometheus_metrics import (
     PrometheusRejectionReason,
     PrometheusResult,
     metrics,
 )
-from mlpa.core.utils import is_context_window_error, is_rate_limit_error, raise_and_log
-
-# Global default tokenizer - initialized once at module load time
-_global_default_tokenizer: Optional[tiktoken.Encoding] = None
-
-
-@lru_cache(maxsize=1)
-def get_default_tokenizer() -> tiktoken.Encoding:
-    """
-    Get or create the global default tokenizer.
-    """
-    global _global_default_tokenizer
-    if _global_default_tokenizer is None:
-        try:
-            _global_default_tokenizer = tiktoken.encoding_for_model(env.MODEL_NAME)
-        except KeyError:
-            _global_default_tokenizer = tiktoken.get_encoding("cl100k_base")
-    return _global_default_tokenizer
-
+from mlpa.core.utils import (
+    get_or_create_user,
+    is_context_window_error,
+    is_rate_limit_error,
+    raise_and_log,
+)
 
 _RATE_LIMIT_REJECTION: dict[int, tuple[PrometheusRejectionReason, str]] = {
     ERROR_CODE_BUDGET_LIMIT_EXCEEDED: (
@@ -85,17 +71,84 @@ def _record_rejection(
     ).inc()
 
 
+def record_chat_request_rejection(
+    req: AuthorizedChatRequest, reason: PrometheusRejectionReason
+) -> None:
+    """Increment chat_request_rejections for failures outside completions (e.g. signup cap)."""
+    _record_rejection(req, reason)
+
+
+async def get_or_create_user_for_completion(user_id: str, req: AuthorizedChatRequest):
+    """Wraps get_or_create_user and records a signup-cap rejection metric if applicable."""
+    try:
+        return await get_or_create_user(user_id)
+    except HTTPException as exc:
+        if (
+            exc.status_code == 403
+            and isinstance(exc.detail, dict)
+            and exc.detail.get("error") == ERROR_CODE_MAX_USERS_REACHED
+        ):
+            _record_rejection(req, PrometheusRejectionReason.SIGNUP_CAP_EXCEEDED)
+        raise
+
+
 def _tool_names_from_request(tools: list) -> list[str]:
     """Extract function names from OpenAI-format tools list."""
     names = []
     for t in tools or []:
         if not isinstance(t, dict):
             continue
-        fn = t.get("function")
-        fn = t.get("function") or {}
+        fn = t.get("function", {})
         name = fn.get("name")
         names.append(name or "unknown")
     return names
+
+
+def _record_litellm_routing_metrics(
+    req: AuthorizedChatRequest,
+    snapshot: LitellmRoutingSnapshot,
+    prompt_tokens: int,
+    completion_tokens: int,
+) -> None:
+    fallback_used = "true" if snapshot.attempted_fallbacks > 0 else "false"
+    labels_base = {
+        "requested_model": req.model,
+        "backend": snapshot.backend,
+        "service_type": req.service_type,
+        "purpose": req.purpose,
+    }
+    metrics.litellm_routed_completions.labels(
+        **labels_base,
+        fallback_used=fallback_used,
+    ).inc()
+    metrics.litellm_attempted_fallbacks.labels(**labels_base).observe(
+        snapshot.attempted_fallbacks
+    )
+    metrics.litellm_attempted_retries.labels(**labels_base).observe(
+        snapshot.attempted_retries
+    )
+    if snapshot.response_duration_ms is not None:
+        metrics.litellm_reported_duration_seconds.labels(
+            **labels_base,
+            fallback_used=fallback_used,
+        ).observe(snapshot.response_duration_ms / 1000.0)
+    if snapshot.response_cost_usd is not None:
+        metrics.litellm_reported_cost_usd_total.labels(
+            **labels_base,
+            fallback_used=fallback_used,
+        ).inc(snapshot.response_cost_usd)
+    if prompt_tokens > 0:
+        metrics.litellm_routed_tokens.labels(
+            type="prompt",
+            **labels_base,
+            fallback_used=fallback_used,
+        ).inc(prompt_tokens)
+    if completion_tokens > 0:
+        metrics.litellm_routed_tokens.labels(
+            type="completion",
+            **labels_base,
+            fallback_used=fallback_used,
+        ).inc(completion_tokens)
 
 
 def _record_request_with_tools(req: AuthorizedChatRequest) -> None:
@@ -200,6 +253,8 @@ async def stream_completion(authorized_chat_request: AuthorizedChatRequest):
                 yield raise_and_log(e, True)
                 return
 
+            litellm_routing_snapshot = parse_litellm_routing_headers(response.headers)
+
             async for chunk in response.aiter_bytes():
                 if is_first_token:
                     metrics.chat_completion_ttft.labels(
@@ -280,6 +335,12 @@ async def stream_completion(authorized_chat_request: AuthorizedChatRequest):
                 authorized_chat_request.purpose,
                 tool_names,
             )
+            _record_litellm_routing_metrics(
+                authorized_chat_request,
+                litellm_routing_snapshot,
+                prompt_tokens,
+                completion_tokens,
+            )
             result = PrometheusResult.SUCCESS
     except httpx.HTTPStatusError as e:
         if not streaming_started:
@@ -354,6 +415,7 @@ async def get_completion(authorized_chat_request: AuthorizedChatRequest):
                     detail={"error": ERROR_CODE_REQUEST_TOO_LARGE},
                 )
             raise_and_log(e)
+        litellm_routing_snapshot = parse_litellm_routing_headers(response.headers)
         data = response.json()
         usage = data.get("usage", {})
         prompt_tokens = usage.get("prompt_tokens", 0)
@@ -403,6 +465,12 @@ async def get_completion(authorized_chat_request: AuthorizedChatRequest):
             authorized_chat_request.service_type,
             authorized_chat_request.purpose,
             tool_names,
+        )
+        _record_litellm_routing_metrics(
+            authorized_chat_request,
+            litellm_routing_snapshot,
+            prompt_tokens,
+            completion_tokens,
         )
         result = PrometheusResult.SUCCESS
         return data

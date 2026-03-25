@@ -1,3 +1,5 @@
+from functools import cached_property
+
 from pydantic import ConfigDict
 from pydantic_settings import BaseSettings
 
@@ -79,7 +81,7 @@ class Env(BaseSettings):
     USER_FEATURE_BUDGET_MOCHI_DEV_TPM_LIMIT: int = 10000
     USER_FEATURE_BUDGET_MOCHI_DEV_BUDGET_DURATION: str = "1d"
 
-    @property
+    @cached_property
     def user_feature_budget(self) -> dict[str, dict]:
         """
         User feature budget configuration by service type.
@@ -138,14 +140,14 @@ class Env(BaseSettings):
             },
         }
 
-    @property
+    @cached_property
     def valid_service_types(self) -> list[str]:
         """
         Returns a list of valid service types from user_feature_budget configuration.
         """
         return list(self.user_feature_budget.keys())
 
-    @property
+    @cached_property
     def service_type_purposes(self) -> dict[str, list[str]]:
         """
         Valid purpose values per service type (for the purpose header and Prometheus).
@@ -280,6 +282,14 @@ LITELLM_COMPLETION_AUTH_HEADERS = {
     "Content-Type": "application/json",
     "Authorization": f"Bearer {env.MLPA_VIRTUAL_KEY}",
 }
+
+# LiteLLM proxy response headers (lowercase names for httpx Headers.get)
+# https://docs.litellm.ai/docs/proxy/response_headers
+LITELLM_HEADER_MODEL_API_BASE = "x-litellm-model-api-base"
+LITELLM_HEADER_ATTEMPTED_FALLBACKS = "x-litellm-attempted-fallbacks"
+LITELLM_HEADER_ATTEMPTED_RETRIES = "x-litellm-attempted-retries"
+LITELLM_HEADER_RESPONSE_DURATION_MS = "x-litellm-response-duration-ms"
+LITELLM_HEADER_RESPONSE_COST = "x-litellm-response-cost"
 
 ERROR_CODE_BUDGET_LIMIT_EXCEEDED: int = 1
 ERROR_CODE_RATE_LIMIT_EXCEEDED: int = 2

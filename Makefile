@@ -42,8 +42,8 @@ docs:
 # NOTE: for local development only
 docker-up:
 	docker-compose -f litellm_docker_compose.yaml up -d
-	bash scripts/migrate-litellm-database-local.sh
 	bash scripts/migrate-app-attest-database-local.sh
+	uv run python scripts/create-and-set-virtual-key.py
 
 docker-down:
 	docker-compose -f litellm_docker_compose.yaml down -v

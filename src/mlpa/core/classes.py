@@ -1,4 +1,5 @@
 import enum
+from dataclasses import dataclass
 from typing import Optional
 
 from pydantic import BaseModel
@@ -87,3 +88,14 @@ class AuthorizedChatRequest(ChatRequest):
 
 # Dynamically create ServiceType enum from config
 ServiceType = enum.Enum("ServiceType", [(st, st) for st in env.valid_service_types])
+
+
+@dataclass(frozen=True)
+class LitellmRoutingSnapshot:
+    """Parsed LiteLLM proxy response headers for routing / fallback metrics."""
+
+    backend: str
+    attempted_fallbacks: int
+    attempted_retries: int
+    response_duration_ms: float | None
+    response_cost_usd: float | None

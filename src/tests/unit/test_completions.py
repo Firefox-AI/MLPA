@@ -13,10 +13,36 @@ from mlpa.core.config import (
     ERROR_CODE_RATE_LIMIT_EXCEEDED,
     ERROR_CODE_REQUEST_TOO_LARGE,
     LITELLM_COMPLETIONS_URL,
+    LITELLM_HEADER_ATTEMPTED_FALLBACKS,
+    LITELLM_HEADER_ATTEMPTED_RETRIES,
+    LITELLM_HEADER_MODEL_API_BASE,
+    LITELLM_HEADER_RESPONSE_COST,
+    LITELLM_HEADER_RESPONSE_DURATION_MS,
     env,
 )
 from mlpa.core.prometheus_metrics import PrometheusRejectionReason, PrometheusResult
 from tests.consts import SAMPLE_REQUEST, SUCCESSFUL_CHAT_RESPONSE
+
+
+def _sample_litellm_response_headers(**overrides: str) -> httpx.Headers:
+    base = {
+        LITELLM_HEADER_MODEL_API_BASE: "https://api.together.xyz/v1",
+        LITELLM_HEADER_ATTEMPTED_FALLBACKS: "0",
+        LITELLM_HEADER_ATTEMPTED_RETRIES: "0",
+        LITELLM_HEADER_RESPONSE_DURATION_MS: "2000",
+        LITELLM_HEADER_RESPONSE_COST: "0.001",
+    }
+    base.update(overrides)
+    return httpx.Headers(base)
+
+
+def _litellm_routing_label_base():
+    return {
+        "requested_model": SAMPLE_REQUEST.model,
+        "backend": "https://api.together.xyz/v1",
+        "service_type": SAMPLE_REQUEST.service_type,
+        "purpose": SAMPLE_REQUEST.purpose,
+    }
 
 
 async def test_get_completion_success(mocker):
@@ -29,6 +55,7 @@ async def test_get_completion_success(mocker):
     # Arrange: Mock all external dependencies
     mock_response = MagicMock()
     mock_response.json.return_value = SUCCESSFUL_CHAT_RESPONSE
+    mock_response.headers = _sample_litellm_response_headers()
     # Simulate a 2xx status by having raise_for_status do nothing
     mock_response.raise_for_status.return_value = None
 
@@ -87,8 +114,120 @@ async def test_get_completion_success(mocker):
     )
     mock_metrics.chat_completion_latency.labels().observe.assert_called_once()
 
+    routing = _litellm_routing_label_base()
+    mock_metrics.litellm_routed_completions.labels.assert_called_once_with(
+        **routing,
+        fallback_used="false",
+    )
+    mock_metrics.litellm_routed_completions.labels.return_value.inc.assert_called_once()
+    mock_metrics.litellm_attempted_fallbacks.labels.assert_called_once_with(**routing)
+    mock_metrics.litellm_attempted_fallbacks.labels.return_value.observe.assert_called_once_with(
+        0.0
+    )
+    mock_metrics.litellm_attempted_retries.labels.assert_called_once_with(**routing)
+    mock_metrics.litellm_attempted_retries.labels.return_value.observe.assert_called_once_with(
+        0.0
+    )
+    mock_metrics.litellm_reported_duration_seconds.labels.assert_called_once_with(
+        **routing,
+        fallback_used="false",
+    )
+    mock_metrics.litellm_reported_duration_seconds.labels.return_value.observe.assert_called_once_with(
+        2.0
+    )
+    mock_metrics.litellm_reported_cost_usd_total.labels.assert_called_once_with(
+        **routing,
+        fallback_used="false",
+    )
+    mock_metrics.litellm_reported_cost_usd_total.labels.return_value.inc.assert_called_once_with(
+        0.001
+    )
+    mock_metrics.litellm_routed_tokens.labels.assert_any_call(
+        type="prompt",
+        **routing,
+        fallback_used="false",
+    )
+    mock_metrics.litellm_routed_tokens.labels.assert_any_call(
+        type="completion",
+        **routing,
+        fallback_used="false",
+    )
+
     # 4. Check that the function returned the correct data
     assert result_data == SUCCESSFUL_CHAT_RESPONSE
+
+
+async def test_get_completion_litellm_routing_with_fallback(mocker):
+    mock_response = MagicMock()
+    mock_response.json.return_value = SUCCESSFUL_CHAT_RESPONSE
+    mock_response.headers = _sample_litellm_response_headers(
+        **{
+            LITELLM_HEADER_ATTEMPTED_FALLBACKS: "1",
+            LITELLM_HEADER_MODEL_API_BASE: "https://us-central1-aiplatform.googleapis.com/v1/projects/p/locations/us-central1/publishers/google/models/gemini-pro:predict",
+        }
+    )
+    mock_response.raise_for_status.return_value = None
+
+    mock_client = AsyncMock()
+    mock_client.post.return_value = mock_response
+    mocker.patch("mlpa.core.completions.get_http_client", return_value=mock_client)
+    mock_metrics = mocker.patch("mlpa.core.completions.metrics")
+
+    await get_completion(SAMPLE_REQUEST)
+
+    routing = {
+        "requested_model": SAMPLE_REQUEST.model,
+        "backend": "https://us-central1-aiplatform.googleapis.com/v1/projects/p/locations/us-central1/publishers/google/models/gemini-pro:predict",
+        "service_type": SAMPLE_REQUEST.service_type,
+        "purpose": SAMPLE_REQUEST.purpose,
+    }
+    mock_metrics.litellm_routed_completions.labels.assert_called_once_with(
+        **routing,
+        fallback_used="true",
+    )
+    mock_metrics.litellm_attempted_fallbacks.labels.return_value.observe.assert_called_once_with(
+        1.0
+    )
+
+
+async def test_get_completion_litellm_routing_skips_invalid_optional_headers(mocker):
+    mock_response = MagicMock()
+    mock_response.json.return_value = SUCCESSFUL_CHAT_RESPONSE
+    mock_response.headers = _sample_litellm_response_headers(
+        **{
+            LITELLM_HEADER_RESPONSE_DURATION_MS: "not-a-float",
+            LITELLM_HEADER_RESPONSE_COST: "nan",
+        }
+    )
+    mock_response.raise_for_status.return_value = None
+
+    mock_client = AsyncMock()
+    mock_client.post.return_value = mock_response
+    mocker.patch("mlpa.core.completions.get_http_client", return_value=mock_client)
+    mock_metrics = mocker.patch("mlpa.core.completions.metrics")
+
+    await get_completion(SAMPLE_REQUEST)
+
+    mock_metrics.litellm_reported_duration_seconds.labels.assert_not_called()
+    mock_metrics.litellm_reported_cost_usd_total.labels.assert_not_called()
+
+
+async def test_get_completion_litellm_routing_skips_negative_duration_ms(mocker):
+    mock_response = MagicMock()
+    mock_response.json.return_value = SUCCESSFUL_CHAT_RESPONSE
+    mock_response.headers = _sample_litellm_response_headers(
+        **{LITELLM_HEADER_RESPONSE_DURATION_MS: "-1"},
+    )
+    mock_response.raise_for_status.return_value = None
+
+    mock_client = AsyncMock()
+    mock_client.post.return_value = mock_response
+    mocker.patch("mlpa.core.completions.get_http_client", return_value=mock_client)
+    mock_metrics = mocker.patch("mlpa.core.completions.metrics")
+
+    await get_completion(SAMPLE_REQUEST)
+
+    mock_metrics.litellm_reported_duration_seconds.labels.assert_not_called()
 
 
 async def test_get_completion_http_error(mocker):
@@ -132,6 +271,7 @@ async def test_get_completion_http_error(mocker):
 
     # 3. Verify token metrics were NOT called
     mock_metrics.chat_tokens.labels.assert_not_called()
+    mock_metrics.litellm_routed_completions.labels.assert_not_called()
 
 
 async def test_get_completion_network_error(mocker):
@@ -179,6 +319,7 @@ async def test_stream_completion_success(httpx_mock: HTTPXMock, mocker):
         url=LITELLM_COMPLETIONS_URL,
         stream=IteratorStream(mock_chunks),
         status_code=200,
+        headers=_sample_litellm_response_headers(),
     )
 
     mock_metrics = mocker.patch("mlpa.core.completions.metrics")
@@ -223,6 +364,75 @@ async def test_stream_completion_success(httpx_mock: HTTPXMock, mocker):
         purpose=SAMPLE_REQUEST.purpose,
     )
     mock_metrics.chat_completion_latency.labels().observe.assert_called_once()
+
+    routing = _litellm_routing_label_base()
+    mock_metrics.litellm_routed_completions.labels.assert_called_once_with(
+        **routing,
+        fallback_used="false",
+    )
+    mock_metrics.litellm_routed_completions.labels.return_value.inc.assert_called_once()
+    mock_metrics.litellm_attempted_fallbacks.labels.assert_called_once_with(**routing)
+    mock_metrics.litellm_attempted_fallbacks.labels.return_value.observe.assert_called_once_with(
+        0.0
+    )
+    mock_metrics.litellm_attempted_retries.labels.assert_called_once_with(**routing)
+    mock_metrics.litellm_attempted_retries.labels.return_value.observe.assert_called_once_with(
+        0.0
+    )
+    mock_metrics.litellm_reported_duration_seconds.labels.assert_called_once_with(
+        **routing,
+        fallback_used="false",
+    )
+    mock_metrics.litellm_reported_duration_seconds.labels.return_value.observe.assert_called_once_with(
+        2.0
+    )
+    mock_metrics.litellm_reported_cost_usd_total.labels.assert_called_once_with(
+        **routing,
+        fallback_used="false",
+    )
+    mock_metrics.litellm_reported_cost_usd_total.labels.return_value.inc.assert_called_once_with(
+        0.001
+    )
+    mock_metrics.litellm_routed_tokens.labels.assert_any_call(
+        type="prompt",
+        **routing,
+        fallback_used="false",
+    )
+    mock_metrics.litellm_routed_tokens.labels.assert_any_call(
+        type="completion",
+        **routing,
+        fallback_used="false",
+    )
+
+
+async def test_stream_completion_litellm_routing_with_fallback(
+    httpx_mock: HTTPXMock, mocker
+):
+    usage_chunk = b'data: {"usage": {"prompt_tokens": 10, "completion_tokens": 25}}'
+    mock_chunks = [b"data: chunk1", usage_chunk, b"data: [DONE]"]
+
+    httpx_mock.add_response(
+        method="POST",
+        url=LITELLM_COMPLETIONS_URL,
+        stream=IteratorStream(mock_chunks),
+        status_code=200,
+        headers=_sample_litellm_response_headers(
+            **{LITELLM_HEADER_ATTEMPTED_FALLBACKS: "2"},
+        ),
+    )
+
+    mock_metrics = mocker.patch("mlpa.core.completions.metrics")
+    received_chunks = [chunk async for chunk in stream_completion(SAMPLE_REQUEST)]
+    assert received_chunks == mock_chunks
+
+    routing = _litellm_routing_label_base()
+    mock_metrics.litellm_routed_completions.labels.assert_called_once_with(
+        **routing,
+        fallback_used="true",
+    )
+    mock_metrics.litellm_attempted_fallbacks.labels.return_value.observe.assert_called_once_with(
+        2.0
+    )
 
 
 async def test_get_completion_budget_limit_exceeded_429(mocker):
