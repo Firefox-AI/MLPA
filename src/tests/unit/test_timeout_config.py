@@ -1,5 +1,5 @@
 import os
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 from mlpa.core import http_client
 from mlpa.core.completions import stream_completion
@@ -75,11 +75,6 @@ async def test_stream_completion_uses_configurable_timeout(httpx_mock, mocker):
     )
 
     mocker.patch("mlpa.core.completions.metrics")
-    mock_tokenizer = MagicMock()
-    mock_tokenizer.encode.return_value = [1, 2]
-    mock_tiktoken = mocker.patch("mlpa.core.completions.tiktoken")
-    mock_tiktoken.encoding_for_model.return_value = mock_tokenizer
-    mock_tiktoken.get_encoding.return_value = mock_tokenizer
 
     custom_timeout = 600
     mock_env = mocker.patch("mlpa.core.completions.env")
@@ -106,11 +101,6 @@ async def test_stream_completion_uses_default_timeout(httpx_mock, mocker):
     )
 
     mocker.patch("mlpa.core.completions.metrics")
-    mock_tokenizer = MagicMock()
-    mock_tokenizer.encode.return_value = [1, 2]
-    mock_tiktoken = mocker.patch("mlpa.core.completions.tiktoken")
-    mock_tiktoken.encoding_for_model.return_value = mock_tokenizer
-    mock_tiktoken.get_encoding.return_value = mock_tokenizer
 
     async for _ in stream_completion(SAMPLE_REQUEST):
         pass

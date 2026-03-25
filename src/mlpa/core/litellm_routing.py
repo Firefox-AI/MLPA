@@ -46,7 +46,7 @@ def _safe_float_header(headers: Mapping[str, str], name: str) -> float | None:
         value = float(raw.strip())
     except (ValueError, TypeError):
         return None
-    if not math.isfinite(value):
+    if not math.isfinite(value) or value < 0:
         return None
     return value
 
