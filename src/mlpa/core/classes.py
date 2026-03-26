@@ -84,6 +84,7 @@ class AuthorizedChatRequest(ChatRequest):
     purpose: str = (
         ""  # From header; empty for service types without defined purposes (e.g. s2s)
     )
+    chat_id: str = ""  # From header; unique identifier for the user-chat session
 
 
 # Dynamically create ServiceType enum from config

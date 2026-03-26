@@ -3,6 +3,7 @@ from unittest.mock import patch
 import pytest
 
 from mlpa.core.config import env
+from mlpa.core.routers.fxa.fxa import FXA_SCOPES
 from tests.consts import SUCCESSFUL_CHAT_RESPONSE, TEST_FXA_TOKEN
 
 
@@ -67,13 +68,14 @@ def test_managed_cap_rejects_new_identities_and_s2s_bypasses(
 
     user_ids = ["userA", "userB", "userC", "userA"]
     call_idx = {"i": 0}
+    scopes_per_request = len(FXA_SCOPES) or 1
 
     def verify_token_side_effect(
         token, scope="profile:uid", include_verification_source=False
     ):
-        i = call_idx["i"]
-        call_idx["i"] = i + 1
-        user = user_ids[i]
+        i = call_idx["i"] // scopes_per_request
+        call_idx["i"] += 1
+        user = user_ids[i] if i < len(user_ids) else user_ids[-1]
         result = {"user": user}
         if include_verification_source:
             result["verification_source"] = "local"
@@ -160,13 +162,14 @@ def test_release_reserved_slot_when_litellm_user_creation_fails(
         # Request 2: userB -> should still be admitted because the slot was released.
         user_ids = ["userA", "userB"]
         call_idx = {"i": 0}
+        scopes_per_request = len(FXA_SCOPES) or 1
 
         def verify_token_side_effect(
             token, scope="profile:uid", include_verification_source=False
         ):
-            i = call_idx["i"]
-            call_idx["i"] = i + 1
-            user = user_ids[i]
+            i = call_idx["i"] // scopes_per_request
+            call_idx["i"] += 1
+            user = user_ids[i] if i < len(user_ids) else user_ids[-1]
             result = {"user": user}
             if include_verification_source:
                 result["verification_source"] = "local"

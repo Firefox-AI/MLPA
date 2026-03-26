@@ -54,6 +54,7 @@ def customize_openapi(app: FastAPI, tags_metadata: list[dict]) -> None:
                     + "AI: chat, title-generation, convo-starters-sidebar. "
                     + "Memories: memory-generation. Omit or leave empty for s2s, s2s-android."
                 ),
+                "chat-id": "Unique identifier for the chat session.",
                 "x-dev-authorization": "Required for ai-dev/memories-dev/mochi-dev. Experimentation token; also requires Authorization (FxA). Without it, dev service types return 401.",
                 "authorization": "Bearer token: FxA OAuth, Play Integrity MLPA token, or App Attest JWT.",
                 "use-app-attest": "Optional. Set to true for iOS App Attest; Authorization must contain AssertionAuth JWT.",

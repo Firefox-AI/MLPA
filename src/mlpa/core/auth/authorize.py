@@ -49,6 +49,7 @@ async def authorize_request(
     authorization: Annotated[str, Header()],
     service_type: Annotated[ServiceType, Header()],
     purpose: Annotated[str | None, Header()] = None,
+    chat_id: Annotated[str | None, Header()] = None,
     x_dev_authorization: Annotated[str | None, Header()] = None,
     use_app_attest: Annotated[bool | None, Header()] = None,
     use_qa_certificates: Annotated[bool | None, Header()] = None,
@@ -57,6 +58,7 @@ async def authorize_request(
     if not authorization:
         raise HTTPException(status_code=401, detail="Missing authorization header")
     purpose_value = _resolve_purpose(service_type.value, purpose)
+    chat_id_value = chat_id or ""
     if use_app_attest:
         # Apple App Attest
         body_bytes = await request.body()
@@ -69,6 +71,7 @@ async def authorize_request(
             user=f"{assertionAuth.key_id_b64}:{service_type.value}",  # "user" is key_id_b64 from app attest
             service_type=service_type.value,
             purpose=purpose_value,
+            chat_id=chat_id_value,
             **chat_request.model_dump(exclude_unset=True),
         )
     elif use_play_integrity:
@@ -78,6 +81,7 @@ async def authorize_request(
             user=f"{play_user_id}:{service_type.value}",
             service_type=service_type.value,
             purpose=purpose_value,
+            chat_id=chat_id_value,
             **chat_request.model_dump(exclude_unset=True),
         )
     elif service_type.value.endswith("-dev"):
@@ -91,6 +95,7 @@ async def authorize_request(
             user=f"{fxa_profile['user']}:{service_type.value}",
             service_type=service_type.value,
             purpose=purpose_value,
+            chat_id=chat_id_value,
             **chat_request.model_dump(exclude_unset=True),
         )
     else:
@@ -101,5 +106,6 @@ async def authorize_request(
             user=f"{fxa_user_id['user']}:{service_type.value}",
             service_type=service_type.value,
             purpose=purpose_value,
+            chat_id=chat_id_value,
             **chat_request.model_dump(exclude_unset=True),
         )

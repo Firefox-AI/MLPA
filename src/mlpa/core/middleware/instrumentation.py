@@ -16,7 +16,7 @@ async def instrument_requests_middleware(request: Request, call_next):
     # Forward non-auth headers to log metadata
     with logger.contextualize(
         service_type=request.headers.get("service-type", "N/A"),
-        session_id=request.headers.get("session-id", "N/A"),
+        chat_id=request.headers.get("chat-id", "N/A"),
         user_agent=request.headers.get("user-agent", "N/A"),
         use_app_attest=request.headers.get("use-app-attest", "N/A"),
     ):
@@ -27,6 +27,7 @@ async def instrument_requests_middleware(request: Request, call_next):
             endpoint = route.path if route else request.url.path
             service_type = request.headers.get("service-type", "NA")
             purpose = request.headers.get("purpose", "")
+            chat_id = request.headers.get("chat-id", "NA")
 
             metrics.request_latency.labels(
                 method=request.method, endpoint=endpoint
@@ -36,6 +37,7 @@ async def instrument_requests_middleware(request: Request, call_next):
                 endpoint=endpoint,
                 service_type=service_type,
                 purpose=purpose,
+                chat_id=chat_id,
             ).inc()
             metrics.response_status_codes.labels(status_code=response.status_code).inc()
             return response

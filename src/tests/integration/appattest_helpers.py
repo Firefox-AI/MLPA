@@ -26,6 +26,7 @@ def auth_headers(token: str, **extra_headers) -> dict:
         "use-app-attest": "true",
         "service-type": "ai",
         "purpose": "chat",
+        "chat-id": "chat-id",
         **extra_headers,
     }
 

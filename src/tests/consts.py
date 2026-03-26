@@ -11,6 +11,7 @@ SAMPLE_REQUEST = AuthorizedChatRequest(
     user="test-user-123:ai",
     service_type="ai",
     purpose="chat",
+    chat_id="test-chat-id",
     model="test-model",
     messages=[{"role": "user", "content": "Hello"}],
     temperature=0.7,
