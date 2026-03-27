@@ -27,7 +27,6 @@ async def instrument_requests_middleware(request: Request, call_next):
             endpoint = route.path if route else request.url.path
             service_type = request.headers.get("service-type", "NA")
             purpose = request.headers.get("purpose", "")
-            chat_id = request.headers.get("chat-id", "NA")
 
             metrics.request_latency.labels(
                 method=request.method, endpoint=endpoint
@@ -37,7 +36,6 @@ async def instrument_requests_middleware(request: Request, call_next):
                 endpoint=endpoint,
                 service_type=service_type,
                 purpose=purpose,
-                chat_id=chat_id,
             ).inc()
             metrics.response_status_codes.labels(status_code=response.status_code).inc()
             return response

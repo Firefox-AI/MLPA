@@ -42,7 +42,6 @@ def _litellm_routing_label_base():
         "backend": "https://api.together.xyz/v1",
         "service_type": SAMPLE_REQUEST.service_type,
         "purpose": SAMPLE_REQUEST.purpose,
-        "chat_id": SAMPLE_REQUEST.chat_id,
     }
 
 
@@ -91,7 +90,6 @@ async def test_get_completion_success(mocker):
         model=SAMPLE_REQUEST.model,
         service_type=SAMPLE_REQUEST.service_type,
         purpose=SAMPLE_REQUEST.purpose,
-        chat_id=SAMPLE_REQUEST.chat_id,
     )
     mock_metrics.chat_tokens.labels().inc.assert_any_call(
         SUCCESSFUL_CHAT_RESPONSE["usage"]["prompt_tokens"]
@@ -102,7 +100,6 @@ async def test_get_completion_success(mocker):
         model=SAMPLE_REQUEST.model,
         service_type=SAMPLE_REQUEST.service_type,
         purpose=SAMPLE_REQUEST.purpose,
-        chat_id=SAMPLE_REQUEST.chat_id,
     )
     mock_metrics.chat_tokens.labels().inc.assert_any_call(
         SUCCESSFUL_CHAT_RESPONSE["usage"]["completion_tokens"]
@@ -114,7 +111,6 @@ async def test_get_completion_success(mocker):
         model=SAMPLE_REQUEST.model,
         service_type=SAMPLE_REQUEST.service_type,
         purpose=SAMPLE_REQUEST.purpose,
-        chat_id=SAMPLE_REQUEST.chat_id,
     )
     mock_metrics.chat_completion_latency.labels().observe.assert_called_once()
 
@@ -183,7 +179,6 @@ async def test_get_completion_optional_chat_id(mocker):
         model=request_without_chat_id.model,
         service_type=request_without_chat_id.service_type,
         purpose=request_without_chat_id.purpose,
-        chat_id="",
     )
 
 
@@ -210,7 +205,6 @@ async def test_get_completion_litellm_routing_with_fallback(mocker):
         "backend": "https://us-central1-aiplatform.googleapis.com/v1/projects/p/locations/us-central1/publishers/google/models/gemini-pro:predict",
         "service_type": SAMPLE_REQUEST.service_type,
         "purpose": SAMPLE_REQUEST.purpose,
-        "chat_id": SAMPLE_REQUEST.chat_id,
     }
     mock_metrics.litellm_routed_completions.labels.assert_called_once_with(
         **routing,
@@ -297,7 +291,6 @@ async def test_get_completion_http_error(mocker):
         model=SAMPLE_REQUEST.model,
         service_type=SAMPLE_REQUEST.service_type,
         purpose=SAMPLE_REQUEST.purpose,
-        chat_id=SAMPLE_REQUEST.chat_id,
     )
     mock_metrics.chat_completion_latency.labels().observe.assert_called_once()
 
@@ -333,7 +326,6 @@ async def test_get_completion_network_error(mocker):
         model=SAMPLE_REQUEST.model,
         service_type=SAMPLE_REQUEST.service_type,
         purpose=SAMPLE_REQUEST.purpose,
-        chat_id=SAMPLE_REQUEST.chat_id,
     )
     mock_metrics.chat_completion_latency.labels().observe.assert_called_once()
 
@@ -380,7 +372,6 @@ async def test_stream_completion_success(httpx_mock: HTTPXMock, mocker):
         model=SAMPLE_REQUEST.model,
         service_type=SAMPLE_REQUEST.service_type,
         purpose=SAMPLE_REQUEST.purpose,
-        chat_id=SAMPLE_REQUEST.chat_id,
     )
     mock_metrics.chat_tokens.labels().inc.assert_any_call(10)
     mock_metrics.chat_tokens.labels.assert_any_call(
@@ -388,7 +379,6 @@ async def test_stream_completion_success(httpx_mock: HTTPXMock, mocker):
         model=SAMPLE_REQUEST.model,
         service_type=SAMPLE_REQUEST.service_type,
         purpose=SAMPLE_REQUEST.purpose,
-        chat_id=SAMPLE_REQUEST.chat_id,
     )
     mock_metrics.chat_tokens.labels().inc.assert_any_call(25)
 
@@ -397,7 +387,6 @@ async def test_stream_completion_success(httpx_mock: HTTPXMock, mocker):
         model=SAMPLE_REQUEST.model,
         service_type=SAMPLE_REQUEST.service_type,
         purpose=SAMPLE_REQUEST.purpose,
-        chat_id=SAMPLE_REQUEST.chat_id,
     )
     mock_metrics.chat_completion_latency.labels().observe.assert_called_once()
 
@@ -513,7 +502,6 @@ async def test_get_completion_budget_limit_exceeded_429(mocker):
         model=SAMPLE_REQUEST.model,
         service_type=SAMPLE_REQUEST.service_type,
         purpose=SAMPLE_REQUEST.purpose,
-        chat_id=SAMPLE_REQUEST.chat_id,
     )
     mock_metrics.chat_request_rejections.labels().inc.assert_called_once()
 
@@ -523,7 +511,6 @@ async def test_get_completion_budget_limit_exceeded_429(mocker):
         model=SAMPLE_REQUEST.model,
         service_type=SAMPLE_REQUEST.service_type,
         purpose=SAMPLE_REQUEST.purpose,
-        chat_id=SAMPLE_REQUEST.chat_id,
     )
 
 
@@ -569,7 +556,6 @@ async def test_get_completion_budget_limit_exceeded_400(mocker):
         model=SAMPLE_REQUEST.model,
         service_type=SAMPLE_REQUEST.service_type,
         purpose=SAMPLE_REQUEST.purpose,
-        chat_id=SAMPLE_REQUEST.chat_id,
     )
     mock_metrics.chat_request_rejections.labels().inc.assert_called_once()
 
@@ -616,7 +602,6 @@ async def test_get_completion_rate_limit_exceeded(mocker):
         model=SAMPLE_REQUEST.model,
         service_type=SAMPLE_REQUEST.service_type,
         purpose=SAMPLE_REQUEST.purpose,
-        chat_id=SAMPLE_REQUEST.chat_id,
     )
     mock_metrics.chat_request_rejections.labels().inc.assert_called_once()
 
@@ -726,7 +711,6 @@ async def test_get_completion_context_window_exceeded(mocker):
         model=SAMPLE_REQUEST.model,
         service_type=SAMPLE_REQUEST.service_type,
         purpose=SAMPLE_REQUEST.purpose,
-        chat_id=SAMPLE_REQUEST.chat_id,
     )
     mock_metrics.chat_request_rejections.labels().inc.assert_called_once()
     mock_metrics.chat_completion_latency.labels.assert_called_once_with(
@@ -734,7 +718,6 @@ async def test_get_completion_context_window_exceeded(mocker):
         model=SAMPLE_REQUEST.model,
         service_type=SAMPLE_REQUEST.service_type,
         purpose=SAMPLE_REQUEST.purpose,
-        chat_id=SAMPLE_REQUEST.chat_id,
     )
 
 
@@ -806,7 +789,6 @@ async def test_stream_completion_budget_limit_exceeded_429(
         model=SAMPLE_REQUEST.model,
         service_type=SAMPLE_REQUEST.service_type,
         purpose=SAMPLE_REQUEST.purpose,
-        chat_id=SAMPLE_REQUEST.chat_id,
     )
     mock_metrics.chat_request_rejections.labels().inc.assert_called_once()
     mock_metrics.chat_completion_latency.labels.assert_called_once_with(
@@ -814,7 +796,6 @@ async def test_stream_completion_budget_limit_exceeded_429(
         model=SAMPLE_REQUEST.model,
         service_type=SAMPLE_REQUEST.service_type,
         purpose=SAMPLE_REQUEST.purpose,
-        chat_id=SAMPLE_REQUEST.chat_id,
     )
 
 
@@ -857,7 +838,6 @@ async def test_stream_completion_budget_limit_exceeded_400(
         model=SAMPLE_REQUEST.model,
         service_type=SAMPLE_REQUEST.service_type,
         purpose=SAMPLE_REQUEST.purpose,
-        chat_id=SAMPLE_REQUEST.chat_id,
     )
     mock_metrics.chat_request_rejections.labels().inc.assert_called_once()
     mock_metrics.chat_completion_latency.labels.assert_called_once_with(
@@ -865,7 +845,6 @@ async def test_stream_completion_budget_limit_exceeded_400(
         model=SAMPLE_REQUEST.model,
         service_type=SAMPLE_REQUEST.service_type,
         purpose=SAMPLE_REQUEST.purpose,
-        chat_id=SAMPLE_REQUEST.chat_id,
     )
 
 
@@ -906,7 +885,6 @@ async def test_stream_completion_rate_limit_exceeded(httpx_mock: HTTPXMock, mock
         model=SAMPLE_REQUEST.model,
         service_type=SAMPLE_REQUEST.service_type,
         purpose=SAMPLE_REQUEST.purpose,
-        chat_id=SAMPLE_REQUEST.chat_id,
     )
     mock_metrics.chat_request_rejections.labels().inc.assert_called_once()
     mock_metrics.chat_completion_latency.labels.assert_called_once_with(
@@ -914,7 +892,6 @@ async def test_stream_completion_rate_limit_exceeded(httpx_mock: HTTPXMock, mock
         model=SAMPLE_REQUEST.model,
         service_type=SAMPLE_REQUEST.service_type,
         purpose=SAMPLE_REQUEST.purpose,
-        chat_id=SAMPLE_REQUEST.chat_id,
     )
 
 
@@ -950,7 +927,6 @@ async def test_stream_completion_context_window_exceeded(httpx_mock: HTTPXMock, 
         model=SAMPLE_REQUEST.model,
         service_type=SAMPLE_REQUEST.service_type,
         purpose=SAMPLE_REQUEST.purpose,
-        chat_id=SAMPLE_REQUEST.chat_id,
     )
     mock_metrics.chat_request_rejections.labels().inc.assert_called_once()
     mock_metrics.chat_completion_latency.labels.assert_called_once_with(
@@ -958,7 +934,6 @@ async def test_stream_completion_context_window_exceeded(httpx_mock: HTTPXMock, 
         model=SAMPLE_REQUEST.model,
         service_type=SAMPLE_REQUEST.service_type,
         purpose=SAMPLE_REQUEST.purpose,
-        chat_id=SAMPLE_REQUEST.chat_id,
     )
 
 
@@ -1001,7 +976,6 @@ async def test_stream_completion_400_non_rate_limit_error(
         model=SAMPLE_REQUEST.model,
         service_type=SAMPLE_REQUEST.service_type,
         purpose=SAMPLE_REQUEST.purpose,
-        chat_id=SAMPLE_REQUEST.chat_id,
     )
 
 
@@ -1038,7 +1012,6 @@ async def test_stream_completion_429_non_rate_limit_error(
         model=SAMPLE_REQUEST.model,
         service_type=SAMPLE_REQUEST.service_type,
         purpose=SAMPLE_REQUEST.purpose,
-        chat_id=SAMPLE_REQUEST.chat_id,
     )
 
 
@@ -1070,7 +1043,6 @@ async def test_stream_completion_429_invalid_json(httpx_mock: HTTPXMock, mocker)
         model=SAMPLE_REQUEST.model,
         service_type=SAMPLE_REQUEST.service_type,
         purpose=SAMPLE_REQUEST.purpose,
-        chat_id=SAMPLE_REQUEST.chat_id,
     )
 
 
@@ -1100,7 +1072,6 @@ async def test_stream_completion_exception_after_streaming_started(
         model=SAMPLE_REQUEST.model,
         service_type=SAMPLE_REQUEST.service_type,
         purpose=SAMPLE_REQUEST.purpose,
-        chat_id=SAMPLE_REQUEST.chat_id,
     )
     mock_metrics.chat_completion_latency.labels().observe.assert_called_once()
 

@@ -68,7 +68,6 @@ def _record_rejection(
         model=req.model,
         service_type=req.service_type,
         purpose=req.purpose,
-        chat_id=req.chat_id,
     ).inc()
 
 
@@ -117,7 +116,6 @@ def _record_litellm_routing_metrics(
         "backend": snapshot.backend,
         "service_type": req.service_type,
         "purpose": req.purpose,
-        "chat_id": req.chat_id,
     }
     metrics.litellm_routed_completions.labels(
         **labels_base,
@@ -161,12 +159,11 @@ def _record_request_with_tools(req: AuthorizedChatRequest) -> None:
                 model=req.model,
                 service_type=req.service_type,
                 purpose=req.purpose,
-                chat_id=req.chat_id,
             ).inc()
 
 
 def _record_tool_metrics(
-    model: str, service_type: str, purpose: str, chat_id: str, tool_names: list[str]
+    model: str, service_type: str, purpose: str, tool_names: list[str]
 ) -> None:
     n_calls = len(tool_names)
     for name in tool_names:
@@ -175,14 +172,12 @@ def _record_tool_metrics(
             model=model,
             service_type=service_type,
             purpose=purpose,
-            chat_id=chat_id,
         ).inc()
         metrics.chat_completions_with_tools.labels(
             tool_name=name,
             model=model,
             service_type=service_type,
             purpose=purpose,
-            chat_id=chat_id,
         ).inc()
         # Histogram: one observation per completion = total tool calls in that completion.
         metrics.chat_tool_calls_per_completion.labels(
@@ -190,7 +185,6 @@ def _record_tool_metrics(
             model=model,
             service_type=service_type,
             purpose=purpose,
-            chat_id=chat_id,
         ).observe(n_calls)
 
 
@@ -320,14 +314,12 @@ async def stream_completion(authorized_chat_request: AuthorizedChatRequest):
                     model=authorized_chat_request.model,
                     service_type=authorized_chat_request.service_type,
                     purpose=authorized_chat_request.purpose,
-                    chat_id=authorized_chat_request.chat_id,
                 ).inc(prompt_tokens)
                 metrics.chat_tokens_per_request.labels(
                     type="prompt",
                     model=authorized_chat_request.model,
                     service_type=authorized_chat_request.service_type,
                     purpose=authorized_chat_request.purpose,
-                    chat_id=authorized_chat_request.chat_id,
                 ).observe(prompt_tokens)
             if completion_tokens > 0:
                 metrics.chat_tokens.labels(
@@ -335,14 +327,12 @@ async def stream_completion(authorized_chat_request: AuthorizedChatRequest):
                     model=authorized_chat_request.model,
                     service_type=authorized_chat_request.service_type,
                     purpose=authorized_chat_request.purpose,
-                    chat_id=authorized_chat_request.chat_id,
                 ).inc(completion_tokens)
                 metrics.chat_tokens_per_request.labels(
                     type="completion",
                     model=authorized_chat_request.model,
                     service_type=authorized_chat_request.service_type,
                     purpose=authorized_chat_request.purpose,
-                    chat_id=authorized_chat_request.chat_id,
                 ).observe(completion_tokens)
             tool_names = [
                 tool_calls_accum[i]["function"].get("name") or "unknown"
@@ -352,7 +342,6 @@ async def stream_completion(authorized_chat_request: AuthorizedChatRequest):
                 authorized_chat_request.model,
                 authorized_chat_request.service_type,
                 authorized_chat_request.purpose,
-                authorized_chat_request.chat_id,
                 tool_names,
             )
             _record_litellm_routing_metrics(
@@ -378,7 +367,6 @@ async def stream_completion(authorized_chat_request: AuthorizedChatRequest):
             model=authorized_chat_request.model,
             service_type=authorized_chat_request.service_type,
             purpose=authorized_chat_request.purpose,
-            chat_id=authorized_chat_request.chat_id,
         ).observe(time.perf_counter() - start_time)
 
 
@@ -456,28 +444,24 @@ async def get_completion(authorized_chat_request: AuthorizedChatRequest):
             model=authorized_chat_request.model,
             service_type=authorized_chat_request.service_type,
             purpose=authorized_chat_request.purpose,
-            chat_id=authorized_chat_request.chat_id,
         ).inc(prompt_tokens)
         metrics.chat_tokens_per_request.labels(
             type="prompt",
             model=authorized_chat_request.model,
             service_type=authorized_chat_request.service_type,
             purpose=authorized_chat_request.purpose,
-            chat_id=authorized_chat_request.chat_id,
         ).observe(prompt_tokens)
         metrics.chat_tokens.labels(
             type="completion",
             model=authorized_chat_request.model,
             service_type=authorized_chat_request.service_type,
             purpose=authorized_chat_request.purpose,
-            chat_id=authorized_chat_request.chat_id,
         ).inc(completion_tokens)
         metrics.chat_tokens_per_request.labels(
             type="completion",
             model=authorized_chat_request.model,
             service_type=authorized_chat_request.service_type,
             purpose=authorized_chat_request.purpose,
-            chat_id=authorized_chat_request.chat_id,
         ).observe(completion_tokens)
         tool_calls = (
             data.get("choices", [{}])[0].get("message", {}).get("tool_calls") or []
@@ -489,7 +473,6 @@ async def get_completion(authorized_chat_request: AuthorizedChatRequest):
             authorized_chat_request.model,
             authorized_chat_request.service_type,
             authorized_chat_request.purpose,
-            authorized_chat_request.chat_id,
             tool_names,
         )
         _record_litellm_routing_metrics(
@@ -510,5 +493,4 @@ async def get_completion(authorized_chat_request: AuthorizedChatRequest):
             model=authorized_chat_request.model,
             service_type=authorized_chat_request.service_type,
             purpose=authorized_chat_request.purpose,
-            chat_id=authorized_chat_request.chat_id,
         ).observe(time.perf_counter() - start_time)
