@@ -1,6 +1,7 @@
 import hashlib
 import secrets
 from functools import lru_cache
+from time import time
 
 import google.auth
 import httpx
@@ -104,6 +105,7 @@ def _validate_integrity_payload(payload: dict, expected_hash: str) -> None:
 
 @router.post("/play", tags=["Play Integrity"])
 async def verify_play_integrity(payload: PlayIntegrityRequest):
+    start_time = time.perf_counter()
     try:
         result = PrometheusResult.ERROR
         decoded = await _decode_integrity_token(
@@ -120,6 +122,8 @@ async def verify_play_integrity(payload: PlayIntegrityRequest):
         _validate_integrity_payload(token_payload, expected_hash)
 
         access_token = issue_mlpa_access_token(payload.user_id)
+        result = PrometheusResult.SUCCESS
+        metrics.play_verifications_total.inc()
         return {
             "access_token": access_token,
             "token_type": "Bearer",
@@ -129,7 +133,6 @@ async def verify_play_integrity(payload: PlayIntegrityRequest):
         result = PrometheusResult.ERROR
         raise
     finally:
-        metrics.play_verifications_total.inc()
         metrics.validate_play_latency.labels(
             result=result,
-        ).inc()
+        ).observe(time.perf_counter() - start_time)
