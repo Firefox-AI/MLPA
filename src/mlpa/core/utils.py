@@ -41,10 +41,22 @@ def is_litellm_upstream_rate_limit(error_text: str) -> bool:
     """Detect upstream LiteLLM throttling errors for retry."""
     if not error_text:
         return False
+    # Try to parse as JSON and check fields
+    try:
+        error_json = json.loads(error_text)
+        if (
+            error_json.get("status") == "RESOURCE_EXHAUSTED"
+            or error_json.get("type") == "throttling_error"
+        ):
+            return True
+    except Exception:
+        pass
+    # Fallback to normalized string matching
+    normalized = error_text.replace(" ", "").lower()
     return (
-        "litellm.RateLimitError" in error_text
-        or '"status": "RESOURCE_EXHAUSTED"' in error_text
-        or '"type":"throttling_error"' in error_text
+        "litellm.ratelimiterror" in normalized
+        or '"status":"resource_exhausted"' in normalized
+        or '"type":"throttling_error"' in normalized
     )
 
 
