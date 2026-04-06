@@ -60,7 +60,7 @@ class _FakeLiteLLMHTTPClient:
         return _FakeResponse({})
 
     async def request(
-        self, method: str, url: str, params=None, json=None, headers=None
+        self, method: str, url: str, params=None, json=None, headers=None, timeout=None
     ):
         if method.upper() == "GET":
             return await self.get(url, params=params, headers=headers)
