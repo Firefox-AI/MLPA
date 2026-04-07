@@ -98,7 +98,6 @@ filterwarnings = [
 APP_ATTEST_QA = "true"
 
 [tool.ty.rules]
-# Warnings only until existing diagnostics are addressed; switch to "error" for strict gating.
 all = "error"
 
 [tool.ty.src]
