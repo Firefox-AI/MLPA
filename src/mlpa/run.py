@@ -1,7 +1,7 @@
 import json
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Annotated, Optional
+from typing import Annotated, Any, cast
 
 import sentry_sdk
 import uvicorn
@@ -157,11 +157,11 @@ Authorize first using App Attest, Play Integrity, FxA, or dev tier.
     "/v1/chat/completions",
     tags=["LiteLLM"],
     description=CHAT_COMPLETION_DESCRIPTION.strip(),
-    responses=RATE_LIMIT_ERROR_RESPONSE,
+    responses=cast(dict[int | str, dict[str, Any]], RATE_LIMIT_ERROR_RESPONSE),
 )
 async def chat_completion(
     authorized_chat_request: Annotated[
-        Optional[AuthorizedChatRequest], Depends(authorize_request)
+        AuthorizedChatRequest, Depends(authorize_request)
     ],
 ):
     user_id = authorized_chat_request.user

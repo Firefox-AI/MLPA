@@ -93,7 +93,7 @@ async def attest(
             attestationAuth.key_id_b64,
             challenge_bytes,
             attestation_obj,
-            use_qa_certificates,
+            bool(use_qa_certificates),
             attestationAuth.bundle_id,
         )
     except ValueError as e:

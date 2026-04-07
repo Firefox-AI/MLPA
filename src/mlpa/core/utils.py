@@ -3,6 +3,7 @@ import base64
 import json
 import time
 from functools import lru_cache
+from typing import Any, Literal, NoReturn, cast, overload
 
 from fastapi import HTTPException
 from fxa.oauth import Client
@@ -153,7 +154,7 @@ def parse_app_attest_jwt(authorization: str, type: str):
         token = authorization.removeprefix("Bearer ").strip()
         value = decode(
             token,
-            DecodingKey.from_secret(b""),
+            cast(Any, DecodingKey.from_secret(b"")),
             ValidationOptions(
                 required_spec_claims={"iat"},
                 aud=None,
@@ -167,9 +168,9 @@ def parse_app_attest_jwt(authorization: str, type: str):
             ),
         )
         if type == "attest":
-            appAuth = AttestationAuth(**value)
+            appAuth = AttestationAuth.model_validate(value)
         elif type == "assert":
-            appAuth = AssertionAuth(**value)
+            appAuth = AssertionAuth.model_validate(value)
         else:
             raise HTTPException(status_code=400, detail="Invalid App Attest type")
     except Exception as e:
@@ -181,12 +182,30 @@ def parse_app_attest_jwt(authorization: str, type: str):
 GENERIC_UPSTREAM_ERROR = "Upstream service returned an error"
 
 
+@overload
+def raise_and_log(
+    e: Exception,
+    stream: Literal[True],
+    response_code: int | None = None,
+    response_text_prefix: str | None = None,
+) -> bytes: ...
+
+
+@overload
+def raise_and_log(
+    e: Exception,
+    stream: Literal[False] = False,
+    response_code: int | None = None,
+    response_text_prefix: str | None = None,
+) -> NoReturn: ...
+
+
 def raise_and_log(
     e: Exception,
     stream: bool = False,
     response_code: int | None = None,
     response_text_prefix: str | None = None,
-):
+) -> bytes | NoReturn:
     """
     Log an upstream exception and return or raise a standardized FastAPI response.
 
@@ -261,4 +280,8 @@ def issue_mlpa_access_token(user_id: str) -> str:
         "iss": "mlpa",
         "typ": "mlpa_access",
     }
-    return encode(payload, env.MLPA_ACCESS_TOKEN_SECRET, algorithm="HS256")
+    return encode(
+        cast(Any, payload),
+        env.MLPA_ACCESS_TOKEN_SECRET,
+        algorithm="HS256",
+    )

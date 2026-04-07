@@ -1,6 +1,6 @@
 import asyncio
 import json
-from typing import Annotated, Optional
+from typing import Annotated
 
 import jwt
 from fastapi import APIRouter, Depends, Header, HTTPException
@@ -75,7 +75,7 @@ async def mock_stream():
 )
 async def chat_completion(
     authorized_chat_request: Annotated[
-        Optional[AuthorizedChatRequest], Depends(authorize_request)
+        AuthorizedChatRequest, Depends(authorize_request)
     ],
 ):
     user_id = authorized_chat_request.user

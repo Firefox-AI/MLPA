@@ -59,7 +59,11 @@ test = [
     "pytest-mock==3.15.1",
     "tqdm==4.67.1",
 ]
-lint = ["pre_commit==4.3.0", "ruff==0.14.0"]
+lint = [
+    "pre_commit==4.3.0",
+    "ruff==0.14.0",
+    "ty==0.0.29",
+]
 qa = [ "typer==0.12.5"]
 
 
@@ -92,3 +96,13 @@ filterwarnings = [
 
 [tool.pytest_env]
 APP_ATTEST_QA = "true"
+
+[tool.ty.rules]
+# Warnings only until existing diagnostics are addressed; switch to "error" for strict gating.
+all = "error"
+
+[tool.ty.src]
+include = ["src/mlpa"]
+
+[tool.ty.environment]
+python-version = "3.12"

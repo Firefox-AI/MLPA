@@ -10,7 +10,7 @@ class AppAttestPGService(PGService):
     # Challenges #
     async def store_challenge(self, key_id_b64: str, challenge: str):
         try:
-            await self.pg.fetchval(
+            await self.pool.fetchval(
                 """
                 INSERT INTO challenges (key_id_b64, challenge)
                 VALUES ($1, $2)
@@ -27,7 +27,7 @@ class AppAttestPGService(PGService):
 
     async def get_challenge(self, key_id_b64: str) -> dict | None:
         try:
-            return await self.pg.fetchrow(
+            return await self.pool.fetchrow(
                 "SELECT challenge, created_at FROM challenges WHERE key_id_b64 = $1",
                 key_id_b64,
             )
@@ -36,7 +36,7 @@ class AppAttestPGService(PGService):
 
     async def delete_challenge(self, key_id_b64: str):
         try:
-            await self.pg.fetchval(
+            await self.pool.fetchval(
                 "DELETE FROM challenges WHERE key_id_b64 = $1 RETURNING 1",
                 key_id_b64,
             )
@@ -46,7 +46,7 @@ class AppAttestPGService(PGService):
     # Keys #
     async def store_key(self, key_id_b64: str, public_key_pem: str, counter: int):
         try:
-            await self.pg.execute(
+            await self.pool.execute(
                 """
                 INSERT INTO public_keys (key_id_b64, public_key_pem, counter, updated_at)
                 VALUES ($1, $2, $3, NOW())
@@ -64,7 +64,7 @@ class AppAttestPGService(PGService):
 
     async def get_key(self, key_id_b64: str) -> dict | None:
         try:
-            return await self.pg.fetchrow(
+            return await self.pool.fetchrow(
                 "SELECT public_key_pem, counter FROM public_keys WHERE key_id_b64 = $1",
                 key_id_b64,
             )
@@ -74,7 +74,7 @@ class AppAttestPGService(PGService):
 
     async def update_key_counter(self, key_id_b64: str, counter: int):
         try:
-            await self.pg.fetchval(
+            await self.pool.fetchval(
                 """
                 UPDATE public_keys
                 SET counter = $2,
@@ -90,7 +90,7 @@ class AppAttestPGService(PGService):
 
     async def delete_key(self, key_id_b64: str):
         try:
-            await self.pg.execute(
+            await self.pool.execute(
                 "DELETE FROM public_keys WHERE key_id_b64 = $1", key_id_b64
             )
         except Exception as e:

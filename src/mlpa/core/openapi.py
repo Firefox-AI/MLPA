@@ -1,3 +1,5 @@
+from typing import Any, cast
+
 from fastapi import FastAPI
 from fastapi.openapi.utils import get_openapi
 
@@ -8,7 +10,7 @@ from mlpa.core.config import env
 def customize_openapi(app: FastAPI, tags_metadata: list[dict]) -> None:
     """Add AttestationAuth and AssertionAuth schemas to OpenAPI docs."""
 
-    def _openapi():
+    def _openapi() -> dict[str, Any]:
         if app.openapi_schema:
             return app.openapi_schema
         openapi_schema = get_openapi(
@@ -68,4 +70,4 @@ def customize_openapi(app: FastAPI, tags_metadata: list[dict]) -> None:
         app.openapi_schema = openapi_schema
         return app.openapi_schema
 
-    app.openapi = _openapi
+    app.openapi = cast(Any, _openapi)
