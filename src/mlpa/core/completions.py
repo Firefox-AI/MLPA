@@ -11,6 +11,7 @@ from mlpa.core.config import (
     ERROR_CODE_MAX_USERS_REACHED,
     ERROR_CODE_RATE_LIMIT_EXCEEDED,
     ERROR_CODE_REQUEST_TOO_LARGE,
+    ERROR_CODE_UPSTREAM_ERROR,
     LITELLM_COMPLETION_AUTH_HEADERS,
     LITELLM_COMPLETIONS_URL,
     env,
@@ -26,6 +27,7 @@ from mlpa.core.prometheus_metrics import (
 from mlpa.core.utils import (
     get_or_create_user,
     is_context_window_error,
+    is_litellm_upstream_rate_limit,
     is_rate_limit_error,
     litellm_request,
     log_litellm_retry_attempt,
@@ -39,6 +41,7 @@ _RATE_LIMIT_REJECTION: dict[int, tuple[PrometheusRejectionReason, str]] = {
         "86400",
     ),
     ERROR_CODE_RATE_LIMIT_EXCEEDED: (PrometheusRejectionReason.RATE_LIMITED, "60"),
+    ERROR_CODE_UPSTREAM_ERROR: (PrometheusRejectionReason.UPSTREAM_ERROR, "60"),
 }
 
 
@@ -90,6 +93,8 @@ def _parse_rate_limit_error(error_text: str, user: str) -> int | None:
         elif is_rate_limit_error(error_data, ["rate"]):
             logger.warning(f"Rate limit exceeded for user {user}: {error_text}")
             return ERROR_CODE_RATE_LIMIT_EXCEEDED
+        elif is_litellm_upstream_rate_limit(error_text):
+            return ERROR_CODE_UPSTREAM_ERROR
     except (json.JSONDecodeError, AttributeError, UnicodeDecodeError):
         pass
 
