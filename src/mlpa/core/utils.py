@@ -62,19 +62,16 @@ def is_litellm_upstream_rate_limit(error_text: str) -> bool:
 
 def log_litellm_retry_attempt(retry_state) -> None:
     exception = retry_state.outcome.exception()
+    next_wait = getattr(retry_state.next_action, "sleep", "?")
     if isinstance(exception, httpx.HTTPStatusError):
         logger.warning(
-            "Retrying LiteLLM request: attempt "
-            f"{retry_state.attempt_number}, status_code="
-            f"{exception.response.status_code}, "
-            f"next wait {retry_state.next_action.sleep}s"
+            f"Retrying LiteLLM request: attempt {retry_state.attempt_number}, "
+            f"status_code={exception.response.status_code}, next wait {next_wait}s"
         )
     else:
         logger.warning(
-            "Retrying LiteLLM request: attempt "
-            f"{retry_state.attempt_number}, error_type="
-            f"{type(exception).__name__}, "
-            f"next wait {retry_state.next_action.sleep}s"
+            f"Retrying LiteLLM request: attempt {retry_state.attempt_number}, "
+            f"error_type={type(exception).__name__}, next wait {next_wait}s"
         )
 
 

@@ -190,6 +190,34 @@ async def test_call_litellm_with_retry_retries_on_upstream_429(mocker):
     assert mock_client.request.await_count == 2
 
 
+async def test_call_litellm_with_retry_exhausts_on_upstream_429(mocker):
+    error_text = (
+        '{"error":{"message":"litellm.RateLimitError: Vertex_aiException - '
+        '[{\\"error\\":{\\"code\\":429,\\"message\\":\\"throttled\\",'
+        '\\"status\\":\\"RESOURCE_EXHAUSTED\\"}}]",'
+        '"type":"throttling_error","code":"429"}}'
+    )
+    request = httpx.Request("POST", LITELLM_COMPLETIONS_URL)
+    response_429 = httpx.Response(429, request=request, content=error_text.encode())
+
+    mock_client = AsyncMock()
+    mock_client.request = AsyncMock(side_effect=[response_429] * 5)
+
+    mocker.patch.object(_call_litellm_with_retry.retry, "sleep", new=AsyncMock())
+
+    with pytest.raises(httpx.HTTPStatusError):
+        await _call_litellm_with_retry(
+            mock_client,
+            "POST",
+            LITELLM_COMPLETIONS_URL,
+            {},
+            {},
+            1.0,
+        )
+
+    assert mock_client.request.await_count == 5
+
+
 async def test_get_completion_litellm_routing_with_fallback(mocker):
     mock_response = MagicMock()
     mock_response.json.return_value = SUCCESSFUL_CHAT_RESPONSE
