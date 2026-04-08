@@ -7,7 +7,11 @@ from fastapi import HTTPException
 from pytest_httpx import HTTPXMock, IteratorStream
 
 from mlpa.core.classes import AuthorizedChatRequest
-from mlpa.core.completions import get_completion, stream_completion
+from mlpa.core.completions import (
+    _call_litellm_with_retry,
+    get_completion,
+    stream_completion,
+)
 from mlpa.core.config import (
     ERROR_CODE_BUDGET_LIMIT_EXCEEDED,
     ERROR_CODE_RATE_LIMIT_EXCEEDED,
@@ -61,7 +65,7 @@ async def test_get_completion_success(mocker):
 
     # This mock will be the 'client' inside the 'async with' block
     mock_client = AsyncMock()
-    mock_client.post.return_value = mock_response
+    mock_client.request.return_value = mock_response
 
     # Patch the shared HTTP client accessor to return our mock client
     mock_get_client = mocker.patch("mlpa.core.completions.get_http_client")
@@ -75,8 +79,8 @@ async def test_get_completion_success(mocker):
 
     # Assert: Verify the behavior and outcome
     # 1. Check that the httpx client was used to make the correct call
-    mock_client.post.assert_awaited_once()
-    _, call_kwargs = mock_client.post.call_args
+    mock_client.request.assert_awaited_once()
+    _, call_kwargs = mock_client.request.call_args
     sent_json = call_kwargs.get("json", {})
     assert sent_json["model"] == SAMPLE_REQUEST.model
     assert sent_json["messages"] == SAMPLE_REQUEST.messages
@@ -157,6 +161,63 @@ async def test_get_completion_success(mocker):
     assert result_data == SUCCESSFUL_CHAT_RESPONSE
 
 
+async def test_call_litellm_with_retry_retries_on_upstream_429(mocker):
+    error_text = (
+        '{"error":{"message":"litellm.RateLimitError: Vertex_aiException - '
+        '[{\\"error\\":{\\"code\\":429,\\"message\\":\\"throttled\\",'
+        '\\"status\\":\\"RESOURCE_EXHAUSTED\\"}}]",'
+        '"type":"throttling_error","code":"429"}}'
+    )
+    request = httpx.Request("POST", LITELLM_COMPLETIONS_URL)
+    response_429 = httpx.Response(429, request=request, content=error_text.encode())
+    response_200 = httpx.Response(200, request=request, content=b'{"ok": true}')
+
+    mock_client = AsyncMock()
+    mock_client.request = AsyncMock(side_effect=[response_429, response_200])
+
+    mocker.patch.object(_call_litellm_with_retry.retry, "sleep", new=AsyncMock())
+
+    response = await _call_litellm_with_retry(
+        mock_client,
+        "POST",
+        LITELLM_COMPLETIONS_URL,
+        {},
+        {},
+        1.0,
+    )
+
+    assert response.status_code == 200
+    assert mock_client.request.await_count == 2
+
+
+async def test_call_litellm_with_retry_exhausts_on_upstream_429(mocker):
+    error_text = (
+        '{"error":{"message":"litellm.RateLimitError: Vertex_aiException - '
+        '[{\\"error\\":{\\"code\\":429,\\"message\\":\\"throttled\\",'
+        '\\"status\\":\\"RESOURCE_EXHAUSTED\\"}}]",'
+        '"type":"throttling_error","code":"429"}}'
+    )
+    request = httpx.Request("POST", LITELLM_COMPLETIONS_URL)
+    response_429 = httpx.Response(429, request=request, content=error_text.encode())
+
+    mock_client = AsyncMock()
+    mock_client.request = AsyncMock(side_effect=[response_429] * 5)
+
+    mocker.patch.object(_call_litellm_with_retry.retry, "sleep", new=AsyncMock())
+
+    with pytest.raises(httpx.HTTPStatusError):
+        await _call_litellm_with_retry(
+            mock_client,
+            "POST",
+            LITELLM_COMPLETIONS_URL,
+            {},
+            {},
+            1.0,
+        )
+
+    assert mock_client.request.await_count == 5
+
+
 async def test_get_completion_litellm_routing_with_fallback(mocker):
     mock_response = MagicMock()
     mock_response.json.return_value = SUCCESSFUL_CHAT_RESPONSE
@@ -169,7 +230,7 @@ async def test_get_completion_litellm_routing_with_fallback(mocker):
     mock_response.raise_for_status.return_value = None
 
     mock_client = AsyncMock()
-    mock_client.post.return_value = mock_response
+    mock_client.request.return_value = mock_response
     mocker.patch("mlpa.core.completions.get_http_client", return_value=mock_client)
     mock_metrics = mocker.patch("mlpa.core.completions.metrics")
 
@@ -202,7 +263,7 @@ async def test_get_completion_litellm_routing_skips_invalid_optional_headers(moc
     mock_response.raise_for_status.return_value = None
 
     mock_client = AsyncMock()
-    mock_client.post.return_value = mock_response
+    mock_client.request.return_value = mock_response
     mocker.patch("mlpa.core.completions.get_http_client", return_value=mock_client)
     mock_metrics = mocker.patch("mlpa.core.completions.metrics")
 
@@ -221,7 +282,7 @@ async def test_get_completion_litellm_routing_skips_negative_duration_ms(mocker)
     mock_response.raise_for_status.return_value = None
 
     mock_client = AsyncMock()
-    mock_client.post.return_value = mock_response
+    mock_client.request.return_value = mock_response
     mocker.patch("mlpa.core.completions.get_http_client", return_value=mock_client)
     mock_metrics = mocker.patch("mlpa.core.completions.metrics")
 
@@ -245,7 +306,7 @@ async def test_get_completion_http_error(mocker):
     mock_response.raise_for_status.side_effect = mock_http_status_error
 
     mock_client = AsyncMock()
-    mock_client.post.return_value = mock_response
+    mock_client.request.return_value = mock_response
     mock_get_client = mocker.patch("mlpa.core.completions.get_http_client")
     mock_get_client.return_value = mock_client
 
@@ -280,12 +341,14 @@ async def test_get_completion_network_error(mocker):
     """
     # Arrange: Mock httpx to raise a network error
     mock_client = AsyncMock()
-    mock_client.post.side_effect = httpx.TimeoutException("Connection timed out")
+    mock_client.request.side_effect = httpx.TimeoutException("Connection timed out")
     mock_get_client = mocker.patch("mlpa.core.completions.get_http_client")
     mock_get_client.return_value = mock_client
 
     mock_metrics = mocker.patch("mlpa.core.completions.metrics")
     mocker.patch.object(env, "MLPA_DEBUG", True)
+
+    mocker.patch.object(_call_litellm_with_retry.retry, "sleep", new=AsyncMock())
 
     # Act & Assert: Expect an HTTPException
     with pytest.raises(HTTPException) as exc_info:
@@ -458,7 +521,7 @@ async def test_get_completion_budget_limit_exceeded_429(mocker):
     mock_response.raise_for_status.side_effect = mock_http_status_error
 
     mock_client = AsyncMock()
-    mock_client.post.return_value = mock_response
+    mock_client.request.return_value = mock_response
     mock_get_client = mocker.patch("mlpa.core.completions.get_http_client")
     mock_get_client.return_value = mock_client
 
@@ -512,7 +575,7 @@ async def test_get_completion_budget_limit_exceeded_400(mocker):
     mock_response.raise_for_status.side_effect = mock_http_status_error
 
     mock_client = AsyncMock()
-    mock_client.post.return_value = mock_response
+    mock_client.request.return_value = mock_response
     mock_get_client = mocker.patch("mlpa.core.completions.get_http_client")
     mock_get_client.return_value = mock_client
 
@@ -558,7 +621,7 @@ async def test_get_completion_rate_limit_exceeded(mocker):
     mock_response.raise_for_status.side_effect = mock_http_status_error
 
     mock_client = AsyncMock()
-    mock_client.post.return_value = mock_response
+    mock_client.request.return_value = mock_response
     mock_get_client = mocker.patch("mlpa.core.completions.get_http_client")
     mock_get_client.return_value = mock_client
 
@@ -604,7 +667,7 @@ async def test_get_completion_400_non_rate_limit_error(mocker):
     mock_response.raise_for_status.side_effect = mock_http_status_error
 
     mock_client = AsyncMock()
-    mock_client.post.return_value = mock_response
+    mock_client.request.return_value = mock_response
     mock_get_client = mocker.patch("mlpa.core.completions.get_http_client")
     mock_get_client.return_value = mock_client
     mocker.patch.object(env, "MLPA_DEBUG", False)
@@ -634,7 +697,7 @@ async def test_get_completion_429_non_rate_limit_error(mocker):
     mock_response.raise_for_status.side_effect = mock_http_status_error
 
     mock_client = AsyncMock()
-    mock_client.post.return_value = mock_response
+    mock_client.request.return_value = mock_response
     mock_get_client = mocker.patch("mlpa.core.completions.get_http_client")
     mock_get_client.return_value = mock_client
 
@@ -667,7 +730,7 @@ async def test_get_completion_context_window_exceeded(mocker):
     mock_response.raise_for_status.side_effect = mock_http_status_error
 
     mock_client = AsyncMock()
-    mock_client.post.return_value = mock_response
+    mock_client.request.return_value = mock_response
     mock_get_client = mocker.patch("mlpa.core.completions.get_http_client")
     mock_get_client.return_value = mock_client
 
@@ -711,7 +774,7 @@ async def test_get_completion_429_invalid_json(mocker):
     mock_response.raise_for_status.side_effect = mock_http_status_error
 
     mock_client = AsyncMock()
-    mock_client.post.return_value = mock_response
+    mock_client.request.return_value = mock_response
     mock_get_client = mocker.patch("mlpa.core.completions.get_http_client")
     mock_get_client.return_value = mock_client
 
@@ -1095,7 +1158,7 @@ async def test_get_completion_preserves_tools(mocker):
     mock_response.raise_for_status.return_value = None
 
     mock_client = AsyncMock()
-    mock_client.post.return_value = mock_response
+    mock_client.request.return_value = mock_response
 
     mock_get_client = mocker.patch("mlpa.core.completions.get_http_client")
     mock_get_client.return_value = mock_client
@@ -1104,8 +1167,8 @@ async def test_get_completion_preserves_tools(mocker):
 
     await get_completion(request_with_tools)
 
-    mock_client.post.assert_awaited_once()
-    _, call_kwargs = mock_client.post.call_args
+    mock_client.request.assert_awaited_once()
+    _, call_kwargs = mock_client.request.call_args
     sent_json = call_kwargs.get("json", {})
 
     assert sent_json["tools"] == tools

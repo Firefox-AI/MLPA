@@ -59,6 +59,15 @@ class _FakeLiteLLMHTTPClient:
 
         return _FakeResponse({})
 
+    async def request(
+        self, method: str, url: str, params=None, json=None, headers=None, timeout=None
+    ):
+        if method.upper() == "GET":
+            return await self.get(url, params=params, headers=headers)
+        if method.upper() == "POST":
+            return await self.post(url, json=json, headers=headers)
+        return _FakeResponse({})
+
 
 def test_managed_cap_rejects_new_identities_and_s2s_bypasses(
     mocked_client_integration, mocker

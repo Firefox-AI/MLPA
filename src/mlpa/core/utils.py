@@ -5,9 +5,11 @@ import time
 from functools import lru_cache
 from typing import Any, Literal, NoReturn, cast, overload
 
+import httpx
 from fastapi import HTTPException
 from fxa.oauth import Client
 from jwtoxide import DecodingKey, ValidationOptions, decode, encode
+from tenacity import retry, stop_after_attempt, wait_exponential
 
 from mlpa.core.classes import AssertionAuth, AttestationAuth
 from mlpa.core.config import (
@@ -18,6 +20,130 @@ from mlpa.core.config import (
 from mlpa.core.http_client import get_http_client
 from mlpa.core.logger import logger
 from mlpa.core.pg_services.services import litellm_pg
+
+
+def should_retry_on_litellm_error(exception: Exception) -> bool:
+    if isinstance(exception, httpx.HTTPStatusError):
+        status_code = exception.response.status_code
+        if status_code == 429:
+            return is_litellm_upstream_rate_limit(exception.response.text)
+        return status_code in {502, 503, 504}
+    return isinstance(
+        exception,
+        (
+            httpx.TimeoutException,
+            httpx.ConnectError,
+            httpx.RemoteProtocolError,
+        ),
+    )
+
+
+def is_litellm_upstream_rate_limit(error_text: str) -> bool:
+    """Detect upstream LiteLLM throttling errors for retry."""
+    if not error_text:
+        return False
+    # Try to parse as JSON and check fields
+    try:
+        error_json = json.loads(error_text)
+        if (
+            error_json.get("status") == "RESOURCE_EXHAUSTED"
+            or error_json.get("type") == "throttling_error"
+        ):
+            return True
+    except Exception:
+        pass
+    # Fallback to normalized string matching
+    normalized = error_text.replace(" ", "").lower()
+    return (
+        "litellm.ratelimiterror" in normalized
+        or '"status":"resource_exhausted"' in normalized
+        or '"type":"throttling_error"' in normalized
+    )
+
+
+def log_litellm_retry_attempt(retry_state) -> None:
+    exception = retry_state.outcome.exception()
+    next_wait = getattr(retry_state.next_action, "sleep", "?")
+    if isinstance(exception, httpx.HTTPStatusError):
+        logger.warning(
+            f"Retrying LiteLLM request: attempt {retry_state.attempt_number}, "
+            f"status_code={exception.response.status_code}, next wait {next_wait}s"
+        )
+    else:
+        logger.warning(
+            f"Retrying LiteLLM request: attempt {retry_state.attempt_number}, "
+            f"error_type={type(exception).__name__}, next wait {next_wait}s"
+        )
+
+
+async def litellm_request(
+    client: httpx.AsyncClient,
+    method: str,
+    url: str,
+    headers: dict,
+    params: dict | None = None,
+    json: dict | None = None,
+    timeout: float | None = None,
+    stream: bool = False,
+):
+    if stream:
+        request = client.build_request(method, url, headers=headers, json=json)
+        if timeout is not None:
+            request.extensions["timeout"] = {
+                "connect": timeout,
+                "read": timeout,
+                "write": timeout,
+                "pool": timeout,
+            }
+        response = await client.send(request, stream=True)
+    else:
+        response = await client.request(
+            method, url, headers=headers, params=params, json=json, timeout=timeout
+        )
+
+    status_code = getattr(response, "status_code", None)
+    if isinstance(status_code, int) and status_code >= 400:
+        try:
+            await response.aread()
+        except (AttributeError, TypeError):
+            pass
+        if stream:
+            await response.aclose()
+        response.raise_for_status()
+    return response
+
+
+@retry(
+    wait=wait_exponential(multiplier=1, min=1, max=4),
+    stop=stop_after_attempt(5),
+    retry=lambda state: (
+        should_retry_on_litellm_error(state.outcome.exception())
+        if state.outcome.failed
+        else False
+    ),
+    before_sleep=log_litellm_retry_attempt,
+    reraise=True,
+)
+async def litellm_request_with_retry(
+    client: httpx.AsyncClient,
+    method: str,
+    url: str,
+    headers: dict,
+    params: dict | None = None,
+    json: dict | None = None,
+    timeout: float | None = None,
+    stream: bool = False,
+):
+    return await litellm_request(
+        client,
+        method,
+        url,
+        headers,
+        params=params,
+        json=json,
+        timeout=timeout,
+        stream=stream,
+    )
 
 
 async def get_or_create_user(user_id: str):
@@ -39,10 +165,13 @@ async def get_or_create_user(user_id: str):
     claimed_new_identity = False
     try:
         params = {"end_user_id": user_id}
-        response = await client.get(
+
+        response = await litellm_request_with_retry(
+            client,
+            "GET",
             f"{env.LITELLM_API_BASE}/customer/info",
-            params=params,
             headers=LITELLM_MASTER_AUTH_HEADERS,
+            params=params,
         )
         user = response.json()
 
@@ -62,15 +191,19 @@ async def get_or_create_user(user_id: str):
                     )
                 claimed_new_identity = newly_claimed
 
-            await client.post(
+            await litellm_request_with_retry(
+                client,
+                "POST",
                 f"{env.LITELLM_API_BASE}/customer/new",
+                headers=LITELLM_MASTER_AUTH_HEADERS,
                 json={"user_id": user_id, "budget_id": budget_id},
-                headers=LITELLM_MASTER_AUTH_HEADERS,
             )
-            response = await client.get(
+            response = await litellm_request_with_retry(
+                client,
+                "GET",
                 f"{env.LITELLM_API_BASE}/customer/info",
-                params=params,
                 headers=LITELLM_MASTER_AUTH_HEADERS,
+                params=params,
             )
 
             created_user = response.json()
