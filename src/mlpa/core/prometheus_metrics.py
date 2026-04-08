@@ -75,7 +75,11 @@ class PrometheusMetrics:
     validate_app_attest_latency: Histogram
     validate_app_assert_latency: Histogram
     validate_fxa_latency: Histogram
+    validate_play_latency: Histogram
+    validate_access_token_latency: Histogram
     fxa_verifications_total: Counter
+    play_verifications_total: Counter
+    access_token_verifications_total: Counter
     chat_completion_latency: Histogram
     chat_completion_ttft: Histogram
     chat_tokens: Counter
@@ -137,10 +141,30 @@ metrics = PrometheusMetrics(
         ["result", "verification_source"],
         buckets=BUCKETS_FXA,
     ),
+    validate_play_latency=Histogram(
+        "mlpa_validate_play_latency_seconds",
+        "Play Integrity authentication latency in seconds.",
+        ["result"],
+        buckets=BUCKETS_AUTH,
+    ),
+    validate_access_token_latency=Histogram(
+        "mlpa_validate_access_token_latency_seconds",
+        "Access token authentication latency in seconds.",
+        ["result"],
+        buckets=BUCKETS_AUTH,
+    ),
     fxa_verifications_total=Counter(
         "mlpa_fxa_verifications_total",
         "Total number of FxA token verifications.",
         ["verification_source"],
+    ),
+    play_verifications_total=Counter(
+        "mlpa_play_verifications_total",
+        "Total number of Play Integrity token verifications.",
+    ),
+    access_token_verifications_total=Counter(
+        "mlpa_access_token_verifications_total",
+        "Total number of Access token verifications.",
     ),
     chat_completion_latency=Histogram(
         "mlpa_chat_completion_latency_seconds",

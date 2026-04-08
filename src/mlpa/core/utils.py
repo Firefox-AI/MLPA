@@ -18,6 +18,7 @@ from mlpa.core.config import (
 from mlpa.core.http_client import get_http_client
 from mlpa.core.logger import logger
 from mlpa.core.pg_services.services import litellm_pg
+from mlpa.core.prometheus_metrics import PrometheusResult, metrics
 
 
 async def get_or_create_user(user_id: str):
@@ -249,8 +250,10 @@ def raise_and_log(
 
 
 def extract_user_from_play_integrity_jwt(authorization: str):
+    start_time = time.perf_counter()
     token = authorization.removeprefix("Bearer ").split()[0]
     try:
+        result = PrometheusResult.ERROR
         payload = decode(
             token,
             env.MLPA_ACCESS_TOKEN_SECRET,
@@ -265,10 +268,16 @@ def extract_user_from_play_integrity_jwt(authorization: str):
                 algorithms=["HS256"],
             ),
         )
+        result = PrometheusResult.SUCCESS
+        metrics.access_token_verifications_total.inc()
         return payload["sub"]
     except Exception as e:
         logger.error(f"Play Integrity JWT decode error: {e}")
         raise HTTPException(status_code=401, detail="Invalid MLPA access token")
+    finally:
+        metrics.validate_access_token_latency.labels(result=result).observe(
+            time.perf_counter() - start_time
+        )
 
 
 def issue_mlpa_access_token(user_id: str) -> str:
