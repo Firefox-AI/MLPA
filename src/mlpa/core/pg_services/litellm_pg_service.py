@@ -14,7 +14,7 @@ class LiteLLMPGService(PGService):
         super().__init__(env.LITELLM_DB_NAME)
 
     async def get_user(self, user_id: str):
-        user = await self.pg.fetchrow(
+        user = await self.pool.fetchrow(
             'SELECT * FROM "LiteLLM_EndUserTable" WHERE user_id = $1',
             user_id,
         )
@@ -23,7 +23,7 @@ class LiteLLMPGService(PGService):
     async def update_user_budget(self, user_id: str, budget_id: str) -> dict:
         """Update a user's budget by linking them to a different budget tier."""
         try:
-            async with self.pg.acquire() as conn:
+            async with self.pool.acquire() as conn:
                 async with conn.transaction():
                     updated_user_record = await conn.fetchrow(
                         'UPDATE "LiteLLM_EndUserTable" SET "budget_id" = $1 WHERE user_id = $2 RETURNING *',
@@ -49,7 +49,7 @@ class LiteLLMPGService(PGService):
 
     async def block_user(self, user_id: str, blocked: bool = True) -> dict:
         try:
-            async with self.pg.acquire() as conn:
+            async with self.pool.acquire() as conn:
                 async with conn.transaction():
                     updated_user_record = await conn.fetchrow(
                         'UPDATE "LiteLLM_EndUserTable" SET "blocked" = $1 WHERE user_id = $2 RETURNING *',
@@ -77,10 +77,10 @@ class LiteLLMPGService(PGService):
 
     async def list_users(self, limit: int = 50, offset: int = 0) -> dict:
         try:
-            total = await self.pg.fetchval(
+            total = await self.pool.fetchval(
                 'SELECT COUNT(*) FROM "LiteLLM_EndUserTable"'
             )
-            users = await self.pg.fetch(
+            users = await self.pool.fetch(
                 'SELECT * FROM "LiteLLM_EndUserTable" ORDER BY user_id LIMIT $1 OFFSET $2',
                 limit,
                 offset,
@@ -106,7 +106,7 @@ class LiteLLMPGService(PGService):
         `{base_user_id}:{service_type}`.
         """
         try:
-            rows = await self.pg.fetch(
+            rows = await self.pool.fetch(
                 """
                 SELECT
                     split_part(user_id, ':', 2) AS service_type,
@@ -142,7 +142,7 @@ class LiteLLMPGService(PGService):
         Mirrors mlpa_user_capacity / mlpa_user_capacity_identities (updated at startup and on admit/release).
         """
         try:
-            row = await self.pg.fetchrow(
+            row = await self.pool.fetchrow(
                 """
                 SELECT max_identities, current_identities, updated_at
                 FROM mlpa_user_capacity
@@ -192,7 +192,7 @@ class LiteLLMPGService(PGService):
 
         for service_type, budget_config in user_feature_budgets.items():
             try:
-                await self.pg.fetchrow(
+                await self.pool.fetchrow(
                     """
                     INSERT INTO "LiteLLM_BudgetTable"
                     (budget_id, max_budget, rpm_limit, tpm_limit, budget_duration, created_at, updated_at, created_by, updated_by)
@@ -232,7 +232,7 @@ class LiteLLMPGService(PGService):
         """
         managed_service_types = list(env.MLPA_CAPPED_SERVICE_TYPES)
 
-        async with self.pg.acquire() as conn:
+        async with self.pool.acquire() as conn:
             async with conn.transaction():
                 await conn.execute(
                     """
@@ -309,7 +309,7 @@ class LiteLLMPGService(PGService):
         if not env.MLPA_ENFORCE_SIGNIN_CAP:
             return True, False
 
-        async with self.pg.acquire() as conn:
+        async with self.pool.acquire() as conn:
             async with conn.transaction():
                 await conn.execute(
                     f"SET LOCAL lock_timeout = '{env.MLPA_ADMISSION_LOCK_TIMEOUT_MS}ms'"
@@ -373,7 +373,7 @@ class LiteLLMPGService(PGService):
 
         managed_service_types = list(env.MLPA_CAPPED_SERVICE_TYPES)
 
-        async with self.pg.acquire() as conn:
+        async with self.pool.acquire() as conn:
             async with conn.transaction():
                 await conn.execute(
                     f"SET LOCAL lock_timeout = '{env.MLPA_ADMISSION_LOCK_TIMEOUT_MS}ms'"

@@ -5,6 +5,7 @@ import os
 import time
 from functools import lru_cache
 from pathlib import Path
+from typing import cast
 
 import cbor2
 from cryptography.hazmat.primitives import serialization
@@ -58,15 +59,20 @@ def _load_root_ca(use_qa_certificates: bool) -> bytes:
     return root_ca.public_bytes(serialization.Encoding.PEM)
 
 
+def _challenge_is_fresh(stored_challenge: dict | None) -> bool:
+    if not stored_challenge:
+        return False
+    created_at = stored_challenge.get("created_at")
+    return (
+        created_at is not None
+        and time.time() - created_at.timestamp() <= env.CHALLENGE_EXPIRY_SECONDS
+    )
+
+
 async def generate_client_challenge(key_id_b64: str) -> str:
     """Create a unique challenge tied to a key ID"""
-    # First check if challenge already exists for key_id (relevant security measure, & they're on PRIMARY KEY key_id_b64)
     stored_challenge = await app_attest_pg.get_challenge(key_id_b64)
-    if (
-        not stored_challenge
-        or time.time() - stored_challenge.get("created_at").timestamp()
-        > env.CHALLENGE_EXPIRY_SECONDS
-    ):
+    if stored_challenge is None or not _challenge_is_fresh(stored_challenge):
         challenge = binascii.hexlify(os.urandom(32)).decode(
             "utf-8"
         )  # Slightly faster than secrets.token_urlsafe(32)
@@ -83,11 +89,7 @@ async def validate_challenge(challenge: str, key_id_b64: str) -> bool:
     stored_challenge = await app_attest_pg.get_challenge(key_id_b64)
     await app_attest_pg.delete_challenge(key_id_b64)
     try:
-        if (
-            not stored_challenge
-            or time.time() - stored_challenge.get("created_at").timestamp()
-            > env.CHALLENGE_EXPIRY_SECONDS
-        ):
+        if stored_challenge is None or not _challenge_is_fresh(stored_challenge):
             return False
         is_valid = challenge == stored_challenge["challenge"]
         if is_valid:
@@ -195,7 +197,12 @@ async def verify_assert(
 
     result = PrometheusResult.ERROR
     try:
-        assertion_to_test = Assertion(assertion, expected_hash, public_key_obj, config)
+        assertion_to_test = Assertion(
+            assertion,
+            expected_hash,
+            cast(ec.EllipticCurvePublicKey, public_key_obj),
+            config,
+        )
         assertion_to_test.verify()
         try:
             unpacked_assertion = cbor2.loads(assertion)

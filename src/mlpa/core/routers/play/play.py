@@ -64,11 +64,11 @@ async def _decode_integrity_token(integrity_token: str, package_name: str) -> di
             timeout=env.PLAY_INTEGRITY_REQUEST_TIMEOUT_SECONDS,
         )
         response.raise_for_status()
+        return response.json()
     except httpx.HTTPStatusError as e:
         raise_and_log(e, False, 401)
     except Exception as e:
         raise_and_log(e, False, 502, "Play Integrity validation service unavailable")
-    return response.json()
 
 
 def _validate_integrity_payload(payload: dict, expected_hash: str) -> None:

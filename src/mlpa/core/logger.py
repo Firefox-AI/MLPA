@@ -1,5 +1,6 @@
 import logging
 import sys
+from typing import Any, cast
 
 import asyncpg
 import httpx
@@ -136,7 +137,7 @@ def _enable_httpx_logging():
             )
             return response
 
-        _wrapper.__mlpa_httpx_logging__ = True
+        cast(Any, _wrapper).__mlpa_httpx_logging__ = True
         return _wrapper
 
     for method_name in ("get", "post"):
@@ -172,5 +173,5 @@ def _enable_asyncpg_logging():
         )
         return result
 
-    _execute_wrapper.__mlpa_asyncpg_logging__ = True
-    asyncpg.connection.Connection.execute = _execute_wrapper
+    cast(Any, _execute_wrapper).__mlpa_asyncpg_logging__ = True
+    asyncpg.connection.Connection.execute = cast(Any, _execute_wrapper)

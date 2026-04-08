@@ -1,4 +1,5 @@
 import sys
+from typing import cast
 
 import asyncpg
 
@@ -11,9 +12,13 @@ class PGService:
 
     def __init__(self, db_name: str):
         self.db_name = db_name
-        self.db_url = f"{env.PG_DB_URL.rstrip('/')}/{db_name}"
+        self.db_url = f"{cast(str, env.PG_DB_URL).rstrip('/')}/{db_name}"
         self.connected = False
         self.pg = None
+
+    @property
+    def pool(self) -> asyncpg.Pool:
+        return cast(asyncpg.Pool, self.pg)
 
     async def connect(self):
         try:

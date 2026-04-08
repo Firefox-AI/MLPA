@@ -163,19 +163,32 @@ def _record_request_with_tools(req: AuthorizedChatRequest) -> None:
 
 
 def _record_tool_metrics(
-    model: str, service_type: str, purpose: str, tool_names: list[str]
+    model: str | None,
+    service_type: str,
+    purpose: str,
+    tool_names: list[str],
 ) -> None:
+    model_label = model or ""
     n_calls = len(tool_names)
     for name in tool_names:
         metrics.chat_tool_calls.labels(
-            tool_name=name, model=model, service_type=service_type, purpose=purpose
+            tool_name=name,
+            model=model_label,
+            service_type=service_type,
+            purpose=purpose,
         ).inc()
         metrics.chat_completions_with_tools.labels(
-            tool_name=name, model=model, service_type=service_type, purpose=purpose
+            tool_name=name,
+            model=model_label,
+            service_type=service_type,
+            purpose=purpose,
         ).inc()
         # Histogram: one observation per completion = total tool calls in that completion.
         metrics.chat_tool_calls_per_completion.labels(
-            tool_name=name, model=model, service_type=service_type, purpose=purpose
+            tool_name=name,
+            model=model_label,
+            service_type=service_type,
+            purpose=purpose,
         ).observe(n_calls)
 
 

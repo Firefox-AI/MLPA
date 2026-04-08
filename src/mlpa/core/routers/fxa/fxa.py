@@ -28,6 +28,8 @@ FXA_SCOPES = tuple(
 
 async def fxa_auth(authorization: Annotated[str | None, Header()]):
     start_time = time.perf_counter()
+    if not authorization:
+        raise HTTPException(status_code=401, detail="Missing authorization header")
     token = authorization.removeprefix("Bearer ").split()[0]
     result = PrometheusResult.ERROR
     verification_source = "unknown"

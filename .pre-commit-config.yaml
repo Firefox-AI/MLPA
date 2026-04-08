@@ -32,3 +32,12 @@ repos:
     rev: v0.3.1
     hooks:
       - id: absolufy-imports
+
+  - repo: local
+    hooks:
+      - id: ty-check
+        name: ty check
+        entry: uv run ty check
+        language: system
+        pass_filenames: false
+        files: ^(src/mlpa/.*\.(py|pyi)|pyproject\.toml)$

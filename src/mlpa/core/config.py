@@ -1,13 +1,12 @@
 from functools import cached_property
 
-from pydantic import ConfigDict
-from pydantic_settings import BaseSettings
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Env(BaseSettings):
     MLPA_DEBUG: bool = False
     APP_ATTEST_PRODUCTION: bool = False
-    PORT: int | None = 8080
+    PORT: int = 8080
 
     # User signup capacity gate (managed service types only)
     # Controlled by infra (env var), enforced without race conditions in DB.
@@ -262,7 +261,7 @@ class Env(BaseSettings):
     )
     PG_DB_URL: str | None = None
 
-    model_config = ConfigDict(env_file=".env")
+    model_config = SettingsConfigDict(env_file=".env")
 
     def __init__(self):
         super().__init__()

@@ -62,7 +62,9 @@ async def authorize_request(
         body_bytes = await request.body()
         assertionAuth = parse_app_attest_jwt(authorization, "assert")
         expected_hash = hashlib.sha256(body_bytes).digest()
-        data = await app_attest_auth(assertionAuth, expected_hash, use_qa_certificates)
+        data = await app_attest_auth(
+            assertionAuth, expected_hash, bool(use_qa_certificates)
+        )
         if not data or data.get("error"):
             raise HTTPException(status_code=401, detail=data["error"])
         return AuthorizedChatRequest(
