@@ -1,16 +1,16 @@
 model_list:
-  - model_name: vertex_ai/qwen/qwen3-235b-a22b-instruct-2507-maas
+  - model_name: qwen3-235b-a22b-instruct-2507-maas
     litellm_params:
       model: vertex_ai/qwen/qwen3-235b-a22b-instruct-2507-maas
       vertex_project: "fx-gen-ai-sandbox"
       vertex_location: "us-south1"
       vertex_credentials: "/app/service_account.json"
-  - model_name: vertex_ai/mistral-small-2503
+  - model_name: mistral-small-2503
     litellm_params:
       model: vertex_ai/mistral-small-2503
       vertex_project: "fx-gen-ai-sandbox"
       vertex_credentials: "/app/service_account.json"
-  - model_name: openai/gpt-4o
+  - model_name: gpt-4o
     litellm_params:
       model: openai/gpt-4o
       api_key: os.environ/OPENAI_API_KEY

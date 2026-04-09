@@ -24,7 +24,7 @@ fi
 
 echo "Preparing LiteLLM model cost map override..."
 curl -fsSL \
-  https://raw.githubusercontent.com/BerriAI/litellm/main/model_prices_and_context_window.json \
+  https://raw.githubusercontent.com/BerriAI/litellm/refs/tags/v1.82.0-stable/model_prices_and_context_window.json \
   -o "${COST_MAP_FILE}"
 
 jq --slurpfile overrides "${OVERRIDES_FILE}" '
