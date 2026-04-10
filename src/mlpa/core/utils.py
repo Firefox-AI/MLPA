@@ -134,6 +134,27 @@ def is_rate_limit_error(error_response: dict, keywords: list[str]) -> bool:
     return any(indicator in error_text for indicator in keywords)
 
 
+def is_litellm_upstream_rate_limit(error_text: str) -> bool:
+    """Detect upstream LiteLLM throttling errors for retry."""
+    if not error_text:
+        return False
+    try:
+        error_json = json.loads(error_text)
+        if (
+            error_json.get("status") == "RESOURCE_EXHAUSTED"
+            or error_json.get("type") == "throttling_error"
+        ):
+            return True
+    except Exception:
+        pass
+    normalized = error_text.replace(" ", "").lower()
+    return (
+        "litellm.ratelimiterror" in normalized
+        or '"status":"resource_exhausted"' in normalized
+        or '"type":"throttling_error"' in normalized
+    )
+
+
 def is_context_window_error(error_text: str) -> bool:
     """Check if the error indicates context window exceeded (LiteLLM/providers)."""
     if not error_text:
