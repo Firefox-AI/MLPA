@@ -388,10 +388,6 @@ async def get_completion(authorized_chat_request: AuthorizedChatRequest):
     """
     Proxies a non-streaming request to LiteLLM.
     """
-    raise HTTPException(
-        status_code=429,
-        detail={"error": ERROR_CODE_UPSTREAM_RATE_LIMIT_EXCEEDED},
-    )
     start_time = time.perf_counter()
     _record_request_with_tools(authorized_chat_request)
     body = {
