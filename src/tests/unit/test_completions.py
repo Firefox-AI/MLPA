@@ -12,6 +12,7 @@ from mlpa.core.config import (
     ERROR_CODE_BUDGET_LIMIT_EXCEEDED,
     ERROR_CODE_RATE_LIMIT_EXCEEDED,
     ERROR_CODE_REQUEST_TOO_LARGE,
+    ERROR_CODE_UPSTREAM_RATE_LIMIT_EXCEEDED,
     LITELLM_COMPLETIONS_URL,
     LITELLM_HEADER_ATTEMPTED_FALLBACKS,
     LITELLM_HEADER_ATTEMPTED_RETRIES,
@@ -649,6 +650,42 @@ async def test_get_completion_429_non_rate_limit_error(mocker):
     assert exc_info.value.detail == {"error": "Upstream service returned an error"}
 
 
+async def test_get_completion_upstream_rate_limit_error(mocker):
+    """
+    Tests that a 429 upstream throttling error returns error code 5.
+    """
+    mock_response = MagicMock()
+    mock_response.text = json.dumps(
+        {"status": "RESOURCE_EXHAUSTED", "type": "throttling_error"}
+    )
+    mock_response.status_code = 429
+
+    mock_http_status_error = httpx.HTTPStatusError(
+        "Too Many Requests", request=MagicMock(), response=mock_response
+    )
+    mock_response.raise_for_status.side_effect = mock_http_status_error
+
+    mock_client = AsyncMock()
+    mock_client.post.return_value = mock_response
+    mock_get_client = mocker.patch("mlpa.core.completions.get_http_client")
+    mock_get_client.return_value = mock_client
+
+    mock_metrics = mocker.patch("mlpa.core.completions.metrics")
+    mocker.patch.object(env, "MLPA_DEBUG", False)
+
+    with pytest.raises(HTTPException) as exc_info:
+        await get_completion(SAMPLE_REQUEST)
+
+    assert exc_info.value.status_code == 429
+    assert exc_info.value.detail == {"error": ERROR_CODE_UPSTREAM_RATE_LIMIT_EXCEEDED}
+    mock_metrics.chat_completion_latency.labels.assert_called_once_with(
+        result=PrometheusResult.ERROR,
+        model=SAMPLE_REQUEST.model,
+        service_type=SAMPLE_REQUEST.service_type,
+        purpose=SAMPLE_REQUEST.purpose,
+    )
+
+
 async def test_get_completion_context_window_exceeded(mocker):
     """
     Tests that a 400 error with context window exceeded message returns 413.
@@ -982,6 +1019,37 @@ async def test_stream_completion_429_non_rate_limit_error(
         == b'data: {"code": 429, "error": "Upstream service returned an error"}\n\n'
     )
     mock_logger.error.assert_called_once()
+    mock_metrics.chat_completion_latency.labels.assert_called_once_with(
+        result=PrometheusResult.ERROR,
+        model=SAMPLE_REQUEST.model,
+        service_type=SAMPLE_REQUEST.service_type,
+        purpose=SAMPLE_REQUEST.purpose,
+    )
+
+
+async def test_stream_completion_upstream_rate_limit_error(
+    httpx_mock: HTTPXMock, mocker
+):
+    """
+    Tests that a 429 upstream throttling error returns error code 5.
+    """
+    error_response = json.dumps(
+        {"status": "RESOURCE_EXHAUSTED", "type": "throttling_error"}
+    )
+    httpx_mock.add_response(
+        method="POST",
+        url=LITELLM_COMPLETIONS_URL,
+        content=error_response.encode(),
+        status_code=429,
+    )
+
+    mock_metrics = mocker.patch("mlpa.core.completions.metrics")
+
+    received_chunks = [chunk async for chunk in stream_completion(SAMPLE_REQUEST)]
+
+    assert received_chunks == [
+        f'data: {{"error": {ERROR_CODE_UPSTREAM_RATE_LIMIT_EXCEEDED}}}\n\n'.encode()
+    ]
     mock_metrics.chat_completion_latency.labels.assert_called_once_with(
         result=PrometheusResult.ERROR,
         model=SAMPLE_REQUEST.model,

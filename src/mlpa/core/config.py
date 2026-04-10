@@ -294,6 +294,7 @@ ERROR_CODE_BUDGET_LIMIT_EXCEEDED: int = 1
 ERROR_CODE_RATE_LIMIT_EXCEEDED: int = 2
 ERROR_CODE_REQUEST_TOO_LARGE: int = 3
 ERROR_CODE_MAX_USERS_REACHED: int = 4
+ERROR_CODE_UPSTREAM_RATE_LIMIT_EXCEEDED: int = 5
 
 RATE_LIMIT_ERROR_RESPONSE = {
     429: {
@@ -305,7 +306,7 @@ RATE_LIMIT_ERROR_RESPONSE = {
                     "properties": {
                         "error": {
                             "type": "integer",
-                            "description": "Error code: 1 for budget limit exceeded, 2 for rate limit exceeded",
+                            "description": "Error code: 1 for budget limit exceeded, 2 for rate limit exceeded, 5 for upstream rate limit exceeded",
                         }
                     },
                     "required": ["error"],
@@ -320,6 +321,11 @@ RATE_LIMIT_ERROR_RESPONSE = {
                         "summary": "Rate limit exceeded",
                         "value": {"error": ERROR_CODE_RATE_LIMIT_EXCEEDED},
                         "description": "Rate limit exceeded (TPM/RPM). Check Retry-After header (60 seconds).",
+                    },
+                    "upstream_rate_limit_exceeded": {
+                        "summary": "Upstream rate limit exceeded",
+                        "value": {"error": ERROR_CODE_UPSTREAM_RATE_LIMIT_EXCEEDED},
+                        "description": "Upstream provider rate limit exceeded.",
                     },
                 },
             }
