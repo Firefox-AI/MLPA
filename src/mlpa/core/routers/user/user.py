@@ -8,7 +8,7 @@ from mlpa.core.classes import BudgetUpdatePayload
 from mlpa.core.config import LITELLM_MASTER_AUTH_HEADERS, env
 from mlpa.core.http_client import get_http_client
 from mlpa.core.logger import logger
-from mlpa.core.pg_services.services import litellm_pg
+from mlpa.core.pg_services.services import app_attest_pg, litellm_pg
 from mlpa.core.utils import raise_and_log
 
 router = APIRouter()
@@ -65,7 +65,7 @@ async def signup_cap_status(
     _: Annotated[None, Depends(require_ui_access_key)] = None,
 ):
     """Managed signup capacity for capped service types (MLPA_UI_ACCESS_KEY)."""
-    return await litellm_pg.get_signup_cap_status()
+    return await app_attest_pg.get_signup_cap_status()
 
 
 @router.get("/{user_id}", tags=["User"])

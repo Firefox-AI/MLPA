@@ -14,8 +14,14 @@ DB_PASSWORD=${DB_PASSWORD:-litellm}
 DB_HOST=${DB_HOST:-localhost}
 DB_PORT=${DB_PORT:-5432}
 APP_ATTEST_DB_NAME=${APP_ATTEST_DB_NAME:-app_attest}
+MLPA_MAX_SIGNED_IN_USERS=${MLPA_MAX_SIGNED_IN_USERS:-100}
 
 set -eo pipefail
+
+export PGHOST="${DB_HOST}"
+export PGPORT="${DB_PORT}"
+export PGUSER="${DB_USERNAME}"
+export PGPASSWORD="${DB_PASSWORD}"
 
 CONTAINER_NAME="litellm_postgres"
 
@@ -50,5 +56,14 @@ echo "[mlpa-appattest-migrate-local] Target (password redacted): postgresql://${
 
 echo "[mlpa-appattest-migrate-local] Running Alembic upgrade head (Alembic messages follow)..."
 uv run alembic --raiseerr -c alembic.ini -x sqlalchemy.url="${APP_ATTEST_DATABASE_URL}" upgrade head 2>&1
+
+echo "[mlpa-appattest-migrate] Seeding mlpa_user_capacity max_identities=${MLPA_MAX_SIGNED_IN_USERS}"
+psql -d "${APP_ATTEST_DB_NAME}" -c "
+  INSERT INTO mlpa_user_capacity (id, max_identities, current_identities)
+  VALUES (1, ${MLPA_MAX_SIGNED_IN_USERS}, 0)
+  ON CONFLICT (id) DO UPDATE SET
+    max_identities = EXCLUDED.max_identities,
+    updated_at = NOW();
+"
 
 echo "✅ Migrations completed successfully"

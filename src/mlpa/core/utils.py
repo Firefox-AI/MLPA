@@ -17,7 +17,7 @@ from mlpa.core.config import (
 )
 from mlpa.core.http_client import get_http_client
 from mlpa.core.logger import logger
-from mlpa.core.pg_services.services import litellm_pg
+from mlpa.core.pg_services.services import app_attest_pg, litellm_pg
 from mlpa.core.prometheus_metrics import PrometheusResult, metrics
 
 
@@ -53,7 +53,10 @@ async def get_or_create_user(user_id: str):
                 env.MLPA_ENFORCE_SIGNIN_CAP
                 and service_type in env.MLPA_CAPPED_SERVICE_TYPES
             ):
-                admitted, newly_claimed = await litellm_pg.admit_managed_base_identity(
+                (
+                    admitted,
+                    newly_claimed,
+                ) = await app_attest_pg.admit_managed_base_identity(
                     base_identity=base_identity
                 )
                 if not admitted:
@@ -79,7 +82,7 @@ async def get_or_create_user(user_id: str):
                 # Admission may have succeeded but LiteLLM user creation did not.
                 # Release the reserved slot to avoid claim/cap drift.
                 if claimed_new_identity:
-                    await litellm_pg.maybe_release_managed_base_identity_if_no_managed_users(
+                    await app_attest_pg.maybe_release_managed_base_identity_if_no_managed_users(
                         base_identity=base_identity
                     )
                 raise HTTPException(
@@ -94,10 +97,8 @@ async def get_or_create_user(user_id: str):
     except Exception as e:
         if claimed_new_identity:
             try:
-                await (
-                    litellm_pg.maybe_release_managed_base_identity_if_no_managed_users(
-                        base_identity=base_identity
-                    )
+                await app_attest_pg.maybe_release_managed_base_identity_if_no_managed_users(
+                    base_identity=base_identity
                 )
             except Exception as release_e:
                 logger.error(

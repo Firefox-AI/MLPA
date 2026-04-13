@@ -1,3 +1,5 @@
+from fastapi import HTTPException
+
 from mlpa.core.config import env
 from tests.consts import TEST_USER_ID
 
@@ -318,12 +320,12 @@ def test_count_users_by_service_type_rejects_master_key(mocked_client_integratio
 
 
 def test_signup_cap_status_success(mocked_client_integration, mocker):
-    from tests.mocks import MockLiteLLMPGService
+    from tests.mocks import MockAppAttestPGService
 
-    mock_litellm_pg = MockLiteLLMPGService()
-    mock_litellm_pg.managed_capacity_claims.add("fxa-user-a")
-    mock_litellm_pg.managed_capacity_claims.add("fxa-user-b")
-    mocker.patch("mlpa.core.routers.user.user.litellm_pg", mock_litellm_pg)
+    mock_app_attest_pg = MockAppAttestPGService()
+    mock_app_attest_pg.managed_capacity_claims.add("fxa-user-a")
+    mock_app_attest_pg.managed_capacity_claims.add("fxa-user-b")
+    mocker.patch("mlpa.core.routers.user.user.app_attest_pg", mock_app_attest_pg)
 
     response = mocked_client_integration.get(
         "/user/signup-cap-status",

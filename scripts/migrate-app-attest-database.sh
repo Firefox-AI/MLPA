@@ -6,6 +6,7 @@ set -euo pipefail
 : "${DB_USERNAME:?DB_USERNAME is required}"
 : "${DB_PASSWORD:?DB_PASSWORD is required}"
 : "${APP_ATTEST_DB_NAME:?APP_ATTEST_DB_NAME is required}"
+: "${MLPA_MAX_SIGNED_IN_USERS:?MLPA_MAX_SIGNED_IN_USERS is required}"
 
 export PGHOST="${DB_HOST}"
 export PGPORT="${DB_PORT}"
@@ -27,5 +28,14 @@ fi
 
 echo "[mlpa-appattest-migrate] Running Alembic upgrade head (Alembic messages follow)..."
 alembic --raiseerr -c alembic.ini -x sqlalchemy.url="${APP_ATTEST_DATABASE_URL}" upgrade head 2>&1
+
+echo "[mlpa-appattest-migrate] Seeding mlpa_user_capacity max_identities=${MLPA_MAX_SIGNED_IN_USERS}"
+psql -d "${APP_ATTEST_DB_NAME}" -c "
+  INSERT INTO mlpa_user_capacity (id, max_identities, current_identities)
+  VALUES (1, ${MLPA_MAX_SIGNED_IN_USERS}, 0)
+  ON CONFLICT (id) DO UPDATE SET
+    max_identities = EXCLUDED.max_identities,
+    updated_at = NOW();
+"
 
 echo "[mlpa-appattest-migrate] Finished successfully."

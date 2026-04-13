@@ -27,6 +27,7 @@ def mocked_client_integration(mocker, use_real_get_or_create_user):
     """
     mock_app_attest_pg = MockAppAttestPGService()
     mock_litellm_pg = MockLiteLLMPGService()
+    mock_app_attest_pg.litellm_pg = mock_litellm_pg
     mock_fxa_client = MockFxAService(
         "test-client-id", "test-client-secret", "https://test-fxa.com"
     )
@@ -39,6 +40,8 @@ def mocked_client_integration(mocker, use_real_get_or_create_user):
         "mlpa.core.routers.appattest.appattest.app_attest_pg", mock_app_attest_pg
     )
     mocker.patch("mlpa.core.routers.health.health.app_attest_pg", mock_app_attest_pg)
+    mocker.patch("mlpa.core.routers.user.user.app_attest_pg", mock_app_attest_pg)
+    mocker.patch("mlpa.core.utils.app_attest_pg", mock_app_attest_pg)
     mocker.patch("mlpa.run.litellm_pg", mock_litellm_pg)
     mocker.patch("mlpa.core.routers.health.health.litellm_pg", mock_litellm_pg)
     mocker.patch("mlpa.core.utils.litellm_pg", mock_litellm_pg)
@@ -86,16 +89,20 @@ def mocked_client_integration(mocker, use_real_get_or_create_user):
     if not use_real_get_or_create_user:
         mocker.patch(
             "mlpa.run.get_or_create_user_for_completion",
-            lambda user_id, req: mock_get_or_create_user(mock_litellm_pg, user_id),
+            lambda user_id, req: mock_get_or_create_user(
+                mock_litellm_pg, mock_app_attest_pg, user_id
+            ),
         )
         mocker.patch(
             "mlpa.core.routers.mock.mock.get_or_create_user_for_completion",
-            lambda user_id, req: mock_get_or_create_user(mock_litellm_pg, user_id),
+            lambda user_id, req: mock_get_or_create_user(
+                mock_litellm_pg, mock_app_attest_pg, user_id
+            ),
         )
         mocker.patch(
             "mlpa.core.routers.mock.mock.get_or_create_user",
             lambda *args, **kwargs: mock_get_or_create_user(
-                mock_litellm_pg, *args, **kwargs
+                mock_litellm_pg, mock_app_attest_pg, *args, **kwargs
             ),
         )
     with TestClient(main_app.app) as client:

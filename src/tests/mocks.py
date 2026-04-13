@@ -71,7 +71,7 @@ async def mock_app_attest_auth(app_attest_jwt: str):
     return {"username": "testuser"}
 
 
-async def mock_get_or_create_user(mock_litellm_pg, user_id: str):
+async def mock_get_or_create_user(mock_litellm_pg, mock_app_attest_pg, user_id: str):
     user = await mock_litellm_pg.get_user(user_id)
     if not user:
         # Match real admission semantics:
@@ -82,7 +82,10 @@ async def mock_get_or_create_user(mock_litellm_pg, user_id: str):
             env.MLPA_ENFORCE_SIGNIN_CAP
             and service_type in env.MLPA_CAPPED_SERVICE_TYPES
         ):
-            admitted, newly_claimed = await mock_litellm_pg.admit_managed_base_identity(
+            (
+                admitted,
+                newly_claimed,
+            ) = await mock_app_attest_pg.admit_managed_base_identity(
                 base_identity=base_identity
             )
             if not admitted:
@@ -109,6 +112,8 @@ class MockAppAttestPGService:
         self.connected = True
         self.challenges = {}
         self.keys = {}
+        self.litellm_pg = None
+        self.managed_capacity_claims: set[str] = set()
 
     async def connect(self):
         pass
@@ -146,6 +151,58 @@ class MockAppAttestPGService:
 
     async def delete_key(self, key_id_b64: str):
         del self.keys[key_id_b64]
+
+    async def ensure_capacity_state(self):
+        """Mock ensure_capacity_state method for testing."""
+        logger.debug("mock ensure_capacity_state called")
+        # No-op: the in-memory store_user/admission logic simulates capacity.
+
+    async def admit_managed_base_identity(
+        self, base_identity: str
+    ) -> tuple[bool, bool]:
+        """Mock DB-backed admission: reserve a managed base identity slot."""
+        if not env.MLPA_ENFORCE_SIGNIN_CAP:
+            return True, False
+        if base_identity in self.managed_capacity_claims:
+            return True, False
+        if len(self.managed_capacity_claims) >= env.MLPA_MAX_SIGNED_IN_USERS:
+            return False, False
+        self.managed_capacity_claims.add(base_identity)
+        return True, True
+
+    async def maybe_release_managed_base_identity_if_no_managed_users(
+        self, base_identity: str
+    ) -> None:
+        """Release a managed capacity claim if no managed service rows exist for the base identity."""
+        if not env.MLPA_ENFORCE_SIGNIN_CAP:
+            return
+        if base_identity not in self.managed_capacity_claims:
+            return
+
+        managed_service_types = env.MLPA_CAPPED_SERVICE_TYPES
+        if self.litellm_pg is None:
+            return
+        has_managed_user_rows = any(
+            (p := uid.partition(":"))[0] == base_identity
+            and p[2] in managed_service_types
+            for uid in self.litellm_pg.users
+            if ":" in uid
+        )
+        if not has_managed_user_rows:
+            self.managed_capacity_claims.remove(base_identity)
+
+    async def get_signup_cap_status(self) -> dict:
+        current = len(self.managed_capacity_claims)
+        max_i = env.MLPA_MAX_SIGNED_IN_USERS
+        return {
+            "enforce_signin_cap": env.MLPA_ENFORCE_SIGNIN_CAP,
+            "capped_service_types": sorted(env.MLPA_CAPPED_SERVICE_TYPES),
+            "max_signed_in_users": max_i,
+            "current_managed_identities": current,
+            "slots_remaining": max(0, max_i - current),
+            "capacity_updated_at": None,
+            "capacity_row_missing": False,
+        }
 
 
 class MockLiteLLMPGService:
@@ -188,11 +245,6 @@ class MockLiteLLMPGService:
         logger.debug("mock create_budget called")
         return []
 
-    async def ensure_capacity_state(self):
-        """Mock ensure_capacity_state method for testing."""
-        logger.debug("mock ensure_capacity_state called")
-        # No-op: the in-memory store_user/admission logic simulates capacity.
-
     async def block_user(self, user_id: str, blocked: bool = True):
         """Mock block_user method for testing."""
         logger.debug(
@@ -232,38 +284,6 @@ class MockLiteLLMPGService:
             "offset": offset,
         }
 
-    async def admit_managed_base_identity(
-        self, base_identity: str
-    ) -> tuple[bool, bool]:
-        """Mock DB-backed admission: reserve a managed base identity slot."""
-        if not env.MLPA_ENFORCE_SIGNIN_CAP:
-            return True, False
-        if base_identity in self.managed_capacity_claims:
-            return True, False
-        if len(self.managed_capacity_claims) >= env.MLPA_MAX_SIGNED_IN_USERS:
-            return False, False
-        self.managed_capacity_claims.add(base_identity)
-        return True, True
-
-    async def maybe_release_managed_base_identity_if_no_managed_users(
-        self, base_identity: str
-    ) -> None:
-        """Release a managed capacity claim if no managed service rows exist for the base identity."""
-        if not env.MLPA_ENFORCE_SIGNIN_CAP:
-            return
-        if base_identity not in self.managed_capacity_claims:
-            return
-
-        managed_service_types = env.MLPA_CAPPED_SERVICE_TYPES
-        has_managed_user_rows = any(
-            (p := uid.partition(":"))[0] == base_identity
-            and p[2] in managed_service_types
-            for uid in self.users
-            if ":" in uid
-        )
-        if not has_managed_user_rows:
-            self.managed_capacity_claims.remove(base_identity)
-
     async def count_users_by_service_type(self) -> dict:
         """Mock count_users_by_service_type grouped by service_type."""
         service_type_counts: dict[str, int] = {}
@@ -279,19 +299,6 @@ class MockLiteLLMPGService:
         return {
             "service_type_counts": service_type_counts,
             "total_users": total_users,
-        }
-
-    async def get_signup_cap_status(self) -> dict:
-        current = len(self.managed_capacity_claims)
-        max_i = env.MLPA_MAX_SIGNED_IN_USERS
-        return {
-            "enforce_signin_cap": env.MLPA_ENFORCE_SIGNIN_CAP,
-            "capped_service_types": sorted(env.MLPA_CAPPED_SERVICE_TYPES),
-            "max_signed_in_users": max_i,
-            "current_managed_identities": current,
-            "slots_remaining": max(0, max_i - current),
-            "capacity_updated_at": None,
-            "capacity_row_missing": False,
         }
 
 
