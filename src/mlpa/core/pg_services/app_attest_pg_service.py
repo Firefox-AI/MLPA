@@ -2,12 +2,14 @@ from fastapi import HTTPException
 
 from mlpa.core.config import env
 from mlpa.core.logger import logger
+from mlpa.core.pg_services.litellm_pg_service import LiteLLMPGService
 from mlpa.core.pg_services.pg_service import PGService
 
 
 class AppAttestPGService(PGService):
-    def __init__(self):
+    def __init__(self, litellm_pg: LiteLLMPGService):
         super().__init__(env.APP_ATTEST_DB_NAME)
+        self.litellm_pg = litellm_pg
 
     # Challenges #
     async def store_challenge(self, key_id_b64: str, challenge: str):
@@ -114,9 +116,7 @@ class AppAttestPGService(PGService):
                     """
                     INSERT INTO mlpa_user_capacity (id, max_identities, current_identities)
                     VALUES (1, $1, 0)
-                    ON CONFLICT (id) DO UPDATE SET
-                        max_identities = EXCLUDED.max_identities,
-                        updated_at = NOW()
+                    ON CONFLICT (id) DO NOTHING
                     """,
                     env.MLPA_MAX_SIGNED_IN_USERS,
                 )
@@ -126,13 +126,21 @@ class AppAttestPGService(PGService):
                 await conn.fetchrow(
                     "SELECT 1 FROM mlpa_user_capacity WHERE id = 1 FOR UPDATE"
                 )
+                await conn.execute(
+                    """
+                    UPDATE mlpa_user_capacity
+                    SET max_identities = $1,
+                        updated_at = NOW()
+                    WHERE id = 1
+                    """,
+                    env.MLPA_MAX_SIGNED_IN_USERS,
+                )
 
                 # Rebuild claims from LiteLLM so the counter matches reality after deletes
                 # or manual DB edits. Blocked rows still count toward capacity.
                 await conn.execute("DELETE FROM mlpa_user_capacity_identities")
-                from mlpa.core.pg_services.services import litellm_pg
 
-                base_identities = await litellm_pg.list_managed_base_identities(
+                base_identities = await self.litellm_pg.list_managed_base_identities(
                     managed_service_types
                 )
                 if base_identities:
@@ -260,9 +268,7 @@ class AppAttestPGService(PGService):
                 if not claimed:
                     return
 
-                from mlpa.core.pg_services.services import litellm_pg
-
-                has_managed_user_rows = await litellm_pg.has_managed_user_rows(
+                has_managed_user_rows = await self.litellm_pg.has_managed_user_rows(
                     base_identity,
                     managed_service_types,
                 )

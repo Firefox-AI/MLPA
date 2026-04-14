@@ -320,9 +320,9 @@ def test_count_users_by_service_type_rejects_master_key(mocked_client_integratio
 
 
 def test_signup_cap_status_success(mocked_client_integration, mocker):
-    from tests.mocks import MockAppAttestPGService
+    from tests.mocks import MockAppAttestPGService, MockLiteLLMPGService
 
-    mock_app_attest_pg = MockAppAttestPGService()
+    mock_app_attest_pg = MockAppAttestPGService(MockLiteLLMPGService())
     mock_app_attest_pg.managed_capacity_claims.add("fxa-user-a")
     mock_app_attest_pg.managed_capacity_claims.add("fxa-user-b")
     mocker.patch("mlpa.core.routers.user.user.app_attest_pg", mock_app_attest_pg)

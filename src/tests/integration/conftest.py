@@ -25,9 +25,8 @@ def mocked_client_integration(mocker, use_real_get_or_create_user):
     """
     This fixture mocks the database services and provides a TestClient.
     """
-    mock_app_attest_pg = MockAppAttestPGService()
     mock_litellm_pg = MockLiteLLMPGService()
-    mock_app_attest_pg.litellm_pg = mock_litellm_pg
+    mock_app_attest_pg = MockAppAttestPGService(mock_litellm_pg)
     mock_fxa_client = MockFxAService(
         "test-client-id", "test-client-secret", "https://test-fxa.com"
     )

@@ -105,14 +105,14 @@ async def mock_get_completion(authorized_chat_request: AuthorizedChatRequest):
 
 
 class MockAppAttestPGService:
-    def __init__(self):
+    def __init__(self, litellm_pg):
         self.pg = "MOCK NOT IMPLEMENTED"
         self.db_name = "test"
         self.db_url = "test_app_attest"
         self.connected = True
         self.challenges = {}
         self.keys = {}
-        self.litellm_pg = None
+        self.litellm_pg = litellm_pg
         self.managed_capacity_claims: set[str] = set()
 
     async def connect(self):

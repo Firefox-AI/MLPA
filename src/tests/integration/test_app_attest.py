@@ -24,7 +24,7 @@ from tests.integration.appattest_helpers import (
     make_jwt,
     patch_apple_config_capture_app_id,
 )
-from tests.mocks import MockAppAttestPGService
+from tests.mocks import MockAppAttestPGService, MockLiteLLMPGService
 
 sample_chat_request = SAMPLE_CHAT_REQUEST.model_dump(exclude_unset=True)
 jwt_secret = "secret"
@@ -265,7 +265,7 @@ async def test_assert_uses_bundle_id_from_jwt(mocker, mocked_client_integration)
     )
 
     # Seed a fake key so verify_assert gets past the public-key lookup
-    mock_pg = MockAppAttestPGService()
+    mock_pg = MockAppAttestPGService(MockLiteLLMPGService())
     await mock_pg.store_key(TEST_KEY_ID_B64, "fake_pem", counter=0)
     mocker.patch("mlpa.core.routers.appattest.appattest.app_attest_pg", mock_pg)
 
@@ -327,7 +327,7 @@ def _build_fake_assertion(counter: int) -> bytes:
 
 
 async def test_verify_assert_rejects_non_monotonic_counter(mocker):
-    mock_pg = MockAppAttestPGService()
+    mock_pg = MockAppAttestPGService(MockLiteLLMPGService())
     mocker.patch("mlpa.core.routers.appattest.appattest.app_attest_pg", mock_pg)
 
     private_key = ec.generate_private_key(ec.SECP256R1())
@@ -352,7 +352,7 @@ async def test_verify_assert_rejects_non_monotonic_counter(mocker):
 
 
 async def test_verify_assert_succeeds_and_updates_counter(mocker):
-    mock_pg = MockAppAttestPGService()
+    mock_pg = MockAppAttestPGService(MockLiteLLMPGService())
     mocker.patch("mlpa.core.routers.appattest.appattest.app_attest_pg", mock_pg)
 
     private_key = ec.generate_private_key(ec.SECP256R1())
