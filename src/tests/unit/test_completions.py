@@ -306,7 +306,7 @@ async def test_get_completion_network_error(mocker):
     mock_metrics.chat_completion_latency.labels().observe.assert_called_once()
 
 
-async def test_stream_completion_success(httpx_mock: HTTPXMock, mocker):
+async def test_stream_completion_success(httpx_mock: HTTPXMock, mocker, mock_request):
     """
     Tests the successful execution of a streaming request using pytest-httpx.
     - Verifies the yielded chunks are correct.
@@ -325,7 +325,9 @@ async def test_stream_completion_success(httpx_mock: HTTPXMock, mocker):
 
     mock_metrics = mocker.patch("mlpa.core.completions.metrics")
 
-    received_chunks = [chunk async for chunk in stream_completion(SAMPLE_REQUEST)]
+    received_chunks = [
+        chunk async for chunk in stream_completion(SAMPLE_REQUEST, mock_request)
+    ]
 
     assert received_chunks == mock_chunks
 
@@ -407,7 +409,7 @@ async def test_stream_completion_success(httpx_mock: HTTPXMock, mocker):
 
 
 async def test_stream_completion_litellm_routing_with_fallback(
-    httpx_mock: HTTPXMock, mocker
+    httpx_mock: HTTPXMock, mocker, mock_request
 ):
     usage_chunk = b'data: {"usage": {"prompt_tokens": 10, "completion_tokens": 25}}'
     mock_chunks = [b"data: chunk1", usage_chunk, b"data: [DONE]"]
@@ -423,7 +425,9 @@ async def test_stream_completion_litellm_routing_with_fallback(
     )
 
     mock_metrics = mocker.patch("mlpa.core.completions.metrics")
-    received_chunks = [chunk async for chunk in stream_completion(SAMPLE_REQUEST)]
+    received_chunks = [
+        chunk async for chunk in stream_completion(SAMPLE_REQUEST, mock_request)
+    ]
     assert received_chunks == mock_chunks
 
     routing = _litellm_routing_label_base()
@@ -764,7 +768,7 @@ async def test_get_completion_429_invalid_json(mocker):
 
 
 async def test_stream_completion_budget_limit_exceeded_429(
-    httpx_mock: HTTPXMock, mocker
+    httpx_mock: HTTPXMock, mocker, mock_request
 ):
     """
     Tests that a 429 error with budget exceeded message yields error code 1.
@@ -788,7 +792,9 @@ async def test_stream_completion_budget_limit_exceeded_429(
     mock_metrics = mocker.patch("mlpa.core.completions.metrics")
     mock_logger = mocker.patch("mlpa.core.completions.logger")
 
-    received_chunks = [chunk async for chunk in stream_completion(SAMPLE_REQUEST)]
+    received_chunks = [
+        chunk async for chunk in stream_completion(SAMPLE_REQUEST, mock_request)
+    ]
     assert len(received_chunks) == 1
     assert (
         received_chunks[0]
@@ -812,7 +818,7 @@ async def test_stream_completion_budget_limit_exceeded_429(
 
 
 async def test_stream_completion_budget_limit_exceeded_400(
-    httpx_mock: HTTPXMock, mocker
+    httpx_mock: HTTPXMock, mocker, mock_request
 ):
     """
     Tests that a 400 error with budget exceeded message yields error code 1.
@@ -836,7 +842,9 @@ async def test_stream_completion_budget_limit_exceeded_400(
     mock_metrics = mocker.patch("mlpa.core.completions.metrics")
     mock_logger = mocker.patch("mlpa.core.completions.logger")
 
-    received_chunks = [chunk async for chunk in stream_completion(SAMPLE_REQUEST)]
+    received_chunks = [
+        chunk async for chunk in stream_completion(SAMPLE_REQUEST, mock_request)
+    ]
 
     assert len(received_chunks) == 1
     assert (
@@ -860,7 +868,9 @@ async def test_stream_completion_budget_limit_exceeded_400(
     )
 
 
-async def test_stream_completion_rate_limit_exceeded(httpx_mock: HTTPXMock, mocker):
+async def test_stream_completion_rate_limit_exceeded(
+    httpx_mock: HTTPXMock, mocker, mock_request
+):
     """
     Tests that a rate limit error (TPM/RPM) yields error code 2.
     """
@@ -883,7 +893,9 @@ async def test_stream_completion_rate_limit_exceeded(httpx_mock: HTTPXMock, mock
     mock_metrics = mocker.patch("mlpa.core.completions.metrics")
     mock_logger = mocker.patch("mlpa.core.completions.logger")
 
-    received_chunks = [chunk async for chunk in stream_completion(SAMPLE_REQUEST)]
+    received_chunks = [
+        chunk async for chunk in stream_completion(SAMPLE_REQUEST, mock_request)
+    ]
 
     assert len(received_chunks) == 1
     assert (
@@ -907,7 +919,9 @@ async def test_stream_completion_rate_limit_exceeded(httpx_mock: HTTPXMock, mock
     )
 
 
-async def test_stream_completion_context_window_exceeded(httpx_mock: HTTPXMock, mocker):
+async def test_stream_completion_context_window_exceeded(
+    httpx_mock: HTTPXMock, mocker, mock_request
+):
     """
     Tests that a 400 error with context window exceeded yields 413 SSE payload.
     """
@@ -925,7 +939,9 @@ async def test_stream_completion_context_window_exceeded(httpx_mock: HTTPXMock, 
     mock_metrics = mocker.patch("mlpa.core.completions.metrics")
     mock_logger = mocker.patch("mlpa.core.completions.logger")
 
-    received_chunks = [chunk async for chunk in stream_completion(SAMPLE_REQUEST)]
+    received_chunks = [
+        chunk async for chunk in stream_completion(SAMPLE_REQUEST, mock_request)
+    ]
 
     assert len(received_chunks) == 1
     assert (
@@ -950,7 +966,7 @@ async def test_stream_completion_context_window_exceeded(httpx_mock: HTTPXMock, 
 
 
 async def test_stream_completion_400_non_rate_limit_error(
-    httpx_mock: HTTPXMock, mocker
+    httpx_mock: HTTPXMock, mocker, mock_request
 ):
     """
     Tests that a 400 error without rate limit keywords yields generic error message.
@@ -975,7 +991,9 @@ async def test_stream_completion_400_non_rate_limit_error(
     mock_logger = mocker.patch("mlpa.core.utils.logger")
     mocker.patch.object(env, "MLPA_DEBUG", False)
 
-    received_chunks = [chunk async for chunk in stream_completion(SAMPLE_REQUEST)]
+    received_chunks = [
+        chunk async for chunk in stream_completion(SAMPLE_REQUEST, mock_request)
+    ]
 
     assert len(received_chunks) == 1
     assert (
@@ -992,7 +1010,7 @@ async def test_stream_completion_400_non_rate_limit_error(
 
 
 async def test_stream_completion_429_non_rate_limit_error(
-    httpx_mock: HTTPXMock, mocker
+    httpx_mock: HTTPXMock, mocker, mock_request
 ):
     """
     Tests that a 429 error without rate limit keywords yields generic error message.
@@ -1011,7 +1029,9 @@ async def test_stream_completion_429_non_rate_limit_error(
     mock_logger = mocker.patch("mlpa.core.utils.logger")
     mocker.patch.object(env, "MLPA_DEBUG", False)
 
-    received_chunks = [chunk async for chunk in stream_completion(SAMPLE_REQUEST)]
+    received_chunks = [
+        chunk async for chunk in stream_completion(SAMPLE_REQUEST, mock_request)
+    ]
 
     assert len(received_chunks) == 1
     assert (
@@ -1028,7 +1048,7 @@ async def test_stream_completion_429_non_rate_limit_error(
 
 
 async def test_stream_completion_upstream_rate_limit_error(
-    httpx_mock: HTTPXMock, mocker
+    httpx_mock: HTTPXMock, mocker, mock_request
 ):
     """
     Tests that a 429 upstream throttling error returns error code 5.
@@ -1045,7 +1065,9 @@ async def test_stream_completion_upstream_rate_limit_error(
 
     mock_metrics = mocker.patch("mlpa.core.completions.metrics")
 
-    received_chunks = [chunk async for chunk in stream_completion(SAMPLE_REQUEST)]
+    received_chunks = [
+        chunk async for chunk in stream_completion(SAMPLE_REQUEST, mock_request)
+    ]
 
     assert received_chunks == [
         f'data: {{"error": {ERROR_CODE_UPSTREAM_RATE_LIMIT_EXCEEDED}}}\n\n'.encode()
@@ -1058,7 +1080,9 @@ async def test_stream_completion_upstream_rate_limit_error(
     )
 
 
-async def test_stream_completion_429_invalid_json(httpx_mock: HTTPXMock, mocker):
+async def test_stream_completion_429_invalid_json(
+    httpx_mock: HTTPXMock, mocker, mock_request
+):
     """
     Tests that a 429 error with invalid JSON yields generic error message.
     """
@@ -1073,7 +1097,9 @@ async def test_stream_completion_429_invalid_json(httpx_mock: HTTPXMock, mocker)
     mock_logger = mocker.patch("mlpa.core.utils.logger")
     mocker.patch.object(env, "MLPA_DEBUG", False)
 
-    received_chunks = [chunk async for chunk in stream_completion(SAMPLE_REQUEST)]
+    received_chunks = [
+        chunk async for chunk in stream_completion(SAMPLE_REQUEST, mock_request)
+    ]
 
     assert len(received_chunks) == 1
     assert (
@@ -1090,7 +1116,7 @@ async def test_stream_completion_429_invalid_json(httpx_mock: HTTPXMock, mocker)
 
 
 async def test_stream_completion_exception_after_streaming_started(
-    httpx_mock: HTTPXMock, mocker
+    httpx_mock: HTTPXMock, mocker, mock_request
 ):
     """
     Tests that HTTPStatusError during streaming is logged and returns error chunk.
@@ -1105,7 +1131,7 @@ async def test_stream_completion_exception_after_streaming_started(
     mock_metrics = mocker.patch("mlpa.core.completions.metrics")
 
     received_chunks = []
-    async for chunk in stream_completion(SAMPLE_REQUEST):
+    async for chunk in stream_completion(SAMPLE_REQUEST, mock_request):
         received_chunks.append(chunk)
 
     assert len(received_chunks) == 1
@@ -1182,7 +1208,9 @@ async def test_get_completion_preserves_tools(mocker):
     assert sent_json["messages"] == request_with_tools.messages
 
 
-async def test_stream_completion_preserves_tools(httpx_mock: HTTPXMock, mocker):
+async def test_stream_completion_preserves_tools(
+    httpx_mock: HTTPXMock, mocker, mock_request
+):
     """
     Tests that tool-related fields (tools and tool_choice) are preserved
     when forwarding streaming requests to LiteLLM.
@@ -1238,7 +1266,9 @@ async def test_stream_completion_preserves_tools(httpx_mock: HTTPXMock, mocker):
 
     mock_metrics = mocker.patch("mlpa.core.completions.metrics")
 
-    received_chunks = [chunk async for chunk in stream_completion(request_with_tools)]
+    received_chunks = [
+        chunk async for chunk in stream_completion(request_with_tools, mock_request)
+    ]
 
     request = httpx_mock.get_request()
     assert request is not None

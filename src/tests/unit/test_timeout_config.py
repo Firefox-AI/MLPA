@@ -62,7 +62,9 @@ def test_httpx_client_uses_configurable_timeouts_and_limits(mocker):
     http_client._client = None
 
 
-async def test_stream_completion_uses_configurable_timeout(httpx_mock, mocker):
+async def test_stream_completion_uses_configurable_timeout(
+    httpx_mock, mocker, mock_request
+):
     """Test that stream_completion uses the configurable timeout from env."""
     from pytest_httpx import IteratorStream
 
@@ -80,7 +82,7 @@ async def test_stream_completion_uses_configurable_timeout(httpx_mock, mocker):
     mock_env = mocker.patch("mlpa.core.completions.env")
     mock_env.STREAMING_TIMEOUT_SECONDS = custom_timeout
 
-    async for _ in stream_completion(SAMPLE_REQUEST):
+    async for _ in stream_completion(SAMPLE_REQUEST, mock_request):
         pass
 
     requests = httpx_mock.get_requests()
@@ -88,7 +90,7 @@ async def test_stream_completion_uses_configurable_timeout(httpx_mock, mocker):
     assert mock_env.STREAMING_TIMEOUT_SECONDS == custom_timeout
 
 
-async def test_stream_completion_uses_default_timeout(httpx_mock, mocker):
+async def test_stream_completion_uses_default_timeout(httpx_mock, mocker, mock_request):
     """Test that stream_completion uses default timeout when not configured."""
     from pytest_httpx import IteratorStream
 
@@ -102,7 +104,7 @@ async def test_stream_completion_uses_default_timeout(httpx_mock, mocker):
 
     mocker.patch("mlpa.core.completions.metrics")
 
-    async for _ in stream_completion(SAMPLE_REQUEST):
+    async for _ in stream_completion(SAMPLE_REQUEST, mock_request):
         pass
 
     from mlpa.core.completions import env

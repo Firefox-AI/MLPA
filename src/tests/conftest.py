@@ -1,6 +1,15 @@
+from unittest.mock import AsyncMock, MagicMock
+
 import pytest
 
 from mlpa.core.config import env
+
+
+@pytest.fixture
+def mock_request():
+    req = MagicMock()
+    req.is_disconnected = AsyncMock(return_value=False)
+    return req
 
 
 @pytest.fixture(autouse=True, scope="session")

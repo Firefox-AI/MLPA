@@ -160,6 +160,7 @@ Authorize first using App Attest, Play Integrity, FxA, or dev tier.
     responses=cast(dict[int | str, dict[str, Any]], RATE_LIMIT_ERROR_RESPONSE),
 )
 async def chat_completion(
+    request: Request,
     authorized_chat_request: Annotated[
         AuthorizedChatRequest, Depends(authorize_request)
     ],
@@ -176,7 +177,7 @@ async def chat_completion(
 
     if authorized_chat_request.stream:
         return StreamingResponse(
-            stream_completion(authorized_chat_request),
+            stream_completion(authorized_chat_request, request),
             media_type="text/event-stream",
         )
     else:
