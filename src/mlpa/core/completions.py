@@ -1,3 +1,5 @@
+import asyncio
+import contextlib
 import json
 import time
 
@@ -229,6 +231,20 @@ async def stream_completion(
     logger.debug(
         f"Starting a stream completion using {authorized_chat_request.model}, for user {authorized_chat_request.user}",
     )
+
+    disconnect_event = asyncio.Event()
+    _client_disconnected_msg = (
+        f"Client disconnected mid-stream for user {authorized_chat_request.user}"
+    )
+
+    async def _watch_disconnect() -> None:
+        while True:
+            message = await request._receive()
+            if message.get("type") == "http.disconnect":
+                disconnect_event.set()
+                return
+
+    watch_task = asyncio.create_task(_watch_disconnect())
     try:
         client = get_http_client()
         async with client.stream(
@@ -281,11 +297,9 @@ async def stream_completion(
             litellm_routing_snapshot = parse_litellm_routing_headers(response.headers)
 
             async for chunk in response.aiter_bytes():
-                if await request.is_disconnected():
+                if disconnect_event.is_set():
                     result = PrometheusResult.ABORTED
-                    logger.info(
-                        f"Client disconnected mid-stream for user {authorized_chat_request.user}"
-                    )
+                    logger.info(_client_disconnected_msg)
                     break
 
                 if is_first_token:
@@ -386,6 +400,12 @@ async def stream_completion(
         else:
             logger.error(f"Upstream service returned an error: {e}")
     finally:
+        watch_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await watch_task
+        if result == PrometheusResult.ERROR and disconnect_event.is_set():
+            result = PrometheusResult.ABORTED
+            logger.info(_client_disconnected_msg)
         metrics.chat_completion_latency.labels(
             result=result,
             model=authorized_chat_request.model,
