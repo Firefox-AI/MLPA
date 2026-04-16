@@ -252,7 +252,12 @@ async def stream_completion(
             LITELLM_COMPLETIONS_URL,
             headers=LITELLM_COMPLETION_AUTH_HEADERS,
             json=body,
-            timeout=env.STREAMING_TIMEOUT_SECONDS,
+            timeout=httpx.Timeout(
+                read=env.STREAMING_TIMEOUT_SECONDS,
+                connect=env.HTTPX_CONNECT_TIMEOUT_SECONDS,
+                write=env.HTTPX_WRITE_TIMEOUT_SECONDS,
+                pool=env.HTTPX_POOL_TIMEOUT_SECONDS,
+            ),
         ) as response:
             try:
                 response.raise_for_status()
@@ -345,6 +350,15 @@ async def stream_completion(
 
                 yield chunk
 
+            if not streaming_started:
+                yield raise_and_log(
+                    RuntimeError("LiteLLM returned an empty response"),
+                    True,
+                    502,
+                    "Empty response from upstream",
+                )
+                return
+
             if prompt_tokens > 0:
                 metrics.chat_tokens.labels(
                     type="prompt",
@@ -389,16 +403,8 @@ async def stream_completion(
                     completion_tokens,
                 )
                 result = PrometheusResult.SUCCESS
-    except httpx.HTTPStatusError as e:
-        if not streaming_started:
-            yield raise_and_log(e, True)
-        else:
-            logger.error(f"Upstream service returned an error: {e}")
     except Exception as e:
-        if not streaming_started:
-            yield raise_and_log(e, True, 502, "Failed to proxy request")
-        else:
-            logger.error(f"Upstream service returned an error: {e}")
+        yield raise_and_log(e, True, 502, "Failed to proxy request")
     finally:
         # Cancel the disconnect watcher and wait for it to finish to avoid
         # "Task was destroyed but it is pending" warnings at shutdown.
