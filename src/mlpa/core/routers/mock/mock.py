@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, Header, HTTPException
 from fastapi.responses import StreamingResponse
 from fxa.errors import TrustError
 
-from mlpa.core.auth.authorize import authorize_request
+from mlpa.core.auth.authorize import authorize_chat_request
 from mlpa.core.classes import AuthorizedChatRequest, ChatRequest
 from mlpa.core.completions import get_or_create_user_for_completion
 from mlpa.core.config import env
@@ -75,7 +75,7 @@ async def mock_stream():
 )
 async def chat_completion(
     authorized_chat_request: Annotated[
-        AuthorizedChatRequest, Depends(authorize_request)
+        AuthorizedChatRequest, Depends(authorize_chat_request)
     ],
 ):
     user_id = authorized_chat_request.user

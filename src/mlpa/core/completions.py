@@ -6,15 +6,20 @@ import time
 import httpx
 from fastapi import HTTPException, Request
 
-from mlpa.core.classes import AuthorizedChatRequest, LitellmRoutingSnapshot
+from mlpa.core.classes import (
+    AuthorizedChatRequest,
+    AuthorizedSearchRequest,
+    LitellmRoutingSnapshot,
+)
 from mlpa.core.config import (
     ERROR_CODE_BUDGET_LIMIT_EXCEEDED,
     ERROR_CODE_MAX_USERS_REACHED,
     ERROR_CODE_RATE_LIMIT_EXCEEDED,
     ERROR_CODE_REQUEST_TOO_LARGE,
     ERROR_CODE_UPSTREAM_RATE_LIMIT_EXCEEDED,
-    LITELLM_COMPLETION_AUTH_HEADERS,
     LITELLM_COMPLETIONS_URL,
+    LITELLM_SEARCH_URL,
+    LITELLM_VIRTUAL_AUTH_HEADERS,
     env,
 )
 from mlpa.core.http_client import get_http_client
@@ -250,7 +255,7 @@ async def stream_completion(
         async with client.stream(
             "POST",
             LITELLM_COMPLETIONS_URL,
-            headers=LITELLM_COMPLETION_AUTH_HEADERS,
+            headers=LITELLM_VIRTUAL_AUTH_HEADERS,
             json=body,
             timeout=httpx.Timeout(
                 read=env.STREAMING_TIMEOUT_SECONDS,
@@ -444,7 +449,7 @@ async def get_completion(authorized_chat_request: AuthorizedChatRequest):
         client = get_http_client()
         response = await client.post(
             LITELLM_COMPLETIONS_URL,
-            headers=LITELLM_COMPLETION_AUTH_HEADERS,
+            headers=LITELLM_VIRTUAL_AUTH_HEADERS,
             json=body,
         )
         try:
@@ -546,3 +551,34 @@ async def get_completion(authorized_chat_request: AuthorizedChatRequest):
             service_type=authorized_chat_request.service_type,
             purpose=authorized_chat_request.purpose,
         ).observe(time.perf_counter() - start_time)
+
+
+async def get_search(authorized_search_request: AuthorizedSearchRequest):
+    """
+    Proxies a search request to LiteLLM.
+    """
+    start_time = time.perf_counter()
+    body = {
+        **authorized_search_request.model_dump(
+            exclude_none=True,
+        ),
+    }
+    result = PrometheusResult.ERROR
+    logger.debug(
+        f"Starting a search request using for user {authorized_search_request.user}",
+    )
+    try:
+        client = get_http_client()
+        response = await client.post(
+            f"{LITELLM_SEARCH_URL}/{authorized_search_request.search_tool}",
+            headers=LITELLM_VIRTUAL_AUTH_HEADERS,
+            json=body,
+        )
+        data = response.json()
+
+        result = PrometheusResult.SUCCESS
+        return data
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise_and_log(e, False, 502, "Failed to proxy request")

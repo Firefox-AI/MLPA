@@ -15,6 +15,12 @@ model_list:
       model: openai/gpt-4o
       api_key: os.environ/OPENAI_API_KEY
 
+search_tools:
+  - search_tool_name: exa-search
+    litellm_params:
+      search_provider: exa_ai
+      api_key: os.environ/EXA_API_KEY
+
 general_settings:
   store_model_in_db: true
   master_key: os.environ/MASTER_KEY

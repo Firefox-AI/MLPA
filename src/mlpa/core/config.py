@@ -28,7 +28,10 @@ class Env(BaseSettings):
     # Read-only admin dashboard (`/admin`) and GET /user/counts-by-service-type; not LiteLLM's master key
     MLPA_UI_ACCESS_KEY: str = "sk-ui-access-default"
     MLPA_VIRTUAL_KEY: str = "sk-virtual"  # Enforces LiteLLM.max_budget
-    OPENAI_API_KEY: str = "sk-add-your-key"
+
+    OPENAI_API_KEY: str = "sk-add-your-key"  # for local LiteLLM testing
+    EXA_API_KEY: str = "sk-add-your-key"  # for local LiteLLM testing
+
     LITELLM_API_BASE: str = "http://localhost:4000"
     CHALLENGE_EXPIRY_SECONDS: int = 300  # 5 minutes
 
@@ -272,12 +275,13 @@ env = Env()
 
 LITELLM_READINESS_URL = f"{env.LITELLM_API_BASE}/health/readiness"
 LITELLM_COMPLETIONS_URL = f"{env.LITELLM_API_BASE}/v1/chat/completions"
+LITELLM_SEARCH_URL = f"{env.LITELLM_API_BASE}/v1/search"
 LITELLM_MASTER_AUTH_HEADERS = {
     "Content-Type": "application/json",
     "Authorization": f"Bearer {env.MASTER_KEY}",
 }
 
-LITELLM_COMPLETION_AUTH_HEADERS = {
+LITELLM_VIRTUAL_AUTH_HEADERS = {
     "Content-Type": "application/json",
     "Authorization": f"Bearer {env.MLPA_VIRTUAL_KEY}",
 }

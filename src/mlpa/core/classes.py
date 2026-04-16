@@ -86,6 +86,20 @@ class AuthorizedChatRequest(ChatRequest):
     )
 
 
+class SearchRequest(BaseModel):
+    query: str
+    max_results: int
+
+
+class AuthorizedSearchRequest(SearchRequest):
+    user: str
+    service_type: str
+    purpose: str = (
+        ""  # From header; empty for service types without defined purposes (e.g. s2s)
+    )
+    search_tool: str = "exa-search"
+
+
 # Dynamically create ServiceType enum from config
 ServiceType = enum.Enum("ServiceType", [(st, st) for st in env.valid_service_types])
 
