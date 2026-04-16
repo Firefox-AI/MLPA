@@ -1,3 +1,4 @@
+import contextlib
 import json
 from unittest.mock import AsyncMock, MagicMock
 
@@ -1282,3 +1283,123 @@ async def test_stream_completion_preserves_tools(
 
     assert len(received_chunks) == len(mock_chunks)
     assert b"tool_calls" in received_chunks[0]
+
+
+def _assert_error_latency(mock_metrics) -> None:
+    mock_metrics.chat_completion_latency.labels.assert_called_once_with(
+        result=PrometheusResult.ERROR,
+        model=SAMPLE_REQUEST.model,
+        service_type=SAMPLE_REQUEST.service_type,
+        purpose=SAMPLE_REQUEST.purpose,
+    )
+
+
+def _patch_mock_stream_client(mocker, aiter_bytes_fn, capture: dict | None = None):
+    """Patch get_http_client with a mock that streams via aiter_bytes_fn.
+
+    capture: if provided, stream call kwargs are merged into it (for timeout inspection).
+    """
+    mock_response = MagicMock()
+    mock_response.raise_for_status.return_value = None
+    mock_response.headers = {}
+    mock_response.aiter_bytes = aiter_bytes_fn
+
+    @contextlib.asynccontextmanager
+    async def _mock_stream(*args, **kwargs):
+        if capture is not None:
+            capture.update(kwargs)
+        yield mock_response
+
+    mock_client = MagicMock()
+    mock_client.stream = _mock_stream
+    mocker.patch("mlpa.core.completions.get_http_client", return_value=mock_client)
+
+
+async def test_stream_sends_error_sse_on_exception_after_streaming_started(
+    mocker, mock_request
+):
+    """
+    Exception mid-stream (after first chunk) must still send an error SSE.
+    Currently the generator stops silently — client receives the role-only chunk
+    (content=null) and a clean stream end, which looks like an empty response.
+    """
+    role_chunk = (
+        b'data: {"choices":[{"delta":{"role":"assistant","content":null}}]}\n\n'
+    )
+
+    async def _failing_aiter_bytes():
+        yield role_chunk
+        raise RuntimeError("Connection dropped mid-stream")
+
+    _patch_mock_stream_client(mocker, _failing_aiter_bytes)
+    mock_metrics = mocker.patch("mlpa.core.completions.metrics")
+
+    received = [c async for c in stream_completion(SAMPLE_REQUEST, mock_request)]
+
+    assert len(received) == 2, (
+        f"Expected [role_chunk, error_SSE], got {len(received)} chunk(s). "
+        "Silent failure after streaming started — no error sent to client."
+    )
+    assert received[0] == role_chunk
+    assert b'"error"' in received[1], "Second chunk must be an error SSE frame"
+    _assert_error_latency(mock_metrics)
+
+
+async def test_stream_sends_error_sse_on_empty_200_response(
+    httpx_mock: HTTPXMock, mocker, mock_request
+):
+    """
+    LiteLLM returns 200 with an empty body (zero SSE chunks).
+    Currently the generator returns with no output — client sees empty stream with
+    no error signal, indistinguishable from a successful empty response.
+    """
+    httpx_mock.add_response(
+        method="POST",
+        url=LITELLM_COMPLETIONS_URL,
+        stream=IteratorStream([]),
+        status_code=200,
+        headers=_sample_litellm_response_headers(),
+    )
+    mock_metrics = mocker.patch("mlpa.core.completions.metrics")
+
+    received = [c async for c in stream_completion(SAMPLE_REQUEST, mock_request)]
+
+    assert len(received) == 1, (
+        f"Expected exactly one error SSE chunk, got {len(received)}. "
+        "Empty 200 body should yield an error frame — currently yields nothing."
+    )
+    assert b'"error"' in received[0], "Chunk must be an error SSE frame"
+    _assert_error_latency(mock_metrics)
+
+
+async def test_stream_uses_httpx_timeout_object_preserving_pool_timeout(
+    mocker, mock_request
+):
+    """
+    stream_completion passes timeout=int (300) to client.stream(), which silently
+    overrides ALL timeout phases including pool (5 s → 300 s). A saturated connection
+    pool would hang for 300 s instead of failing fast at 5 s.
+    """
+    captured = {}
+
+    async def _empty_aiter_bytes():
+        if False:
+            yield
+
+    _patch_mock_stream_client(mocker, _empty_aiter_bytes, capture=captured)
+    mocker.patch("mlpa.core.completions.metrics")
+
+    _ = [c async for c in stream_completion(SAMPLE_REQUEST, mock_request)]
+
+    timeout = captured.get("timeout")
+    assert isinstance(timeout, httpx.Timeout), (
+        f"Expected httpx.Timeout, got {type(timeout).__name__}. "
+        "Passing a plain int overrides all timeout phases including pool."
+    )
+    assert timeout.read == env.STREAMING_TIMEOUT_SECONDS, (
+        f"read timeout should be {env.STREAMING_TIMEOUT_SECONDS}s"
+    )
+    assert timeout.pool == env.HTTPX_POOL_TIMEOUT_SECONDS, (
+        f"pool timeout must stay at {env.HTTPX_POOL_TIMEOUT_SECONDS}s, "
+        f"not be overridden to {env.STREAMING_TIMEOUT_SECONDS}s"
+    )
