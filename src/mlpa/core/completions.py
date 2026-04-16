@@ -1,8 +1,10 @@
+import asyncio
+import contextlib
 import json
 import time
 
 import httpx
-from fastapi import HTTPException
+from fastapi import HTTPException, Request
 
 from mlpa.core.classes import AuthorizedChatRequest, LitellmRoutingSnapshot
 from mlpa.core.config import (
@@ -202,7 +204,9 @@ def _record_tool_metrics(
         ).observe(n_calls)
 
 
-async def stream_completion(authorized_chat_request: AuthorizedChatRequest):
+async def stream_completion(
+    authorized_chat_request: AuthorizedChatRequest, request: Request
+):
     """
     Proxies a streaming request to LiteLLM.
     Yields response chunks as they are received and logs metrics.
@@ -227,6 +231,20 @@ async def stream_completion(authorized_chat_request: AuthorizedChatRequest):
     logger.debug(
         f"Starting a stream completion using {authorized_chat_request.model}, for user {authorized_chat_request.user}",
     )
+
+    disconnect_event = asyncio.Event()
+    _client_disconnected_msg = (
+        f"Client disconnected mid-stream for user {authorized_chat_request.user}"
+    )
+
+    async def _watch_disconnect() -> None:
+        while True:
+            message = await request._receive()
+            if message.get("type") == "http.disconnect":
+                disconnect_event.set()
+                return
+
+    watch_task = asyncio.create_task(_watch_disconnect())
     try:
         client = get_http_client()
         async with client.stream(
@@ -279,6 +297,11 @@ async def stream_completion(authorized_chat_request: AuthorizedChatRequest):
             litellm_routing_snapshot = parse_litellm_routing_headers(response.headers)
 
             async for chunk in response.aiter_bytes():
+                if disconnect_event.is_set():
+                    result = PrometheusResult.ABORT
+                    logger.info(_client_disconnected_msg)
+                    break
+
                 if is_first_token:
                     metrics.chat_completion_ttft.labels(
                         model=authorized_chat_request.model
@@ -348,23 +371,24 @@ async def stream_completion(authorized_chat_request: AuthorizedChatRequest):
                     service_type=authorized_chat_request.service_type,
                     purpose=authorized_chat_request.purpose,
                 ).observe(completion_tokens)
-            tool_names = [
-                tool_calls_accum[i]["function"].get("name") or "unknown"
-                for i in sorted(tool_calls_accum)
-            ]
-            _record_tool_metrics(
-                authorized_chat_request.model,
-                authorized_chat_request.service_type,
-                authorized_chat_request.purpose,
-                tool_names,
-            )
-            _record_litellm_routing_metrics(
-                authorized_chat_request,
-                litellm_routing_snapshot,
-                prompt_tokens,
-                completion_tokens,
-            )
-            result = PrometheusResult.SUCCESS
+            if result != PrometheusResult.ABORT:
+                tool_names = [
+                    tool_calls_accum[i]["function"].get("name") or "unknown"
+                    for i in sorted(tool_calls_accum)
+                ]
+                _record_tool_metrics(
+                    authorized_chat_request.model,
+                    authorized_chat_request.service_type,
+                    authorized_chat_request.purpose,
+                    tool_names,
+                )
+                _record_litellm_routing_metrics(
+                    authorized_chat_request,
+                    litellm_routing_snapshot,
+                    prompt_tokens,
+                    completion_tokens,
+                )
+                result = PrometheusResult.SUCCESS
     except httpx.HTTPStatusError as e:
         if not streaming_started:
             yield raise_and_log(e, True)
@@ -376,6 +400,14 @@ async def stream_completion(authorized_chat_request: AuthorizedChatRequest):
         else:
             logger.error(f"Upstream service returned an error: {e}")
     finally:
+        # Cancel the disconnect watcher and wait for it to finish to avoid
+        # "Task was destroyed but it is pending" warnings at shutdown.
+        watch_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await watch_task
+        if result == PrometheusResult.ERROR and disconnect_event.is_set():
+            result = PrometheusResult.ABORT
+            logger.info(_client_disconnected_msg)
         metrics.chat_completion_latency.labels(
             result=result,
             model=authorized_chat_request.model,
