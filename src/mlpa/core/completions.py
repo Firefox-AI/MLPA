@@ -298,7 +298,7 @@ async def stream_completion(
 
             async for chunk in response.aiter_bytes():
                 if disconnect_event.is_set():
-                    result = PrometheusResult.ABORTED
+                    result = PrometheusResult.ABORT
                     logger.info(_client_disconnected_msg)
                     break
 
@@ -371,7 +371,7 @@ async def stream_completion(
                     service_type=authorized_chat_request.service_type,
                     purpose=authorized_chat_request.purpose,
                 ).observe(completion_tokens)
-            if result != PrometheusResult.ABORTED:
+            if result != PrometheusResult.ABORT:
                 tool_names = [
                     tool_calls_accum[i]["function"].get("name") or "unknown"
                     for i in sorted(tool_calls_accum)
@@ -400,11 +400,13 @@ async def stream_completion(
         else:
             logger.error(f"Upstream service returned an error: {e}")
     finally:
+        # Cancel the disconnect watcher and wait for it to finish to avoid
+        # "Task was destroyed but it is pending" warnings at shutdown.
         watch_task.cancel()
         with contextlib.suppress(asyncio.CancelledError):
             await watch_task
         if result == PrometheusResult.ERROR and disconnect_event.is_set():
-            result = PrometheusResult.ABORTED
+            result = PrometheusResult.ABORT
             logger.info(_client_disconnected_msg)
         metrics.chat_completion_latency.labels(
             result=result,

@@ -7,7 +7,7 @@ from prometheus_client import Counter, Gauge, Histogram
 class PrometheusResult(StrEnum):
     SUCCESS = "success"
     ERROR = "error"
-    ABORTED = "aborted"
+    ABORT = "abort"
 
 
 class PrometheusRejectionReason(StrEnum):
