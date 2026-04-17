@@ -40,14 +40,9 @@ async def get_or_create_user(user_id: str):
     claimed_new_identity = False
     try:
         params = {"end_user_id": user_id}
-        response = await client.get(
-            f"{env.LITELLM_API_BASE}/customer/info",
-            params=params,
-            headers=LITELLM_MASTER_AUTH_HEADERS,
-        )
-        user = response.json()
+        db_user = await litellm_pg.get_user(user_id)
 
-        if not user.get("user_id"):
+        if db_user is None:
             # Enforce managed service types user capacity with DB-backed admission control.
             if (
                 env.MLPA_ENFORCE_SIGNIN_CAP
@@ -91,7 +86,8 @@ async def get_or_create_user(user_id: str):
                 )
 
             return [created_user, True]
-        return [user, False]
+
+        return [db_user, False]
     except HTTPException:
         raise
     except Exception as e:
