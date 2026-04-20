@@ -39,15 +39,9 @@ async def get_or_create_user(user_id: str):
     client = get_http_client()
     claimed_new_identity = False
     try:
-        params = {"end_user_id": user_id}
-        response = await client.get(
-            f"{env.LITELLM_API_BASE}/customer/info",
-            params=params,
-            headers=LITELLM_MASTER_AUTH_HEADERS,
-        )
-        user = response.json()
+        db_user = await litellm_pg.get_user(user_id)
 
-        if not user.get("user_id"):
+        if db_user is None:
             # Enforce managed service types user capacity with DB-backed admission control.
             if (
                 env.MLPA_ENFORCE_SIGNIN_CAP
@@ -71,14 +65,9 @@ async def get_or_create_user(user_id: str):
                 json={"user_id": user_id, "budget_id": budget_id},
                 headers=LITELLM_MASTER_AUTH_HEADERS,
             )
-            response = await client.get(
-                f"{env.LITELLM_API_BASE}/customer/info",
-                params=params,
-                headers=LITELLM_MASTER_AUTH_HEADERS,
-            )
 
-            created_user = response.json()
-            if not created_user.get("user_id"):
+            created_user = await litellm_pg.get_user(user_id)
+            if created_user is None:
                 # Admission may have succeeded but LiteLLM user creation did not.
                 # Release the reserved slot to avoid claim/cap drift.
                 if claimed_new_identity:
@@ -91,7 +80,8 @@ async def get_or_create_user(user_id: str):
                 )
 
             return [created_user, True]
-        return [user, False]
+
+        return [db_user, False]
     except HTTPException:
         raise
     except Exception as e:
