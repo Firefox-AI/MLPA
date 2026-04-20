@@ -3,11 +3,12 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from fastapi import HTTPException
 
+from mlpa.core.config import env
 from mlpa.core.utils import get_or_create_user
 
 _USER_ID = "user123:ai"
 _BASE_IDENTITY, _, _ = _USER_ID.partition(":")
-_BUDGET_ID = "end-user-budget-ai"
+_BUDGET_ID = env.user_feature_budget["ai"]["budget_id"]
 _DB_USER = {"user_id": _USER_ID, "blocked": False, "budget_id": _BUDGET_ID}
 
 
@@ -52,20 +53,20 @@ async def test_existing_user_returns_db_user_without_http_call(
 async def test_new_user_created_and_returned(
     mock_litellm_pg, mock_app_attest_pg, mock_http_client
 ):
-    mock_litellm_pg.get_user.return_value = None
+    mock_litellm_pg.get_user.side_effect = [None, _DB_USER]
 
     user, was_created = await get_or_create_user(_USER_ID)
 
     assert user == _DB_USER
     assert was_created is True
     mock_http_client.post.assert_awaited_once()
-    mock_http_client.get.assert_awaited_once()
+    mock_http_client.get.assert_not_called()
 
 
 async def test_new_user_posts_correct_budget_id(
     mock_litellm_pg, mock_app_attest_pg, mock_http_client
 ):
-    mock_litellm_pg.get_user.return_value = None
+    mock_litellm_pg.get_user.side_effect = [None, _DB_USER]
 
     await get_or_create_user(_USER_ID)
 
@@ -77,7 +78,7 @@ async def test_new_user_posts_correct_budget_id(
 async def test_new_user_with_cap_enforcement_admitted(
     mock_litellm_pg, mock_app_attest_pg, mock_http_client
 ):
-    mock_litellm_pg.get_user.return_value = None
+    mock_litellm_pg.get_user.side_effect = [None, _DB_USER]
     mock_app_attest_pg.admit_managed_base_identity.return_value = (True, True)
 
     with patch("mlpa.core.utils.env.MLPA_ENFORCE_SIGNIN_CAP", True):
@@ -106,9 +107,8 @@ async def test_new_user_with_cap_enforcement_rejected(
 async def test_new_user_creation_fails_releases_claimed_slot(
     mock_litellm_pg, mock_app_attest_pg, mock_http_client
 ):
-    mock_litellm_pg.get_user.return_value = None
+    mock_litellm_pg.get_user.side_effect = [None, None]
     mock_app_attest_pg.admit_managed_base_identity.return_value = (True, True)
-    mock_http_client.get.return_value.json.return_value = {}
 
     with patch("mlpa.core.utils.env.MLPA_ENFORCE_SIGNIN_CAP", True):
         with pytest.raises(HTTPException) as exc:
@@ -123,8 +123,7 @@ async def test_new_user_creation_fails_releases_claimed_slot(
 async def test_new_user_creation_fails_no_slot_to_release(
     mock_litellm_pg, mock_app_attest_pg, mock_http_client
 ):
-    mock_litellm_pg.get_user.return_value = None
-    mock_http_client.get.return_value.json.return_value = {}
+    mock_litellm_pg.get_user.side_effect = [None, None]
 
     with pytest.raises(HTTPException) as exc:
         await get_or_create_user(_USER_ID)

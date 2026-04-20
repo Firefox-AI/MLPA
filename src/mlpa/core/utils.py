@@ -39,7 +39,6 @@ async def get_or_create_user(user_id: str):
     client = get_http_client()
     claimed_new_identity = False
     try:
-        params = {"end_user_id": user_id}
         db_user = await litellm_pg.get_user(user_id)
 
         if db_user is None:
@@ -66,14 +65,9 @@ async def get_or_create_user(user_id: str):
                 json={"user_id": user_id, "budget_id": budget_id},
                 headers=LITELLM_MASTER_AUTH_HEADERS,
             )
-            response = await client.get(
-                f"{env.LITELLM_API_BASE}/customer/info",
-                params=params,
-                headers=LITELLM_MASTER_AUTH_HEADERS,
-            )
 
-            created_user = response.json()
-            if not created_user.get("user_id"):
+            created_user = await litellm_pg.get_user(user_id)
+            if created_user is None:
                 # Admission may have succeeded but LiteLLM user creation did not.
                 # Release the reserved slot to avoid claim/cap drift.
                 if claimed_new_identity:
