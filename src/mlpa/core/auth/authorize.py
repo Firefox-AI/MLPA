@@ -1,14 +1,24 @@
 import hashlib
-from typing import Annotated
+from typing import Annotated, Callable, TypeVar
 
 from fastapi import Header, HTTPException, Request
 
 from mlpa.core.auth.dev_auth import auth_with_key
-from mlpa.core.classes import AuthorizedChatRequest, ChatRequest, ServiceType
+from mlpa.core.classes import (
+    AuthorizedChatRequest,
+    AuthorizedSearchRequest,
+    ChatRequest,
+    SearchRequest,
+    ServiceType,
+)
 from mlpa.core.config import env
 from mlpa.core.routers.appattest import app_attest_auth
 from mlpa.core.routers.fxa import fxa_auth
 from mlpa.core.utils import extract_user_from_play_integrity_jwt, parse_app_attest_jwt
+
+TAuthorizedRequest = TypeVar(
+    "TAuthorizedRequest", AuthorizedChatRequest, AuthorizedSearchRequest
+)
 
 
 def _resolve_purpose(service_type_value: str, purpose_header: str | None) -> str:
@@ -43,9 +53,9 @@ def _resolve_purpose(service_type_value: str, purpose_header: str | None) -> str
     return ""
 
 
-async def authorize_request(
+async def _authorize_common_request(
     request: Request,
-    chat_request: ChatRequest,
+    build_authorized_request: Callable[[str, str], TAuthorizedRequest],
     authorization: Annotated[str, Header()],
     service_type: Annotated[ServiceType, Header()],
     purpose: Annotated[str | None, Header()] = None,
@@ -53,10 +63,12 @@ async def authorize_request(
     use_app_attest: Annotated[bool | None, Header()] = None,
     use_qa_certificates: Annotated[bool | None, Header()] = None,
     use_play_integrity: Annotated[bool | None, Header()] = None,
-) -> AuthorizedChatRequest:
+) -> TAuthorizedRequest:
     if not authorization:
         raise HTTPException(status_code=401, detail="Missing authorization header")
+
     purpose_value = _resolve_purpose(service_type.value, purpose)
+
     if use_app_attest:
         # Apple App Attest
         body_bytes = await request.body()
@@ -67,41 +79,87 @@ async def authorize_request(
         )
         if not data or data.get("error"):
             raise HTTPException(status_code=401, detail=data["error"])
-        return AuthorizedChatRequest(
-            user=f"{assertionAuth.key_id_b64}:{service_type.value}",  # "user" is key_id_b64 from app attest
-            service_type=service_type.value,
-            purpose=purpose_value,
-            **chat_request.model_dump(exclude_unset=True),
+        return build_authorized_request(
+            f"{assertionAuth.key_id_b64}:{service_type.value}", purpose_value
         )
-    elif use_play_integrity:
+    if use_play_integrity:
         # Google Play integrity
         play_user_id = extract_user_from_play_integrity_jwt(authorization)
-        return AuthorizedChatRequest(
-            user=f"{play_user_id}:{service_type.value}",
-            service_type=service_type.value,
-            purpose=purpose_value,
-            **chat_request.model_dump(exclude_unset=True),
+        return build_authorized_request(
+            f"{play_user_id}:{service_type.value}", purpose_value
         )
-    elif service_type.value.endswith("-dev"):
+    if service_type.value.endswith("-dev"):
         if x_dev_authorization is None:
             raise HTTPException(
                 status_code=401,
                 detail="x-dev-authorization required for dev service types (ai-dev, memories-dev, mochi-dev)",
             )
         fxa_profile = await auth_with_key(x_dev_authorization, authorization)
-        return AuthorizedChatRequest(
-            user=f"{fxa_profile['user']}:{service_type.value}",
+        return build_authorized_request(
+            f"{fxa_profile['user']}:{service_type.value}", purpose_value
+        )
+
+    fxa_user_id = await fxa_auth(authorization)
+    if not fxa_user_id or fxa_user_id.get("error"):
+        raise HTTPException(status_code=401, detail=fxa_user_id["error"])
+    return build_authorized_request(
+        f"{fxa_user_id['user']}:{service_type.value}", purpose_value
+    )
+
+
+async def authorize_chat_request(
+    request: Request,
+    chat_request: ChatRequest,
+    authorization: Annotated[str, Header()],
+    service_type: Annotated[ServiceType, Header()],
+    purpose: Annotated[str | None, Header()] = None,
+    x_dev_authorization: Annotated[str | None, Header()] = None,
+    use_app_attest: Annotated[bool | None, Header()] = None,
+    use_qa_certificates: Annotated[bool | None, Header()] = None,
+    use_play_integrity: Annotated[bool | None, Header()] = None,
+) -> AuthorizedChatRequest:
+    return await _authorize_common_request(
+        request=request,
+        build_authorized_request=lambda user, purpose_value: AuthorizedChatRequest(
+            user=user,
             service_type=service_type.value,
             purpose=purpose_value,
             **chat_request.model_dump(exclude_unset=True),
-        )
-    else:
-        fxa_user_id = await fxa_auth(authorization)
-        if not fxa_user_id or fxa_user_id.get("error"):
-            raise HTTPException(status_code=401, detail=fxa_user_id["error"])
-        return AuthorizedChatRequest(
-            user=f"{fxa_user_id['user']}:{service_type.value}",
+        ),
+        authorization=authorization,
+        service_type=service_type,
+        purpose=purpose,
+        x_dev_authorization=x_dev_authorization,
+        use_app_attest=use_app_attest,
+        use_qa_certificates=use_qa_certificates,
+        use_play_integrity=use_play_integrity,
+    )
+
+
+async def authorize_search_request(
+    request: Request,
+    search_request: SearchRequest,
+    authorization: Annotated[str, Header()],
+    service_type: Annotated[ServiceType, Header()] = ServiceType.ai,
+    purpose: Annotated[str | None, Header()] = None,
+    x_dev_authorization: Annotated[str | None, Header()] = None,
+    use_app_attest: Annotated[bool | None, Header()] = None,
+    use_qa_certificates: Annotated[bool | None, Header()] = None,
+    use_play_integrity: Annotated[bool | None, Header()] = None,
+) -> AuthorizedSearchRequest:
+    return await _authorize_common_request(
+        request=request,
+        build_authorized_request=lambda user, purpose_value: AuthorizedSearchRequest(
+            user=user,
             service_type=service_type.value,
             purpose=purpose_value,
-            **chat_request.model_dump(exclude_unset=True),
-        )
+            **search_request.model_dump(exclude_unset=True),
+        ),
+        authorization=authorization,
+        service_type=service_type,
+        purpose=purpose,
+        x_dev_authorization=x_dev_authorization,
+        use_app_attest=use_app_attest,
+        use_qa_certificates=use_qa_certificates,
+        use_play_integrity=use_play_integrity,
+    )

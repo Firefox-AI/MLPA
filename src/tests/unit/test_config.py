@@ -90,7 +90,7 @@ def test_user_feature_budget_dev_service_types_default_values():
 
 
 def test_valid_service_types_all_service_types():
-    """Test that valid_service_types includes all service types (ai, s2s, s2s-android, memories, ai-dev, memories-dev, mochi-dev)."""
+    """Test that valid_service_types includes all configured service types."""
     env = Env()
     service_types = env.valid_service_types
 
@@ -101,7 +101,8 @@ def test_valid_service_types_all_service_types():
     assert "ai-dev" in service_types
     assert "memories-dev" in service_types
     assert "mochi-dev" in service_types
-    assert len(service_types) == 7
+    assert "search" in service_types
+    assert len(service_types) == 8
 
 
 def test_service_type_purposes_ai_and_memories():
@@ -117,15 +118,16 @@ def test_service_type_purposes_ai_and_memories():
 
 
 def test_service_type_purposes_s2s_empty():
-    """Test that s2s and s2s-android have no purposes (empty list)."""
+    """Test that s2s, s2s-android, and search have no purposes (empty list)."""
     env = Env()
     purposes = env.service_type_purposes
     assert purposes["s2s"] == []
     assert purposes["s2s-android"] == []
+    assert purposes["search"] == []
 
 
 def test_service_type_requires_purpose():
-    """Test that purpose is required for ai/ai-dev/mochi-dev/memories/memories-dev, not for s2s."""
+    """Test that purpose is required only for service types with configured allowlists."""
     env = Env()
     assert env.service_type_requires_purpose("ai") is True
     assert env.service_type_requires_purpose("ai-dev") is True
@@ -134,6 +136,7 @@ def test_service_type_requires_purpose():
     assert env.service_type_requires_purpose("memories-dev") is True
     assert env.service_type_requires_purpose("s2s") is False
     assert env.service_type_requires_purpose("s2s-android") is False
+    assert env.service_type_requires_purpose("search") is False
 
 
 def test_valid_purposes_for_service_type():
@@ -146,6 +149,7 @@ def test_valid_purposes_for_service_type():
     }
     assert env.valid_purposes_for_service_type("memories") == ["memory-generation"]
     assert env.valid_purposes_for_service_type("s2s") == []
+    assert env.valid_purposes_for_service_type("search") == []
 
 
 def test_user_feature_budget_structure_consistency():
@@ -165,6 +169,7 @@ def test_user_feature_budget_structure_consistency():
         "ai-dev",
         "memories-dev",
         "mochi-dev",
+        "search",
     ]:
         assert service_type in budgets
         service_keys = set(budgets[service_type].keys())

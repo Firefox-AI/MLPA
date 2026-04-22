@@ -11,11 +11,12 @@ from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
-from mlpa.core.auth.authorize import authorize_request
-from mlpa.core.classes import AuthorizedChatRequest
+from mlpa.core.auth.authorize import authorize_chat_request, authorize_search_request
+from mlpa.core.classes import AuthorizedChatRequest, AuthorizedSearchRequest
 from mlpa.core.completions import (
     get_completion,
     get_or_create_user_for_completion,
+    get_search,
     stream_completion,
 )
 from mlpa.core.config import (
@@ -162,7 +163,7 @@ Authorize first using App Attest, Play Integrity, FxA, or dev tier.
 async def chat_completion(
     request: Request,
     authorized_chat_request: Annotated[
-        AuthorizedChatRequest, Depends(authorize_request)
+        AuthorizedChatRequest, Depends(authorize_chat_request)
     ],
 ):
     user_id = authorized_chat_request.user
@@ -182,6 +183,36 @@ async def chat_completion(
         )
     else:
         return await get_completion(authorized_chat_request)
+
+
+@app.post(
+    "/v1/search/",
+    tags=["LiteLLM"],
+    responses=cast(dict[int | str, dict[str, Any]], RATE_LIMIT_ERROR_RESPONSE),
+)
+async def search(
+    request: Request,
+    authorized_search_request: Annotated[
+        AuthorizedSearchRequest, Depends(authorize_search_request)
+    ],
+):
+    if authorized_search_request.service_type != "search":
+        raise HTTPException(
+            status_code=400, detail="service-type header must be of type 'search'"
+        )
+    user_id = authorized_search_request.user
+    if not user_id:
+        raise HTTPException(
+            status_code=400,
+            detail={"error": "User not found from authorization response."},
+        )
+    user, _ = await get_or_create_user_for_completion(
+        user_id, authorized_search_request
+    )
+    if user.get("blocked"):
+        raise HTTPException(status_code=403, detail={"error": "User is blocked."})
+
+    return await get_search(authorized_search_request)
 
 
 @app.exception_handler(HTTPException)

@@ -28,7 +28,10 @@ class Env(BaseSettings):
     # Read-only admin dashboard (`/admin`) and GET /user/counts-by-service-type; not LiteLLM's master key
     MLPA_UI_ACCESS_KEY: str = "sk-ui-access-default"
     MLPA_VIRTUAL_KEY: str = "sk-virtual"  # Enforces LiteLLM.max_budget
-    OPENAI_API_KEY: str = "sk-add-your-key"
+
+    OPENAI_API_KEY: str = "sk-add-your-key"  # for local LiteLLM testing
+    EXA_API_KEY: str = "sk-add-your-key"  # for local LiteLLM testing
+
     LITELLM_API_BASE: str = "http://localhost:4000"
     CHALLENGE_EXPIRY_SECONDS: int = 300  # 5 minutes
 
@@ -79,6 +82,12 @@ class Env(BaseSettings):
     USER_FEATURE_BUDGET_MOCHI_DEV_RPM_LIMIT: int = 200
     USER_FEATURE_BUDGET_MOCHI_DEV_TPM_LIMIT: int = 10000
     USER_FEATURE_BUDGET_MOCHI_DEV_BUDGET_DURATION: str = "1d"
+
+    USER_FEATURE_BUDGET_SEARCH_BUDGET_ID: str = "end-user-budget-search"
+    USER_FEATURE_BUDGET_SEARCH_MAX_BUDGET: float = 0.1
+    USER_FEATURE_BUDGET_SEARCH_RPM_LIMIT: int = 10
+    USER_FEATURE_BUDGET_SEARCH_TPM_LIMIT: int = 2000
+    USER_FEATURE_BUDGET_SEARCH_BUDGET_DURATION: str = "1d"
 
     @cached_property
     def user_feature_budget(self) -> dict[str, dict]:
@@ -137,6 +146,13 @@ class Env(BaseSettings):
                 "tpm_limit": self.USER_FEATURE_BUDGET_MOCHI_DEV_TPM_LIMIT,
                 "budget_duration": self.USER_FEATURE_BUDGET_MOCHI_DEV_BUDGET_DURATION,
             },
+            "search": {
+                "budget_id": self.USER_FEATURE_BUDGET_SEARCH_BUDGET_ID,
+                "max_budget": self.USER_FEATURE_BUDGET_SEARCH_MAX_BUDGET,
+                "rpm_limit": self.USER_FEATURE_BUDGET_SEARCH_RPM_LIMIT,
+                "tpm_limit": self.USER_FEATURE_BUDGET_SEARCH_TPM_LIMIT,
+                "budget_duration": self.USER_FEATURE_BUDGET_SEARCH_BUDGET_DURATION,
+            },
         }
 
     @cached_property
@@ -164,6 +180,7 @@ class Env(BaseSettings):
             "memories-dev": memories_purposes,
             "s2s": [],
             "s2s-android": [],
+            "search": [],
         }
 
     def valid_purposes_for_service_type(self, service_type: str) -> list[str]:
@@ -272,12 +289,13 @@ env = Env()
 
 LITELLM_READINESS_URL = f"{env.LITELLM_API_BASE}/health/readiness"
 LITELLM_COMPLETIONS_URL = f"{env.LITELLM_API_BASE}/v1/chat/completions"
+LITELLM_SEARCH_URL = f"{env.LITELLM_API_BASE}/v1/search"
 LITELLM_MASTER_AUTH_HEADERS = {
     "Content-Type": "application/json",
     "Authorization": f"Bearer {env.MASTER_KEY}",
 }
 
-LITELLM_COMPLETION_AUTH_HEADERS = {
+LITELLM_VIRTUAL_AUTH_HEADERS = {
     "Content-Type": "application/json",
     "Authorization": f"Bearer {env.MLPA_VIRTUAL_KEY}",
 }

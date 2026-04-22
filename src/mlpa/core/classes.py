@@ -2,7 +2,7 @@ import enum
 from dataclasses import dataclass
 from typing import Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from mlpa.core.config import env
 
@@ -79,6 +79,19 @@ class PlayIntegrityRequest(BaseModel):
 
 
 class AuthorizedChatRequest(ChatRequest):
+    user: str
+    service_type: str
+    purpose: str = (
+        ""  # From header; empty for service types without defined purposes (e.g. s2s)
+    )
+
+
+class SearchRequest(BaseModel):
+    query: str
+    max_results: int = Field(ge=1, le=10)
+
+
+class AuthorizedSearchRequest(SearchRequest):
     user: str
     service_type: str
     purpose: str = (
