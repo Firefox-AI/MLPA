@@ -95,7 +95,9 @@ def record_chat_request_rejection(
     _record_rejection(req, reason)
 
 
-async def get_or_create_user_for_completion(user_id: str, req: AuthorizedChatRequest):
+async def get_or_create_user_for_completion(
+    user_id: str, req: AuthorizedChatRequest | AuthorizedSearchRequest
+):
     """Wraps get_or_create_user and records a signup-cap rejection metric if applicable."""
     try:
         return await get_or_create_user(user_id)
@@ -104,8 +106,12 @@ async def get_or_create_user_for_completion(user_id: str, req: AuthorizedChatReq
             exc.status_code == 403
             and isinstance(exc.detail, dict)
             and exc.detail.get("error") == ERROR_CODE_MAX_USERS_REACHED
+            and isinstance(req, AuthorizedChatRequest)
         ):
-            _record_rejection(req, PrometheusRejectionReason.SIGNUP_CAP_EXCEEDED)
+            _record_rejection(
+                req,
+                PrometheusRejectionReason.SIGNUP_CAP_EXCEEDED,
+            )
         raise
 
 
@@ -574,6 +580,11 @@ async def get_search(authorized_search_request: AuthorizedSearchRequest):
             headers=LITELLM_VIRTUAL_AUTH_HEADERS,
             json=body,
         )
+        try:
+            response.raise_for_status()
+        except httpx.HTTPStatusError as e:
+            raise_and_log(e)
+
         data = response.json()
 
         result = PrometheusResult.SUCCESS

@@ -200,6 +200,18 @@ async def search(
         raise HTTPException(
             status_code=400, detail="service-type header must be of type 'search'"
         )
+    user_id = authorized_search_request.user
+    if not user_id:
+        raise HTTPException(
+            status_code=400,
+            detail={"error": "User not found from authorization response."},
+        )
+    user, _ = await get_or_create_user_for_completion(
+        user_id, authorized_search_request
+    )
+    if user.get("blocked"):
+        raise HTTPException(status_code=403, detail={"error": "User is blocked."})
+
     return await get_search(authorized_search_request)
 
 

@@ -1,4 +1,6 @@
+import pytest
 from fastapi import Request
+from pydantic import ValidationError
 
 from mlpa.core.auth import authorize as authorize_module
 from mlpa.core.classes import (
@@ -59,3 +61,11 @@ async def test_authorize_search_request_returns_authorized_search_request(mocker
     assert result.purpose == ""
     assert result.query == "latest AI developments"
     assert result.max_results == 2
+
+
+def test_search_request_rejects_too_many_results():
+    with pytest.raises(ValidationError) as exc_info:
+        SearchRequest(query="latest AI developments", max_results=11)
+
+    errors = exc_info.value.errors()
+    assert errors[0]["loc"] == ("max_results",)

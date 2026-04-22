@@ -2,7 +2,7 @@ import enum
 from dataclasses import dataclass
 from typing import Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 from mlpa.core.config import env
 
@@ -88,7 +88,7 @@ class AuthorizedChatRequest(ChatRequest):
 
 class SearchRequest(BaseModel):
     query: str
-    max_results: int
+    max_results: int = Field(ge=1, le=10)
 
 
 class AuthorizedSearchRequest(SearchRequest):
