@@ -52,6 +52,8 @@ Navigate to
 
 Service account configured to hit VertexAI: `service_account.json` should be in directory root
 
+For Exa search, set `EXA_API_KEY` in `.env`. MLPA now exposes the authenticated proxy path `POST /v1/search/exa-search`, which forwards to LiteLLM's `exa_ai` search tool.
+
 ## API Documentation
 
 After running, Swagger can be viewed at `http://localhost:<PORT>/api/docs`

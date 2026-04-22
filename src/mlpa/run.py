@@ -5,14 +5,14 @@ from typing import Annotated, Any, cast
 
 import sentry_sdk
 import uvicorn
-from fastapi import Depends, FastAPI, HTTPException, Request, Response
+from fastapi import Depends, FastAPI, Header, HTTPException, Request, Response
 from fastapi.exception_handlers import http_exception_handler
 from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
-from mlpa.core.auth.authorize import authorize_request
-from mlpa.core.classes import AuthorizedChatRequest
+from mlpa.core.auth.authorize import authorize_request, authorize_request_context
+from mlpa.core.classes import AuthorizedChatRequest, ServiceType
 from mlpa.core.completions import (
     get_completion,
     get_or_create_user_for_completion,
@@ -34,6 +34,8 @@ from mlpa.core.routers.health import health_router
 from mlpa.core.routers.mock import mock_router
 from mlpa.core.routers.play import play_router
 from mlpa.core.routers.user import user_router
+from mlpa.core.search import proxy_exa_search
+from mlpa.core.utils import get_or_create_user
 
 tags_metadata = [
     {"name": "Health", "description": "Health check endpoints."},
@@ -152,6 +154,21 @@ Authorize first using App Attest, Play Integrity, FxA, or dev tier.
 - **use-play-integrity**: Set to `true` for Android Play Integrity.
 """
 
+SEARCH_DESCRIPTION = """
+Authorize first using App Attest, Play Integrity, FxA, or dev tier.
+
+Proxies to LiteLLM `/v1/search/exa-search`, backed by LiteLLM's `exa_ai` search tool.
+
+**Headers:**
+
+- **Authorization** (required): Bearer token — FxA OAuth token, Play Integrity MLPA token, or App Attest JWT.
+- **service-type** (required): One of `ai`, `s2s`, `s2s-android`, `memories`, `ai-dev`, `memories-dev`, `mochi-dev`.
+- **purpose** (required for ai/ai-dev/mochi-dev/memories/memories-dev): One of `chat`, `title-generation`, `convo-starters-sidebar` for AI; `memory-generation` for memories; omit for s2s.
+- **x-dev-authorization** (required for ai-dev/memories-dev/mochi-dev): Experimentation token; also requires FxA in Authorization.
+- **use-app-attest**: Set to `true` for iOS App Attest.
+- **use-play-integrity**: Set to `true` for Android Play Integrity.
+"""
+
 
 @app.post(
     "/v1/chat/completions",
@@ -182,6 +199,46 @@ async def chat_completion(
         )
     else:
         return await get_completion(authorized_chat_request)
+
+
+@app.post(
+    "/v1/search/exa-search",
+    tags=["LiteLLM"],
+    description=SEARCH_DESCRIPTION.strip(),
+)
+async def exa_search_endpoint(
+    request: Request,
+    authorization: Annotated[str, Header()],
+    service_type: Annotated[ServiceType, Header()],
+    purpose: Annotated[str | None, Header()] = None,
+    x_dev_authorization: Annotated[str | None, Header()] = None,
+    use_app_attest: Annotated[bool | None, Header()] = None,
+    use_qa_certificates: Annotated[bool | None, Header()] = None,
+    use_play_integrity: Annotated[bool | None, Header()] = None,
+):
+    try:
+        body = await request.json()
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=400, detail={"error": "Invalid JSON body"})
+    if not isinstance(body, dict):
+        raise HTTPException(
+            status_code=400, detail={"error": "JSON body must be an object"}
+        )
+
+    authorized_request = await authorize_request_context(
+        request=request,
+        authorization=authorization,
+        service_type=service_type,
+        purpose=purpose,
+        x_dev_authorization=x_dev_authorization,
+        use_app_attest=use_app_attest,
+        use_qa_certificates=use_qa_certificates,
+        use_play_integrity=use_play_integrity,
+    )
+    user, _ = await get_or_create_user(authorized_request.user)
+    if user.get("blocked"):
+        raise HTTPException(status_code=403, detail={"error": "User is blocked."})
+    return await proxy_exa_search(authorized_request, body)
 
 
 @app.exception_handler(HTTPException)

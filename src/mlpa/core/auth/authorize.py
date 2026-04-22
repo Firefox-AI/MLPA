@@ -4,7 +4,12 @@ from typing import Annotated
 from fastapi import Header, HTTPException, Request
 
 from mlpa.core.auth.dev_auth import auth_with_key
-from mlpa.core.classes import AuthorizedChatRequest, ChatRequest, ServiceType
+from mlpa.core.classes import (
+    AuthorizedChatRequest,
+    AuthorizedRequestContext,
+    ChatRequest,
+    ServiceType,
+)
 from mlpa.core.config import env
 from mlpa.core.routers.appattest import app_attest_auth
 from mlpa.core.routers.fxa import fxa_auth
@@ -54,6 +59,32 @@ async def authorize_request(
     use_qa_certificates: Annotated[bool | None, Header()] = None,
     use_play_integrity: Annotated[bool | None, Header()] = None,
 ) -> AuthorizedChatRequest:
+    authorized_context = await authorize_request_context(
+        request=request,
+        authorization=authorization,
+        service_type=service_type,
+        purpose=purpose,
+        x_dev_authorization=x_dev_authorization,
+        use_app_attest=use_app_attest,
+        use_qa_certificates=use_qa_certificates,
+        use_play_integrity=use_play_integrity,
+    )
+    return AuthorizedChatRequest(
+        **authorized_context.model_dump(),
+        **chat_request.model_dump(exclude_unset=True),
+    )
+
+
+async def authorize_request_context(
+    request: Request,
+    authorization: str,
+    service_type: ServiceType,
+    purpose: str | None = None,
+    x_dev_authorization: str | None = None,
+    use_app_attest: bool | None = None,
+    use_qa_certificates: bool | None = None,
+    use_play_integrity: bool | None = None,
+) -> AuthorizedRequestContext:
     if not authorization:
         raise HTTPException(status_code=401, detail="Missing authorization header")
     purpose_value = _resolve_purpose(service_type.value, purpose)
@@ -67,20 +98,18 @@ async def authorize_request(
         )
         if not data or data.get("error"):
             raise HTTPException(status_code=401, detail=data["error"])
-        return AuthorizedChatRequest(
+        return AuthorizedRequestContext(
             user=f"{assertionAuth.key_id_b64}:{service_type.value}",  # "user" is key_id_b64 from app attest
             service_type=service_type.value,
             purpose=purpose_value,
-            **chat_request.model_dump(exclude_unset=True),
         )
     elif use_play_integrity:
         # Google Play integrity
         play_user_id = extract_user_from_play_integrity_jwt(authorization)
-        return AuthorizedChatRequest(
+        return AuthorizedRequestContext(
             user=f"{play_user_id}:{service_type.value}",
             service_type=service_type.value,
             purpose=purpose_value,
-            **chat_request.model_dump(exclude_unset=True),
         )
     elif service_type.value.endswith("-dev"):
         if x_dev_authorization is None:
@@ -89,19 +118,17 @@ async def authorize_request(
                 detail="x-dev-authorization required for dev service types (ai-dev, memories-dev, mochi-dev)",
             )
         fxa_profile = await auth_with_key(x_dev_authorization, authorization)
-        return AuthorizedChatRequest(
+        return AuthorizedRequestContext(
             user=f"{fxa_profile['user']}:{service_type.value}",
             service_type=service_type.value,
             purpose=purpose_value,
-            **chat_request.model_dump(exclude_unset=True),
         )
     else:
         fxa_user_id = await fxa_auth(authorization)
         if not fxa_user_id or fxa_user_id.get("error"):
             raise HTTPException(status_code=401, detail=fxa_user_id["error"])
-        return AuthorizedChatRequest(
+        return AuthorizedRequestContext(
             user=f"{fxa_user_id['user']}:{service_type.value}",
             service_type=service_type.value,
             purpose=purpose_value,
-            **chat_request.model_dump(exclude_unset=True),
         )

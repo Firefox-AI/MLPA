@@ -183,3 +183,14 @@ def test_user_feature_budget_memories_type_validation():
     assert isinstance(memories_config["rpm_limit"], int)
     assert isinstance(memories_config["tpm_limit"], int)
     assert isinstance(memories_config["budget_duration"], str)
+
+
+def test_exa_api_key_default_value():
+    env = Env()
+    assert env.EXA_API_KEY == "exa-add-your-key"
+
+
+def test_exa_api_key_from_env():
+    with patch.dict(os.environ, {"EXA_API_KEY": "exa-live-key"}):
+        env = Env()
+        assert env.EXA_API_KEY == "exa-live-key"

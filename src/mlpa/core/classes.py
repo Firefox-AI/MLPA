@@ -78,6 +78,12 @@ class PlayIntegrityRequest(BaseModel):
     package_name: str = env.PLAY_INTEGRITY_PACKAGE_NAME
 
 
+class AuthorizedRequestContext(BaseModel):
+    user: str
+    service_type: str
+    purpose: str = ""
+
+
 class AuthorizedChatRequest(ChatRequest):
     user: str
     service_type: str
