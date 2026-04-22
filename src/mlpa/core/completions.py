@@ -570,7 +570,7 @@ async def get_search(authorized_search_request: AuthorizedSearchRequest):
     try:
         client = get_http_client()
         response = await client.post(
-            f"{LITELLM_SEARCH_URL}/{authorized_search_request.search_tool}",
+            f"{LITELLM_SEARCH_URL}/exa-search",
             headers=LITELLM_VIRTUAL_AUTH_HEADERS,
             json=body,
         )

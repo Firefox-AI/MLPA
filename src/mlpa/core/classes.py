@@ -97,7 +97,6 @@ class AuthorizedSearchRequest(SearchRequest):
     purpose: str = (
         ""  # From header; empty for service types without defined purposes (e.g. s2s)
     )
-    search_tool: str = "exa-search"
 
 
 # Dynamically create ServiceType enum from config
