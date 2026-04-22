@@ -186,7 +186,7 @@ async def chat_completion(
 
 
 @app.post(
-    "/v1/search/",
+    "/v1/search",
     tags=["LiteLLM"],
     responses=cast(dict[int | str, dict[str, Any]], RATE_LIMIT_ERROR_RESPONSE),
 )
