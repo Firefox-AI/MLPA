@@ -1,5 +1,5 @@
 import pytest
-from fastapi import Request
+from fastapi import HTTPException, Request
 from pydantic import ValidationError
 
 from mlpa.core.auth import authorize as authorize_module
@@ -56,8 +56,8 @@ async def test_authorize_search_request_returns_authorized_search_request(mocker
     )
 
     assert isinstance(result, AuthorizedSearchRequest)
-    assert result.user == "user-456:ai"
-    assert result.service_type == "ai"
+    assert result.user == "user-456:search"
+    assert result.service_type == "search"
     assert result.purpose == ""
     assert result.query == "latest AI developments"
     assert result.max_results == 2
@@ -69,3 +69,20 @@ def test_search_request_rejects_too_many_results():
 
     errors = exc_info.value.errors()
     assert errors[0]["loc"] == ("max_results",)
+
+
+async def test_authorize_chat_request_rejects_invalid_service_type_for_model():
+    with pytest.raises(HTTPException) as exc_info:
+        await authorize_module.authorize_chat_request(
+            request=_make_request("/v1/chat/completions"),
+            chat_request=ChatRequest(model="exa", messages=[]),
+            authorization="Bearer token",
+            service_type=authorize_module.ServiceType.ai,
+            purpose="chat",
+        )
+
+    assert exc_info.value.status_code == 400
+    assert (
+        exc_info.value.detail
+        == "Invalid service-type value for model exa. Should be one of ['search']"
+    )

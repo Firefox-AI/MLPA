@@ -14,6 +14,11 @@ model_list:
     litellm_params:
       model: openai/gpt-4o
       api_key: os.environ/OPENAI_API_KEY
+  - model_name: exa
+    litellm_params:
+      model: openai/exa
+      api_base: https://api.exa.ai
+      api_key: os.environ/EXA_API_KEY
 
 search_tools:
   - search_tool_name: exa-search
