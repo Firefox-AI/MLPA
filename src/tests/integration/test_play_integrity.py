@@ -77,7 +77,7 @@ def test_chat_with_play_integrity_token_success(mocked_client_integration):
             "service-type": "ai",
             "purpose": "chat",
         },
-        json=SAMPLE_CHAT_REQUEST.model_dump(exclude_unset=True),
+        json=SAMPLE_CHAT_REQUEST.model_dump(exclude_none=True),
     )
 
     assert response.status_code == 200

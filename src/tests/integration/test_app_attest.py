@@ -26,7 +26,7 @@ from tests.integration.appattest_helpers import (
 )
 from tests.mocks import MockAppAttestPGService, MockLiteLLMPGService
 
-sample_chat_request = SAMPLE_CHAT_REQUEST.model_dump(exclude_unset=True)
+sample_chat_request = SAMPLE_CHAT_REQUEST.model_dump(exclude_none=True)
 jwt_secret = "secret"
 # TODO: generate keys, certs, attest and assert and pass use-qa-certificates=True for these tests
 
@@ -366,7 +366,7 @@ async def test_verify_assert_succeeds_and_updates_counter(mocker):
     await mock_pg.store_key(TEST_KEY_ID_B64, public_key_pem, counter=previous_counter)
     mocker.patch("pyattest.assertion.Assertion.verify", return_value=None)
 
-    chat_payload = SAMPLE_CHAT_REQUEST.model_dump(exclude_unset=True)
+    chat_payload = SAMPLE_CHAT_REQUEST.model_dump(exclude_none=True)
     payload_bytes = json.dumps(
         chat_payload, sort_keys=True, separators=(",", ":")
     ).encode()
