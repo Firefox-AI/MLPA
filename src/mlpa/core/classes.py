@@ -10,7 +10,7 @@ from mlpa.core.config import env
 class ChatRequest(BaseModel):
     # NOTE: this are sanitized parames we are willing to expose to the user
     # full list is https://docs.litellm.ai/docs/completion/input#input-params-1
-    model: str
+    model: str = env.MODEL_NAME
     stream: Optional[bool] = False
     messages: list[dict] = []
     temperature: Optional[float] = env.TEMPERATURE
