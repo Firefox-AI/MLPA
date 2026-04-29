@@ -10,9 +10,9 @@ from mlpa.core.config import env
 class ChatRequest(BaseModel):
     # NOTE: this are sanitized parames we are willing to expose to the user
     # full list is https://docs.litellm.ai/docs/completion/input#input-params-1
+    model: str
     stream: Optional[bool] = False
     messages: list[dict] = []
-    model: Optional[str] = env.MODEL_NAME
     temperature: Optional[float] = env.TEMPERATURE
     max_completion_tokens: Optional[int] = env.MAX_COMPLETION_TOKENS
     top_p: Optional[float] = env.TOP_P
@@ -33,6 +33,8 @@ class ChatRequest(BaseModel):
     parallel_tool_calls: Optional[bool] = None
     logprobs: Optional[bool] = None
     top_logprobs: Optional[int] = None
+    # exa search params
+    text: Optional[bool] = None
 
 
 class UserUpdatePayload(BaseModel):

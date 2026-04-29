@@ -188,3 +188,26 @@ def test_user_feature_budget_memories_type_validation():
     assert isinstance(memories_config["rpm_limit"], int)
     assert isinstance(memories_config["tpm_limit"], int)
     assert isinstance(memories_config["budget_duration"], str)
+
+
+def test_forced_model_service_type_pairs_defaults():
+    """Test that forced model/service-type mappings include search-only models."""
+    env = Env()
+
+    assert env.forced_model_service_type_pairs == {"exa": ["search"]}
+
+
+def test_valid_service_type_for_model_forced_pair():
+    """Test that forced model/service-type pairs are enforced."""
+    env = Env()
+
+    assert env.valid_service_type_for_model("search", "exa") is True
+    assert env.valid_service_type_for_model("ai", "exa") is False
+
+
+def test_valid_service_type_for_model_unconfigured_model():
+    """Test that unconfigured models accept any service type."""
+    env = Env()
+
+    assert env.valid_service_type_for_model("ai", "gpt-oss-120b") is True
+    assert env.valid_service_type_for_model("search", "gpt-oss-120b") is True

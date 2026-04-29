@@ -118,6 +118,16 @@ async def authorize_chat_request(
     use_qa_certificates: Annotated[bool | None, Header()] = None,
     use_play_integrity: Annotated[bool | None, Header()] = None,
 ) -> AuthorizedChatRequest:
+    is_service_type_valid = env.valid_service_type_for_model(
+        service_type.value, chat_request.model
+    )
+
+    if not is_service_type_valid:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Invalid service-type value for model {chat_request.model}. Should be one of {env.forced_model_service_type_pairs.get(chat_request.model)}",
+        )
+
     return await _authorize_common_request(
         request=request,
         build_authorized_request=lambda user, purpose_value: AuthorizedChatRequest(
@@ -140,7 +150,7 @@ async def authorize_search_request(
     request: Request,
     search_request: SearchRequest,
     authorization: Annotated[str, Header()],
-    service_type: Annotated[ServiceType, Header()] = ServiceType.ai,
+    service_type: Annotated[ServiceType, Header()] = ServiceType.search,
     purpose: Annotated[str | None, Header()] = None,
     x_dev_authorization: Annotated[str | None, Header()] = None,
     use_app_attest: Annotated[bool | None, Header()] = None,

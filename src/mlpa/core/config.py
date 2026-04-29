@@ -191,6 +191,21 @@ class Env(BaseSettings):
         """True if the purpose header is mandatory for this service type."""
         return len(self.valid_purposes_for_service_type(service_type)) > 0
 
+    @cached_property
+    def forced_model_service_type_pairs(self) -> dict[str, list[str]]:
+        """
+        Returns a dictionary mapping model names to their valid service types.
+        """
+        # Force certain models to use certain service types
+        return {"exa": ["search"]}
+
+    def valid_service_type_for_model(self, service_type: str, model: str) -> bool:
+        """Check if a service type is valid for a specific model."""
+        valid_service_types = self.forced_model_service_type_pairs.get(model)
+        if valid_service_types is None:
+            return True  # Return true if not explicitly configured above
+        return service_type in valid_service_types
+
     # Logging
     LOG_JSON: bool = False  # Set to True for GKE deployment
     LOGURU_LEVEL: str = "INFO"
