@@ -403,7 +403,7 @@ RATE_LIMIT_ERROR_RESPONSE = {
             }
         },
     },
-    403: {
+    503: {
         "description": "Forbidden - Maximum signed-in users reached",
         "content": {
             "application/json": {

@@ -90,7 +90,7 @@ async def mock_get_or_create_user(mock_litellm_pg, mock_app_attest_pg, user_id: 
             )
             if not admitted:
                 raise HTTPException(
-                    status_code=403,
+                    status_code=503,
                     detail={"error": ERROR_CODE_MAX_USERS_REACHED},
                 )
 

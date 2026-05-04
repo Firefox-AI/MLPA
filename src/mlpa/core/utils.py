@@ -55,7 +55,7 @@ async def get_or_create_user(user_id: str):
                 )
                 if not admitted:
                     raise HTTPException(
-                        status_code=403,
+                        status_code=503,
                         detail={"error": ERROR_CODE_MAX_USERS_REACHED},
                     )
                 claimed_new_identity = newly_claimed

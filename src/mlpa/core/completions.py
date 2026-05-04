@@ -103,7 +103,7 @@ async def get_or_create_user_for_completion(
         return await get_or_create_user(user_id)
     except HTTPException as exc:
         if (
-            exc.status_code == 403
+            exc.status_code == 503
             and isinstance(exc.detail, dict)
             and exc.detail.get("error") == ERROR_CODE_MAX_USERS_REACHED
             and isinstance(req, AuthorizedChatRequest)
