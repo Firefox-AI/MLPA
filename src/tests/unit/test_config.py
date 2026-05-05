@@ -109,12 +109,12 @@ def test_service_type_purposes_ai_and_memories():
     """Test service_type_purposes: AI types have chat/title-generation/convo-starters-sidebar, memories have memory-generation."""
     env = Env()
     purposes = env.service_type_purposes
-    ai_purposes = ["chat", "title-generation", "convo-starters-sidebar"]
+    ai_purposes = ["chat", "title-generation", "convo-starters-sidebar", "telemetry"]
     assert purposes["ai"] == ai_purposes
     assert purposes["ai-dev"] == ai_purposes
     assert purposes["mochi-dev"] == ai_purposes
-    assert purposes["memories"] == ["memory-generation"]
-    assert purposes["memories-dev"] == ["memory-generation"]
+    assert purposes["memories"] == ["memory-generation", "telemetry"]
+    assert purposes["memories-dev"] == ["memory-generation", "telemetry"]
 
 
 def test_service_type_purposes_s2s_empty():
@@ -146,8 +146,12 @@ def test_valid_purposes_for_service_type():
         "chat",
         "title-generation",
         "convo-starters-sidebar",
+        "telemetry",
     }
-    assert env.valid_purposes_for_service_type("memories") == ["memory-generation"]
+    assert env.valid_purposes_for_service_type("memories") == [
+        "memory-generation",
+        "telemetry",
+    ]
     assert env.valid_purposes_for_service_type("s2s") == []
     assert env.valid_purposes_for_service_type("search") == []
 
