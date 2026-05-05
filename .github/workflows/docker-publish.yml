@@ -6,6 +6,8 @@ on:
       - main
     tags:
       - "v*"
+  release:
+    types: [published]
 
 jobs:
   # docs - https://github.com/mozilla/deploy-actions/blob/main/.github/workflows/docs/build-and-push.md
@@ -20,3 +22,4 @@ jobs:
       gar_name: llm-proxy-prod
       project_id: moz-fx-llm-proxy-prod-b0b8
       should_tag_latest: true
+      extra_tags: ${{ (github.event_name == 'release' && github.event.action == 'published') && 'release' || '' }}

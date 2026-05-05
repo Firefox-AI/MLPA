@@ -16,6 +16,8 @@ This creates a virtual environment in `.venv/`, installs dependencies, and insta
 
 1. `docker compose -f litellm_docker_compose.yaml up -d`
 
+    (`docker compose down --volumes --remove-orphans` to remove all)
+
 ### Create and migrate appattest database
 
 2. `sh ./scripts/create-app-attest-database.sh`
