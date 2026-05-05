@@ -4,6 +4,7 @@ import socket
 import subprocess
 import sys
 import time
+from importlib.util import find_spec
 from pathlib import Path
 
 import httpx
@@ -31,6 +32,9 @@ def _wait_for_liveness(base_url: str, timeout_s: int = 30) -> None:
 
 
 def test_app_attest_qa_flow_e2e():
+    if find_spec("typer") is None:
+        pytest.skip("typer is required for App Attest QA CLI e2e test")
+
     cert_dir = Path("src/tests/certs")
     cert_dir_exists = cert_dir.exists()
     existing_files = {p.name for p in cert_dir.iterdir()} if cert_dir_exists else set()
