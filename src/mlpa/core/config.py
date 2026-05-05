@@ -170,8 +170,13 @@ class Env(BaseSettings):
         Memories types: memory-generation.
         s2s types: no purposes (empty list → purpose header not required, use empty value).
         """
-        ai_purposes = ["chat", "title-generation", "convo-starters-sidebar"]
-        memories_purposes = ["memory-generation"]
+        ai_purposes = [
+            "chat",
+            "title-generation",
+            "convo-starters-sidebar",
+            "telemetry",
+        ]
+        memories_purposes = ["memory-generation", "telemetry"]
         return {
             "ai": ai_purposes,
             "ai-dev": ai_purposes,
