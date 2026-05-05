@@ -6,8 +6,6 @@ on:
       - main
     tags:
       - "v*"
-  release:
-    types: [published]
 
 jobs:
   # docs - https://github.com/mozilla/deploy-actions/blob/main/.github/workflows/docs/build-and-push.md
