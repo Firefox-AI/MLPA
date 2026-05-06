@@ -108,7 +108,7 @@ sentry_sdk.init(
 
 app = FastAPI(
     title="MLPA",
-    description="A proxy to verify App Attest/FxA payloads and proxy requests through LiteLLM.",
+    description="Authenticates and proxies LLM requests through LiteLLM to enact budgets and per-user management.",
     version="1.0.0",
     docs_url="/api/docs",
     openapi_tags=tags_metadata,

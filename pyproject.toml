@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "mlpa"
 version = "1.0.0"
-description = "A proxy to verify App Attest/FxA payloads and proxy requests using LiteLLM virtual keys."
+description = "Authenticates and proxies LLM requests through LiteLLM to enact budgets and per-user management."
 authors = [
     { name = "Noah Podgurski", email = "npodgurski@mozilla.com" },
     { name = "Alexander Osipenko", email = "aosipenko@mozilla.com" }
