@@ -51,8 +51,6 @@ _RATE_LIMIT_REJECTION: dict[int, tuple[PrometheusRejectionReason, str]] = {
     ),
 }
 
-_DISCONNECT_POLL_INTERVAL_SECONDS = 0.1
-
 
 def _parse_rate_limit_error(error_text: str, user: str) -> int | None:
     """
@@ -253,7 +251,7 @@ async def stream_completion(
 
     async def _watch_disconnect() -> None:
         while not await request.is_disconnected():
-            await asyncio.sleep(_DISCONNECT_POLL_INTERVAL_SECONDS)
+            await asyncio.sleep(env.DISCONNECT_POLL_INTERVAL_SECONDS)
         disconnect_event.set()
 
     async def _read_next_chunk(
