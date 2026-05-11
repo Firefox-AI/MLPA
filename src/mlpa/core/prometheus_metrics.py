@@ -68,10 +68,13 @@ BUCKETS_LITELLM_ATTEMPTS = (0, 1, 2, 3, 5, float("inf"))
 
 @dataclass
 class PrometheusMetrics:
+    # global request metrics
     in_progress_requests: Gauge
     requests_total: Counter
     response_status_codes: Counter
     request_latency: Histogram
+
+    # auth
     validate_challenge_latency: Histogram
     validate_app_attest_latency: Histogram
     validate_app_assert_latency: Histogram
@@ -81,6 +84,8 @@ class PrometheusMetrics:
     fxa_verifications_total: Counter
     play_verifications_total: Counter
     access_token_verifications_total: Counter
+
+    # chat completions
     chat_completion_latency: Histogram
     chat_completion_ttft: Histogram
     chat_tokens: Counter
@@ -90,6 +95,11 @@ class PrometheusMetrics:
     chat_tool_calls_per_completion: Histogram
     chat_requests_with_tools: Counter
     chat_request_rejections: Counter
+
+    # search
+    search_latency: Histogram
+
+    # litellm
     litellm_routed_completions: Counter
     litellm_attempted_fallbacks: Histogram
     litellm_attempted_retries: Histogram
@@ -215,6 +225,12 @@ metrics = PrometheusMetrics(
         "mlpa_chat_request_rejections_total",
         "Number of chat requests rejected due to budget, rate limit, payload size, or managed-user signup cap.",
         ["reason", "model", "service_type", "purpose"],
+    ),
+    search_latency=Histogram(
+        "mlpa_search_latency_seconds",
+        "Search latency in seconds.",
+        ["result", "service_type", "purpose"],
+        buckets=BUCKETS_COMPLETION,
     ),
     litellm_routed_completions=Counter(
         "mlpa_litellm_routed_completions_total",
