@@ -352,7 +352,8 @@ async def stream_completion(
                 except StopAsyncIteration:
                     break
                 except httpx.ReadError:
-                    if disconnect_event.is_set():
+                    if disconnect_event.is_set() or await request.is_disconnected():
+                        disconnect_event.set()
                         result = PrometheusResult.ABORT
                         logger.info(_client_disconnected_msg)
                         break
@@ -460,7 +461,8 @@ async def stream_completion(
                 )
                 result = PrometheusResult.SUCCESS
     except httpx.ReadError as e:
-        if disconnect_event.is_set():
+        if disconnect_event.is_set() or await request.is_disconnected():
+            disconnect_event.set()
             result = PrometheusResult.ABORT
             logger.info(_client_disconnected_msg)
         else:
