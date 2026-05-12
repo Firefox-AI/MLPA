@@ -593,3 +593,7 @@ async def get_search(authorized_search_request: AuthorizedSearchRequest):
         raise
     except Exception as e:
         raise_and_log(e, False, 502, "Failed to proxy request")
+    finally:
+        metrics.search_latency.labels(
+            result=result,
+        ).observe(time.perf_counter() - start_time)
