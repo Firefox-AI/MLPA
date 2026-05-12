@@ -47,6 +47,17 @@ BUCKETS_COMPLETION = (
     180.0,
     float("inf"),
 )
+BUCKETS_SEARCH = (
+    0.1,
+    0.2,
+    0.5,
+    1.0,
+    2.5,
+    5.0,
+    10.0,
+    20.0,
+    float("inf"),
+)
 BUCKETS_TTFT = (0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0, float("inf"))
 BUCKETS_TOOL_CALLS = (0, 1, 2, 3, 5, 10, 20, 50, float("inf"))
 BUCKETS_TOKENS = (
@@ -229,8 +240,8 @@ metrics = PrometheusMetrics(
     search_latency=Histogram(
         "mlpa_search_latency_seconds",
         "Search latency in seconds.",
-        ["result", "service_type", "purpose"],
-        buckets=BUCKETS_COMPLETION,
+        ["result"],
+        buckets=BUCKETS_SEARCH,
     ),
     litellm_routed_completions=Counter(
         "mlpa_litellm_routed_completions_total",

@@ -596,6 +596,4 @@ async def get_search(authorized_search_request: AuthorizedSearchRequest):
     finally:
         metrics.search_latency.labels(
             result=result,
-            service_type=authorized_search_request.service_type,
-            purpose=authorized_search_request.purpose,
         ).observe(time.perf_counter() - start_time)
