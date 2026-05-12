@@ -282,6 +282,7 @@ class Env(BaseSettings):
     HTTPX_MAX_CONNECTIONS: int = 200
     HTTPX_MAX_KEEPALIVE_CONNECTIONS: int = 50
     HTTPX_KEEPALIVE_EXPIRY_SECONDS: int = 15
+    DISCONNECT_POLL_INTERVAL_SECONDS: float = 0.1
 
     # Security Headers
     SECURITY_HEADERS_ENABLED: bool = True

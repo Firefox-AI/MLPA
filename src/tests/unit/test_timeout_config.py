@@ -81,6 +81,7 @@ async def test_stream_completion_uses_configurable_timeout(
     custom_timeout = 600
     mock_env = mocker.patch("mlpa.core.completions.env")
     mock_env.STREAMING_TIMEOUT_SECONDS = custom_timeout
+    mock_env.DISCONNECT_POLL_INTERVAL_SECONDS = 0.1
 
     async for _ in stream_completion(SAMPLE_REQUEST, mock_request):
         pass

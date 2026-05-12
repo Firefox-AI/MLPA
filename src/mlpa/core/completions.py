@@ -2,6 +2,7 @@ import asyncio
 import contextlib
 import json
 import time
+from collections.abc import AsyncIterator
 
 import httpx
 from fastapi import HTTPException, Request
@@ -249,11 +250,14 @@ async def stream_completion(
     )
 
     async def _watch_disconnect() -> None:
-        while True:
-            message = await request._receive()
-            if message.get("type") == "http.disconnect":
-                disconnect_event.set()
-                return
+        while not await request.is_disconnected():
+            await asyncio.sleep(env.DISCONNECT_POLL_INTERVAL_SECONDS)
+        disconnect_event.set()
+
+    async def _read_next_chunk(
+        response_iterator: AsyncIterator[bytes],
+    ) -> bytes:
+        return await response_iterator.__anext__()
 
     watch_task = asyncio.create_task(_watch_disconnect())
     try:
@@ -311,12 +315,49 @@ async def stream_completion(
                 return
 
             litellm_routing_snapshot = parse_litellm_routing_headers(response.headers)
+            response_iterator = response.aiter_bytes()
+            next_chunk_task: asyncio.Task[bytes] | None = None
 
-            async for chunk in response.aiter_bytes():
-                if disconnect_event.is_set():
+            while True:
+                if next_chunk_task is None:
+                    next_chunk_task = asyncio.create_task(
+                        _read_next_chunk(response_iterator)
+                    )
+
+                done, _ = await asyncio.wait(
+                    {next_chunk_task, watch_task},
+                    return_when=asyncio.FIRST_COMPLETED,
+                )
+
+                if watch_task in done:
+                    watch_task.result()
                     result = PrometheusResult.ABORT
                     logger.info(_client_disconnected_msg)
+                    if not next_chunk_task.done():
+                        next_chunk_task.cancel()
+                    with contextlib.suppress(
+                        asyncio.CancelledError,
+                        StopAsyncIteration,
+                        httpx.ReadError,
+                    ):
+                        await next_chunk_task
+                    with contextlib.suppress(httpx.ReadError):
+                        await response.aclose()
                     break
+
+                try:
+                    chunk = next_chunk_task.result()
+                except StopAsyncIteration:
+                    break
+                except httpx.ReadError:
+                    if disconnect_event.is_set() or await request.is_disconnected():
+                        disconnect_event.set()
+                        result = PrometheusResult.ABORT
+                        logger.info(_client_disconnected_msg)
+                        break
+                    raise
+                finally:
+                    next_chunk_task = None
 
                 if is_first_token:
                     metrics.chat_completion_ttft.labels(
@@ -360,6 +401,9 @@ async def stream_completion(
                     pass
 
                 yield chunk
+
+            if result == PrometheusResult.ABORT:
+                return
 
             if not streaming_started:
                 yield raise_and_log(
@@ -414,6 +458,13 @@ async def stream_completion(
                     completion_tokens,
                 )
                 result = PrometheusResult.SUCCESS
+    except httpx.ReadError as e:
+        if disconnect_event.is_set() or await request.is_disconnected():
+            disconnect_event.set()
+            result = PrometheusResult.ABORT
+            logger.info(_client_disconnected_msg)
+        else:
+            yield raise_and_log(e, True, 502, "Failed to proxy request")
     except Exception as e:
         yield raise_and_log(e, True, 502, "Failed to proxy request")
     finally:
