@@ -1,9 +1,12 @@
+import importlib.metadata
+
 from fastapi import APIRouter
 
 from mlpa.core.config import LITELLM_MASTER_AUTH_HEADERS, LITELLM_READINESS_URL
 from mlpa.core.http_client import get_http_client
 from mlpa.core.pg_services.services import app_attest_pg, litellm_pg
 
+mlpa_version = importlib.metadata.version("mlpa")
 router = APIRouter()
 
 
@@ -26,6 +29,7 @@ async def readiness_probe():
     litellm_status = data
     return {
         "status": "connected",
+        "mlpa_version": mlpa_version,
         "pg_server_dbs": {
             "postgres": "connected" if pg_status else "offline",
             "app_attest": "connected" if app_attest_pg_status else "offline",
