@@ -260,6 +260,7 @@ async def stream_completion(
         return await response_iterator.__anext__()
 
     watch_task = asyncio.create_task(_watch_disconnect())
+    next_chunk_task: asyncio.Task[bytes] | None = None
     try:
         client = get_http_client()
         async with client.stream(
@@ -316,7 +317,6 @@ async def stream_completion(
 
             litellm_routing_snapshot = parse_litellm_routing_headers(response.headers)
             response_iterator = response.aiter_bytes()
-            next_chunk_task: asyncio.Task[bytes] | None = None
 
             while True:
                 if next_chunk_task is None:
@@ -468,6 +468,15 @@ async def stream_completion(
     except Exception as e:
         yield raise_and_log(e, True, 502, "Failed to proxy request")
     finally:
+        if next_chunk_task is not None:
+            if not next_chunk_task.done():
+                next_chunk_task.cancel()
+            with contextlib.suppress(
+                asyncio.CancelledError,
+                StopAsyncIteration,
+                httpx.ReadError,
+            ):
+                await next_chunk_task
         # Cancel the disconnect watcher and wait for it to finish to avoid
         # "Task was destroyed but it is pending" warnings at shutdown.
         watch_task.cancel()
