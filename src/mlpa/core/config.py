@@ -89,6 +89,12 @@ class Env(BaseSettings):
     USER_FEATURE_BUDGET_SEARCH_TPM_LIMIT: int = 2000
     USER_FEATURE_BUDGET_SEARCH_BUDGET_DURATION: str = "1d"
 
+    USER_FEATURE_BUDGET_TELEMETRY_BUDGET_ID: str = "end-user-budget-telemetry"
+    USER_FEATURE_BUDGET_TELEMETRY_MAX_BUDGET: float = 0.1
+    USER_FEATURE_BUDGET_TELEMETRY_RPM_LIMIT: int = 10
+    USER_FEATURE_BUDGET_TELEMETRY_TPM_LIMIT: int = 2000
+    USER_FEATURE_BUDGET_TELEMETRY_BUDGET_DURATION: str = "1d"
+
     @cached_property
     def user_feature_budget(self) -> dict[str, dict]:
         """
@@ -153,6 +159,13 @@ class Env(BaseSettings):
                 "tpm_limit": self.USER_FEATURE_BUDGET_SEARCH_TPM_LIMIT,
                 "budget_duration": self.USER_FEATURE_BUDGET_SEARCH_BUDGET_DURATION,
             },
+            "telemetry": {
+                "budget_id": self.USER_FEATURE_BUDGET_TELEMETRY_BUDGET_ID,
+                "max_budget": self.USER_FEATURE_BUDGET_TELEMETRY_MAX_BUDGET,
+                "rpm_limit": self.USER_FEATURE_BUDGET_TELEMETRY_RPM_LIMIT,
+                "tpm_limit": self.USER_FEATURE_BUDGET_TELEMETRY_TPM_LIMIT,
+                "budget_duration": self.USER_FEATURE_BUDGET_TELEMETRY_BUDGET_DURATION,
+            },
         }
 
     @cached_property
@@ -169,14 +182,15 @@ class Env(BaseSettings):
         AI-related types: chat, title-generation, convo-starters-sidebar.
         Memories types: memory-generation.
         s2s types: no purposes (empty list → purpose header not required, use empty value).
+        search: no purposes (empty list → purpose header not required, use empty value).
+        telemetry: no purposes (empty list → purpose header not required, use empty value).
         """
         ai_purposes = [
             "chat",
             "title-generation",
             "convo-starters-sidebar",
-            "telemetry",
         ]
-        memories_purposes = ["memory-generation", "telemetry"]
+        memories_purposes = ["memory-generation"]
         return {
             "ai": ai_purposes,
             "ai-dev": ai_purposes,
@@ -186,6 +200,7 @@ class Env(BaseSettings):
             "s2s": [],
             "s2s-android": [],
             "search": [],
+            "telemetry": [],
         }
 
     def valid_purposes_for_service_type(self, service_type: str) -> list[str]:

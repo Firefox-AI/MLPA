@@ -102,28 +102,30 @@ def test_valid_service_types_all_service_types():
     assert "memories-dev" in service_types
     assert "mochi-dev" in service_types
     assert "search" in service_types
-    assert len(service_types) == 8
+    assert "telemetry" in service_types
+    assert len(service_types) == 9
 
 
 def test_service_type_purposes_ai_and_memories():
     """Test service_type_purposes: AI types have chat/title-generation/convo-starters-sidebar, memories have memory-generation."""
     env = Env()
     purposes = env.service_type_purposes
-    ai_purposes = ["chat", "title-generation", "convo-starters-sidebar", "telemetry"]
+    ai_purposes = ["chat", "title-generation", "convo-starters-sidebar"]
     assert purposes["ai"] == ai_purposes
     assert purposes["ai-dev"] == ai_purposes
     assert purposes["mochi-dev"] == ai_purposes
-    assert purposes["memories"] == ["memory-generation", "telemetry"]
-    assert purposes["memories-dev"] == ["memory-generation", "telemetry"]
+    assert purposes["memories"] == ["memory-generation"]
+    assert purposes["memories-dev"] == ["memory-generation"]
 
 
 def test_service_type_purposes_s2s_empty():
-    """Test that s2s, s2s-android, and search have no purposes (empty list)."""
+    """Test that s2s, s2s-android, search, and telemetry have no purposes."""
     env = Env()
     purposes = env.service_type_purposes
     assert purposes["s2s"] == []
     assert purposes["s2s-android"] == []
     assert purposes["search"] == []
+    assert purposes["telemetry"] == []
 
 
 def test_service_type_requires_purpose():
@@ -137,6 +139,7 @@ def test_service_type_requires_purpose():
     assert env.service_type_requires_purpose("s2s") is False
     assert env.service_type_requires_purpose("s2s-android") is False
     assert env.service_type_requires_purpose("search") is False
+    assert env.service_type_requires_purpose("telemetry") is False
 
 
 def test_valid_purposes_for_service_type():
@@ -146,14 +149,11 @@ def test_valid_purposes_for_service_type():
         "chat",
         "title-generation",
         "convo-starters-sidebar",
-        "telemetry",
     }
-    assert env.valid_purposes_for_service_type("memories") == [
-        "memory-generation",
-        "telemetry",
-    ]
+    assert env.valid_purposes_for_service_type("memories") == ["memory-generation"]
     assert env.valid_purposes_for_service_type("s2s") == []
     assert env.valid_purposes_for_service_type("search") == []
+    assert env.valid_purposes_for_service_type("telemetry") == []
 
 
 def test_user_feature_budget_structure_consistency():
@@ -174,6 +174,7 @@ def test_user_feature_budget_structure_consistency():
         "memories-dev",
         "mochi-dev",
         "search",
+        "telemetry",
     ]:
         assert service_type in budgets
         service_keys = set(budgets[service_type].keys())
