@@ -14,6 +14,7 @@ RUN mkdir -p /tmp/qa_certificates && chmod 777 /tmp/qa_certificates
 
 # App Attest database migration script (deploy Job)
 RUN chmod +x /app/scripts/migrate-app-attest-database.sh
+RUN chmod +x /app/scripts/migrate-litellm-database.sh
 
 # Install dependencies
 RUN pip install --no-cache-dir uv
