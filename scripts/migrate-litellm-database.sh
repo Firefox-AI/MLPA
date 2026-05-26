@@ -9,6 +9,14 @@ set -euo pipefail
 
 ACTION="${1:-migrate}"
 
+case "${ACTION}" in
+  migrate|refresh) ;;
+  *)
+    echo "Unknown action: ${ACTION}"
+    exit 2
+    ;;
+esac
+
 export PGHOST="${DB_HOST}"
 export PGPORT="${DB_PORT}"
 export PGUSER="${DB_USERNAME}"
