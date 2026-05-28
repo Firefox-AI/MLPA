@@ -35,7 +35,6 @@ from mlpa.core.routers.mock import mock_router
 from mlpa.core.routers.play import play_router
 from mlpa.core.routers.user import user_router
 from mlpa.core.search import get_search
-from mlpa.core.utils import get_or_create_user
 
 tags_metadata = [
     {"name": "Health", "description": "Health check endpoints."},
@@ -207,7 +206,9 @@ async def search(
             status_code=400,
             detail={"error": "User not found from authorization response."},
         )
-    user, _ = await get_or_create_user(user_id)
+    user, _ = await get_or_create_user_for_completion(
+        user_id, authorized_search_request
+    )
     if user.get("blocked"):
         raise HTTPException(status_code=403, detail={"error": "User is blocked."})
 

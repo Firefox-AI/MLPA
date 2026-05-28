@@ -7,7 +7,7 @@ from collections.abc import AsyncIterator
 import httpx
 from fastapi import HTTPException, Request
 
-from mlpa.core.classes import AuthorizedChatRequest
+from mlpa.core.classes import AuthorizedChatRequest, AuthorizedSearchRequest
 from mlpa.core.config import (
     ERROR_CODE_MAX_USERS_REACHED,
     LITELLM_COMPLETIONS_URL,
@@ -48,7 +48,9 @@ def _build_litellm_body(req: AuthorizedChatRequest, *, stream: bool) -> dict:
     return body
 
 
-async def get_or_create_user_for_completion(user_id: str, req: AuthorizedChatRequest):
+async def get_or_create_user_for_completion(
+    user_id: str, req: AuthorizedChatRequest | AuthorizedSearchRequest
+):
     """Wraps get_or_create_user and records a signup-cap rejection metric if applicable."""
     try:
         return await get_or_create_user(user_id)
@@ -57,6 +59,7 @@ async def get_or_create_user_for_completion(user_id: str, req: AuthorizedChatReq
             exc.status_code == 403
             and isinstance(exc.detail, dict)
             and exc.detail.get("error") == ERROR_CODE_MAX_USERS_REACHED
+            and isinstance(req, AuthorizedChatRequest)
         ):
             record_chat_request_rejection(
                 req,
