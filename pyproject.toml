@@ -23,7 +23,7 @@ dependencies = [
     "asyncpg==0.30.0",
     "cbor2==5.7.0",
     "cryptography==45.0.7",
-    "fastapi==0.119.0",
+    "fastapi==0.136.3",
     "google-cloud-storage==3.5.0",
     "hawkauthlib==2.0.0",
     "httpx==0.28.1",
