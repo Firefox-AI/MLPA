@@ -17,6 +17,11 @@ class PrometheusRejectionReason(StrEnum):
     SIGNUP_CAP_EXCEEDED = "signup_cap_exceeded"
 
 
+class TokenType(StrEnum):
+    PROMPT = "prompt"
+    COMPLETION = "completion"
+
+
 BUCKETS_FAST_AUTH = (0.001, 0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, float("inf"))
 BUCKETS_AUTH = (0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1.0, 2.5, float("inf"))
 BUCKETS_FXA = (0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, float("inf"))

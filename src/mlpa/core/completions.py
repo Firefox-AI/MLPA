@@ -7,98 +7,48 @@ from collections.abc import AsyncIterator
 import httpx
 from fastapi import HTTPException, Request
 
-from mlpa.core.classes import (
-    AuthorizedChatRequest,
-    AuthorizedSearchRequest,
-    LitellmRoutingSnapshot,
-)
+from mlpa.core.classes import AuthorizedChatRequest
 from mlpa.core.config import (
-    ERROR_CODE_BUDGET_LIMIT_EXCEEDED,
     ERROR_CODE_MAX_USERS_REACHED,
-    ERROR_CODE_RATE_LIMIT_EXCEEDED,
-    ERROR_CODE_REQUEST_TOO_LARGE,
-    ERROR_CODE_UPSTREAM_RATE_LIMIT_EXCEEDED,
     LITELLM_COMPLETIONS_URL,
-    LITELLM_SEARCH_URL,
     LITELLM_VIRTUAL_AUTH_HEADERS,
     env,
 )
+from mlpa.core.errors import classify_upstream_error
 from mlpa.core.http_client import get_http_client
 from mlpa.core.litellm_routing import parse_litellm_routing_headers
 from mlpa.core.logger import logger
+from mlpa.core.metrics import (
+    extract_tool_names,
+    record_chat_request_rejection,
+    record_completion_latency,
+    record_completion_success,
+    record_request_with_tools,
+    record_ttft,
+)
 from mlpa.core.prometheus_metrics import (
     PrometheusRejectionReason,
     PrometheusResult,
-    metrics,
 )
 from mlpa.core.utils import (
     get_or_create_user,
-    is_context_window_error,
-    is_litellm_upstream_rate_limit,
-    is_rate_limit_error,
     raise_and_log,
 )
 
-_RATE_LIMIT_REJECTION: dict[int, tuple[PrometheusRejectionReason, str]] = {
-    ERROR_CODE_BUDGET_LIMIT_EXCEEDED: (
-        PrometheusRejectionReason.BUDGET_EXCEEDED,
-        "86400",
-    ),
-    ERROR_CODE_RATE_LIMIT_EXCEEDED: (PrometheusRejectionReason.RATE_LIMITED, "60"),
-    ERROR_CODE_UPSTREAM_RATE_LIMIT_EXCEEDED: (
-        PrometheusRejectionReason.RATE_LIMITED,
-        "60",
-    ),
-}
+
+def _build_litellm_body(req: AuthorizedChatRequest, *, stream: bool) -> dict:
+    body = req.model_dump(
+        exclude={"max_completion_tokens", "service_type", "purpose"},
+        exclude_none=True,
+    )
+    body["max_tokens"] = req.max_completion_tokens
+    body["stream"] = stream
+    if stream:
+        body["stream_options"] = {"include_usage": True}
+    return body
 
 
-def _parse_rate_limit_error(error_text: str, user: str) -> int | None:
-    """
-    Parse error response to detect budget or rate limit errors.
-    Returns the error code if a rate limit error is detected, None otherwise.
-    """
-    if not error_text:
-        return None
-
-    try:
-        error_data = json.loads(error_text)
-        if is_rate_limit_error(error_data, ["budget"]):
-            logger.warning(f"Budget limit exceeded for user {user}: {error_text}")
-            return ERROR_CODE_BUDGET_LIMIT_EXCEEDED
-        elif is_rate_limit_error(error_data, ["rate"]):
-            logger.warning(f"Rate limit exceeded for user {user}: {error_text}")
-            return ERROR_CODE_RATE_LIMIT_EXCEEDED
-    except (json.JSONDecodeError, AttributeError, UnicodeDecodeError):
-        pass
-
-    if is_litellm_upstream_rate_limit(error_text):
-        logger.warning(f"Upstream rate limit exceeded for user {user}: {error_text}")
-        return ERROR_CODE_UPSTREAM_RATE_LIMIT_EXCEEDED
-
-    return None
-
-
-def _record_rejection(
-    req: AuthorizedChatRequest, reason: PrometheusRejectionReason
-) -> None:
-    metrics.chat_request_rejections.labels(
-        reason=reason,
-        model=req.model,
-        service_type=req.service_type,
-        purpose=req.purpose,
-    ).inc()
-
-
-def record_chat_request_rejection(
-    req: AuthorizedChatRequest, reason: PrometheusRejectionReason
-) -> None:
-    """Increment chat_request_rejections for failures outside completions (e.g. signup cap)."""
-    _record_rejection(req, reason)
-
-
-async def get_or_create_user_for_completion(
-    user_id: str, req: AuthorizedChatRequest | AuthorizedSearchRequest
-):
+async def get_or_create_user_for_completion(user_id: str, req: AuthorizedChatRequest):
     """Wraps get_or_create_user and records a signup-cap rejection metric if applicable."""
     try:
         return await get_or_create_user(user_id)
@@ -107,113 +57,12 @@ async def get_or_create_user_for_completion(
             exc.status_code == 403
             and isinstance(exc.detail, dict)
             and exc.detail.get("error") == ERROR_CODE_MAX_USERS_REACHED
-            and isinstance(req, AuthorizedChatRequest)
         ):
-            _record_rejection(
+            record_chat_request_rejection(
                 req,
                 PrometheusRejectionReason.SIGNUP_CAP_EXCEEDED,
             )
         raise
-
-
-def _tool_names_from_request(tools: list) -> list[str]:
-    """Extract function names from OpenAI-format tools list."""
-    names = []
-    for t in tools or []:
-        if not isinstance(t, dict):
-            continue
-        fn = t.get("function", {})
-        name = fn.get("name")
-        names.append(name or "unknown")
-    return names
-
-
-def _record_litellm_routing_metrics(
-    req: AuthorizedChatRequest,
-    snapshot: LitellmRoutingSnapshot,
-    prompt_tokens: int,
-    completion_tokens: int,
-) -> None:
-    fallback_used = "true" if snapshot.attempted_fallbacks > 0 else "false"
-    labels_base = {
-        "requested_model": req.model,
-        "backend": snapshot.backend,
-        "service_type": req.service_type,
-        "purpose": req.purpose,
-    }
-    metrics.litellm_routed_completions.labels(
-        **labels_base,
-        fallback_used=fallback_used,
-    ).inc()
-    metrics.litellm_attempted_fallbacks.labels(**labels_base).observe(
-        snapshot.attempted_fallbacks
-    )
-    metrics.litellm_attempted_retries.labels(**labels_base).observe(
-        snapshot.attempted_retries
-    )
-    if snapshot.response_duration_ms is not None:
-        metrics.litellm_reported_duration_seconds.labels(
-            **labels_base,
-            fallback_used=fallback_used,
-        ).observe(snapshot.response_duration_ms / 1000.0)
-    if snapshot.response_cost_usd is not None:
-        metrics.litellm_reported_cost_usd_total.labels(
-            **labels_base,
-            fallback_used=fallback_used,
-        ).inc(snapshot.response_cost_usd)
-    if prompt_tokens > 0:
-        metrics.litellm_routed_tokens.labels(
-            type="prompt",
-            **labels_base,
-            fallback_used=fallback_used,
-        ).inc(prompt_tokens)
-    if completion_tokens > 0:
-        metrics.litellm_routed_tokens.labels(
-            type="completion",
-            **labels_base,
-            fallback_used=fallback_used,
-        ).inc(completion_tokens)
-
-
-def _record_request_with_tools(req: AuthorizedChatRequest) -> None:
-    if req.tools:
-        for name in _tool_names_from_request(req.tools):
-            metrics.chat_requests_with_tools.labels(
-                tool_name=name,
-                model=req.model,
-                service_type=req.service_type,
-                purpose=req.purpose,
-            ).inc()
-
-
-def _record_tool_metrics(
-    model: str | None,
-    service_type: str,
-    purpose: str,
-    tool_names: list[str],
-) -> None:
-    model_label = model or ""
-    n_calls = len(tool_names)
-    for name in tool_names:
-        metrics.chat_tool_calls.labels(
-            tool_name=name,
-            model=model_label,
-            service_type=service_type,
-            purpose=purpose,
-        ).inc()
-        metrics.chat_completions_with_tools.labels(
-            tool_name=name,
-            model=model_label,
-            service_type=service_type,
-            purpose=purpose,
-        ).inc()
-        # Histogram: one observation per completion = total tool calls in that completion.
-        metrics.chat_tool_calls_per_completion.labels(
-            tool_name=name,
-            model=model_label,
-            service_type=service_type,
-            purpose=purpose,
-        ).observe(n_calls)
 
 
 async def stream_completion(
@@ -224,16 +73,8 @@ async def stream_completion(
     Yields response chunks as they are received and logs metrics.
     """
     start_time = time.perf_counter()
-    _record_request_with_tools(authorized_chat_request)
-    body = {
-        **authorized_chat_request.model_dump(
-            exclude={"max_completion_tokens", "service_type", "purpose"},
-            exclude_none=True,
-        ),
-        "max_tokens": authorized_chat_request.max_completion_tokens,
-        "stream": True,
-        "stream_options": {"include_usage": True},
-    }
+    record_request_with_tools(authorized_chat_request)
+    body = _build_litellm_body(authorized_chat_request, stream=True)
     result = PrometheusResult.ERROR
     is_first_token = True
     prompt_tokens = 0
@@ -278,7 +119,6 @@ async def stream_completion(
             try:
                 response.raise_for_status()
             except httpx.HTTPStatusError as e:
-                # Read the error response content for streaming responses
                 error_text_str = ""
                 try:
                     error_bytes = await e.response.aread()
@@ -286,32 +126,18 @@ async def stream_completion(
                 except Exception:
                     pass
 
-                if e.response.status_code in {400, 429}:
-                    # Check for budget or rate limit errors
-                    error_code = _parse_rate_limit_error(
-                        error_text_str, authorized_chat_request.user
-                    )
-                    if error_code in _RATE_LIMIT_REJECTION:
-                        reason, _ = _RATE_LIMIT_REJECTION[error_code]
-                        _record_rejection(authorized_chat_request, reason)
-                        yield f'data: {{"error": {error_code}}}\n\n'.encode()
-                        return
-
-                # Context window exceeded: detect by error text or upstream 413
-                if e.response.status_code == 413 or is_context_window_error(
-                    error_text_str
-                ):
-                    logger.warning(
-                        f"Context window exceeded for user {authorized_chat_request.user}"
-                    )
-                    _record_rejection(
-                        authorized_chat_request,
-                        PrometheusRejectionReason.PAYLOAD_TOO_LARGE,
-                    )
-                    yield f'data: {{"error": {ERROR_CODE_REQUEST_TOO_LARGE}}}\n\n'.encode()
+                match = classify_upstream_error(
+                    error_text=error_text_str,
+                    status_code=e.response.status_code,
+                    user=authorized_chat_request.user,
+                )
+                if match is not None:
+                    if match.log_message:
+                        logger.warning(match.log_message)
+                    record_chat_request_rejection(authorized_chat_request, match.reason)
+                    yield f'data: {{"error": {match.error_code}}}\n\n'.encode()
                     return
 
-                # For other errors or if we couldn't parse the error
                 yield raise_and_log(e, True)
                 return
 
@@ -360,9 +186,10 @@ async def stream_completion(
                     next_chunk_task = None
 
                 if is_first_token:
-                    metrics.chat_completion_ttft.labels(
-                        model=authorized_chat_request.model
-                    ).observe(time.perf_counter() - start_time)
+                    record_ttft(
+                        authorized_chat_request.model,
+                        time.perf_counter() - start_time,
+                    )
                     is_first_token = False
                     streaming_started = True
 
@@ -414,50 +241,17 @@ async def stream_completion(
                 )
                 return
 
-            if prompt_tokens > 0:
-                metrics.chat_tokens.labels(
-                    type="prompt",
-                    model=authorized_chat_request.model,
-                    service_type=authorized_chat_request.service_type,
-                    purpose=authorized_chat_request.purpose,
-                ).inc(prompt_tokens)
-                metrics.chat_tokens_per_request.labels(
-                    type="prompt",
-                    model=authorized_chat_request.model,
-                    service_type=authorized_chat_request.service_type,
-                    purpose=authorized_chat_request.purpose,
-                ).observe(prompt_tokens)
-            if completion_tokens > 0:
-                metrics.chat_tokens.labels(
-                    type="completion",
-                    model=authorized_chat_request.model,
-                    service_type=authorized_chat_request.service_type,
-                    purpose=authorized_chat_request.purpose,
-                ).inc(completion_tokens)
-                metrics.chat_tokens_per_request.labels(
-                    type="completion",
-                    model=authorized_chat_request.model,
-                    service_type=authorized_chat_request.service_type,
-                    purpose=authorized_chat_request.purpose,
-                ).observe(completion_tokens)
-            if result != PrometheusResult.ABORT:
-                tool_names = [
-                    tool_calls_accum[i]["function"].get("name") or "unknown"
-                    for i in sorted(tool_calls_accum)
-                ]
-                _record_tool_metrics(
-                    authorized_chat_request.model,
-                    authorized_chat_request.service_type,
-                    authorized_chat_request.purpose,
-                    tool_names,
-                )
-                _record_litellm_routing_metrics(
-                    authorized_chat_request,
-                    litellm_routing_snapshot,
-                    prompt_tokens,
-                    completion_tokens,
-                )
-                result = PrometheusResult.SUCCESS
+            tool_names = extract_tool_names(
+                tool_calls_accum[i] for i in sorted(tool_calls_accum)
+            )
+            record_completion_success(
+                authorized_chat_request,
+                prompt_tokens=prompt_tokens,
+                completion_tokens=completion_tokens,
+                tool_names=tool_names,
+                snapshot=litellm_routing_snapshot,
+            )
+            result = PrometheusResult.SUCCESS
     except httpx.ReadError as e:
         if disconnect_event.is_set() or await request.is_disconnected():
             disconnect_event.set()
@@ -485,12 +279,9 @@ async def stream_completion(
         if result == PrometheusResult.ERROR and disconnect_event.is_set():
             result = PrometheusResult.ABORT
             logger.info(_client_disconnected_msg)
-        metrics.chat_completion_latency.labels(
-            result=result,
-            model=authorized_chat_request.model,
-            service_type=authorized_chat_request.service_type,
-            purpose=authorized_chat_request.purpose,
-        ).observe(time.perf_counter() - start_time)
+        record_completion_latency(
+            authorized_chat_request, result, time.perf_counter() - start_time
+        )
 
 
 async def get_completion(authorized_chat_request: AuthorizedChatRequest):
@@ -498,15 +289,8 @@ async def get_completion(authorized_chat_request: AuthorizedChatRequest):
     Proxies a non-streaming request to LiteLLM.
     """
     start_time = time.perf_counter()
-    _record_request_with_tools(authorized_chat_request)
-    body = {
-        **authorized_chat_request.model_dump(
-            exclude={"max_completion_tokens", "service_type", "purpose"},
-            exclude_none=True,
-        ),
-        "max_tokens": authorized_chat_request.max_completion_tokens,
-        "stream": False,
-    }
+    record_request_with_tools(authorized_chat_request)
+    body = _build_litellm_body(authorized_chat_request, stream=False)
     result = PrometheusResult.ERROR
     logger.debug(
         f"Starting a non-stream completion using {authorized_chat_request.model}, for user {authorized_chat_request.user}",
@@ -521,30 +305,22 @@ async def get_completion(authorized_chat_request: AuthorizedChatRequest):
         try:
             response.raise_for_status()
         except httpx.HTTPStatusError as e:
-            error_text = e.response.text
-            if e.response.status_code in {400, 429}:
-                error_code = _parse_rate_limit_error(
-                    error_text, authorized_chat_request.user
-                )
-                if error_code in _RATE_LIMIT_REJECTION:
-                    reason, retry_after = _RATE_LIMIT_REJECTION[error_code]
-                    _record_rejection(authorized_chat_request, reason)
-                    raise HTTPException(
-                        status_code=429,
-                        detail={"error": error_code},
-                        headers={"Retry-After": retry_after},
-                    )
-            # Context window exceeded: detect by error text or upstream 413
-            if e.response.status_code == 413 or is_context_window_error(error_text):
-                logger.warning(
-                    f"Context window exceeded for user {authorized_chat_request.user}"
-                )
-                _record_rejection(
-                    authorized_chat_request, PrometheusRejectionReason.PAYLOAD_TOO_LARGE
+            match = classify_upstream_error(
+                error_text=e.response.text,
+                status_code=e.response.status_code,
+                user=authorized_chat_request.user,
+            )
+            if match is not None:
+                if match.log_message:
+                    logger.warning(match.log_message)
+                record_chat_request_rejection(authorized_chat_request, match.reason)
+                headers = (
+                    {"Retry-After": match.retry_after} if match.retry_after else None
                 )
                 raise HTTPException(
-                    status_code=413,
-                    detail={"error": ERROR_CODE_REQUEST_TOO_LARGE},
+                    status_code=match.http_status,
+                    detail={"error": match.error_code},
+                    headers=headers,
                 )
             raise_and_log(e)
         litellm_routing_snapshot = parse_litellm_routing_headers(response.headers)
@@ -562,47 +338,16 @@ async def get_completion(authorized_chat_request: AuthorizedChatRequest):
                 f"Missing 'completion_tokens' in usage for model {authorized_chat_request.model}"
             )
 
-        metrics.chat_tokens.labels(
-            type="prompt",
-            model=authorized_chat_request.model,
-            service_type=authorized_chat_request.service_type,
-            purpose=authorized_chat_request.purpose,
-        ).inc(prompt_tokens)
-        metrics.chat_tokens_per_request.labels(
-            type="prompt",
-            model=authorized_chat_request.model,
-            service_type=authorized_chat_request.service_type,
-            purpose=authorized_chat_request.purpose,
-        ).observe(prompt_tokens)
-        metrics.chat_tokens.labels(
-            type="completion",
-            model=authorized_chat_request.model,
-            service_type=authorized_chat_request.service_type,
-            purpose=authorized_chat_request.purpose,
-        ).inc(completion_tokens)
-        metrics.chat_tokens_per_request.labels(
-            type="completion",
-            model=authorized_chat_request.model,
-            service_type=authorized_chat_request.service_type,
-            purpose=authorized_chat_request.purpose,
-        ).observe(completion_tokens)
         tool_calls = (
             data.get("choices", [{}])[0].get("message", {}).get("tool_calls") or []
         )
-        tool_names = [
-            tc.get("function", {}).get("name") or "unknown" for tc in tool_calls
-        ]
-        _record_tool_metrics(
-            authorized_chat_request.model,
-            authorized_chat_request.service_type,
-            authorized_chat_request.purpose,
-            tool_names,
-        )
-        _record_litellm_routing_metrics(
+        tool_names = extract_tool_names(tool_calls)
+        record_completion_success(
             authorized_chat_request,
-            litellm_routing_snapshot,
-            prompt_tokens,
-            completion_tokens,
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            tool_names=tool_names,
+            snapshot=litellm_routing_snapshot,
         )
         result = PrometheusResult.SUCCESS
         return data
@@ -611,49 +356,6 @@ async def get_completion(authorized_chat_request: AuthorizedChatRequest):
     except Exception as e:
         raise_and_log(e, False, 502, "Failed to proxy request")
     finally:
-        metrics.chat_completion_latency.labels(
-            result=result,
-            model=authorized_chat_request.model,
-            service_type=authorized_chat_request.service_type,
-            purpose=authorized_chat_request.purpose,
-        ).observe(time.perf_counter() - start_time)
-
-
-async def get_search(authorized_search_request: AuthorizedSearchRequest):
-    """
-    Proxies a search request to LiteLLM.
-    """
-    start_time = time.perf_counter()
-    body = {
-        **authorized_search_request.model_dump(
-            exclude_none=True,
-        ),
-    }
-    result = PrometheusResult.ERROR
-    logger.debug(
-        f"Starting a search request using for user {authorized_search_request.user}",
-    )
-    try:
-        client = get_http_client()
-        response = await client.post(
-            f"{LITELLM_SEARCH_URL}/exa-search",
-            headers=LITELLM_VIRTUAL_AUTH_HEADERS,
-            json=body,
+        record_completion_latency(
+            authorized_chat_request, result, time.perf_counter() - start_time
         )
-        try:
-            response.raise_for_status()
-        except httpx.HTTPStatusError as e:
-            raise_and_log(e)
-
-        data = response.json()
-
-        result = PrometheusResult.SUCCESS
-        return data
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise_and_log(e, False, 502, "Failed to proxy request")
-    finally:
-        metrics.search_latency.labels(
-            result=result,
-        ).observe(time.perf_counter() - start_time)
