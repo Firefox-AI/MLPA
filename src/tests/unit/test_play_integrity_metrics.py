@@ -26,14 +26,13 @@ def _mock_decode_payload(request_hash: str) -> dict:
     }
 
 
-async def test_verify_play_integrity_records_metrics(mocker):
+async def test_verify_play_integrity_records_metrics(mocker, metrics_spy):
     request_hash = hashlib.sha256(b"user-id").hexdigest()
     mocker.patch.object(
         play_module,
         "_decode_integrity_token",
         return_value=_mock_decode_payload(request_hash),
     )
-    mock_metrics = mocker.patch.object(play_module, "metrics")
 
     payload = PlayIntegrityRequest(
         integrity_token="test-token",
@@ -43,35 +42,43 @@ async def test_verify_play_integrity_records_metrics(mocker):
 
     await play_module.verify_play_integrity(payload)
 
-    mock_metrics.play_verifications_total.inc.assert_called_once()
-    mock_metrics.validate_play_latency.labels.assert_called_once_with(
-        result=PrometheusResult.SUCCESS
+    metrics_spy.assert_only({"play_verifications_total", "validate_play_latency"})
+    assert metrics_spy.value("play_verifications_total") == 1
+    assert (
+        metrics_spy.histogram_count(
+            "validate_play_latency", result=PrometheusResult.SUCCESS
+        )
+        == 1
     )
-    mock_metrics.validate_play_latency.labels().observe.assert_called_once()
 
 
-def test_extract_user_from_play_integrity_jwt_records_success_metrics(mocker):
-    mock_metrics = mocker.patch("mlpa.core.utils.metrics")
+def test_extract_user_from_play_integrity_jwt_records_success_metrics(metrics_spy):
     token = issue_mlpa_access_token("user-id")
 
     user_id = extract_user_from_play_integrity_jwt(f"Bearer {token}")
 
     assert user_id == "user-id"
-    mock_metrics.access_token_verifications_total.inc.assert_called_once()
-    mock_metrics.validate_access_token_latency.labels.assert_called_once_with(
-        result=PrometheusResult.SUCCESS
+    metrics_spy.assert_only(
+        {"access_token_verifications_total", "validate_access_token_latency"}
     )
-    mock_metrics.validate_access_token_latency.labels().observe.assert_called_once()
+    assert metrics_spy.value("access_token_verifications_total") == 1
+    assert (
+        metrics_spy.histogram_count(
+            "validate_access_token_latency", result=PrometheusResult.SUCCESS
+        )
+        == 1
+    )
 
 
-def test_extract_user_from_play_integrity_jwt_records_error_metrics(mocker):
-    mock_metrics = mocker.patch("mlpa.core.utils.metrics")
-
+def test_extract_user_from_play_integrity_jwt_records_error_metrics(metrics_spy):
     with pytest.raises(HTTPException):
         extract_user_from_play_integrity_jwt("Bearer invalid-token")
 
-    mock_metrics.access_token_verifications_total.inc.assert_not_called()
-    mock_metrics.validate_access_token_latency.labels.assert_called_once_with(
-        result=PrometheusResult.ERROR
+    metrics_spy.assert_only({"validate_access_token_latency"})
+    assert metrics_spy.value("access_token_verifications_total") == 0
+    assert (
+        metrics_spy.histogram_count(
+            "validate_access_token_latency", result=PrometheusResult.ERROR
+        )
+        == 1
     )
-    mock_metrics.validate_access_token_latency.labels().observe.assert_called_once()

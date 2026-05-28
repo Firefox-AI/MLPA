@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from enum import StrEnum
 
-from prometheus_client import Counter, Gauge, Histogram
+from prometheus_client import REGISTRY, CollectorRegistry, Counter, Gauge, Histogram
 
 
 class PrometheusResult(StrEnum):
@@ -124,168 +124,207 @@ class PrometheusMetrics:
     litellm_routed_tokens: Counter
 
 
-metrics = PrometheusMetrics(
-    in_progress_requests=Gauge(
-        "mlpa_in_progress_requests", "Number of requests currently in progress."
-    ),
-    requests_total=Counter(
-        "mlpa_requests_total",
-        "Total number of requests handled by the proxy.",
-        ["method", "endpoint", "service_type", "purpose"],
-    ),
-    response_status_codes=Counter(
-        "mlpa_response_status_codes_total",
-        "Total number of response status codes.",
-        ["status_code"],
-    ),
-    request_latency=Histogram(
-        "mlpa_request_latency_seconds",
-        "Request latency in seconds.",
-        ["method", "endpoint"],
-        buckets=BUCKETS_REQUEST,
-    ),
-    validate_challenge_latency=Histogram(
-        "mlpa_validate_challenge_latency_seconds",
-        "Challenge validation latency in seconds.",
-        ["result"],
-        buckets=BUCKETS_FAST_AUTH,
-    ),
-    validate_app_attest_latency=Histogram(
-        "mlpa_validate_app_attest_latency_seconds",
-        "App Attest authentication latency in seconds.",
-        ["result"],
-        buckets=BUCKETS_AUTH,
-    ),
-    validate_app_assert_latency=Histogram(
-        "mlpa_validate_app_assert_latency_seconds",
-        "App Assert authentication latency in seconds.",
-        ["result"],
-        buckets=BUCKETS_AUTH,
-    ),
-    validate_fxa_latency=Histogram(
-        "mlpa_validate_fxa_latency_seconds",
-        "FxA authentication latency in seconds.",
-        ["result", "verification_source"],
-        buckets=BUCKETS_FXA,
-    ),
-    validate_play_latency=Histogram(
-        "mlpa_validate_play_latency_seconds",
-        "Play Integrity authentication latency in seconds.",
-        ["result"],
-        buckets=BUCKETS_AUTH,
-    ),
-    validate_access_token_latency=Histogram(
-        "mlpa_validate_access_token_latency_seconds",
-        "Access token authentication latency in seconds.",
-        ["result"],
-        buckets=BUCKETS_AUTH,
-    ),
-    fxa_verifications_total=Counter(
-        "mlpa_fxa_verifications_total",
-        "Total number of FxA token verifications.",
-        ["verification_source"],
-    ),
-    play_verifications_total=Counter(
-        "mlpa_play_verifications_total",
-        "Total number of Play Integrity token verifications.",
-    ),
-    access_token_verifications_total=Counter(
-        "mlpa_access_token_verifications_total",
-        "Total number of Access token verifications.",
-    ),
-    chat_completion_latency=Histogram(
-        "mlpa_chat_completion_latency_seconds",
-        "Chat completion latency in seconds.",
-        ["result", "model", "service_type", "purpose"],
-        buckets=BUCKETS_COMPLETION,
-    ),
-    chat_completion_ttft=Histogram(
-        "mlpa_chat_completion_ttft_seconds",
-        "Time to first token for streaming chat completions in seconds.",
-        ["model"],
-        buckets=BUCKETS_TTFT,
-    ),
-    chat_tokens=Counter(
-        "mlpa_chat_tokens",
-        "Number of tokens for chat completions.",
-        ["type", "model", "service_type", "purpose"],
-    ),
-    chat_tokens_per_request=Histogram(
-        "mlpa_chat_tokens_per_request",
-        "Distribution of tokens per chat completion request.",
-        ["type", "model", "service_type", "purpose"],
-        buckets=BUCKETS_TOKENS,
-    ),
-    chat_tool_calls=Counter(
-        "mlpa_chat_tool_calls_total",
-        "Total number of LLM tool invocations.",
-        ["tool_name", "model", "service_type", "purpose"],
-    ),
-    chat_completions_with_tools=Counter(
-        "mlpa_chat_completions_with_tools_total",
-        "Number of completions that contained at least one tool call.",
-        ["tool_name", "model", "service_type", "purpose"],
-    ),
-    chat_tool_calls_per_completion=Histogram(
-        "mlpa_chat_tool_calls_per_completion",
-        "Distribution of tool calls per completion.",
-        ["tool_name", "model", "service_type", "purpose"],
-        buckets=BUCKETS_TOOL_CALLS,
-    ),
-    chat_requests_with_tools=Counter(
-        "mlpa_chat_requests_with_tools_total",
-        "Number of chat requests that included a tools payload.",
-        ["tool_name", "model", "service_type", "purpose"],
-    ),
-    chat_request_rejections=Counter(
-        "mlpa_chat_request_rejections_total",
-        "Number of chat requests rejected due to budget, rate limit, payload size, or managed-user signup cap.",
-        ["reason", "model", "service_type", "purpose"],
-    ),
-    search_latency=Histogram(
-        "mlpa_search_latency_seconds",
-        "Search latency in seconds.",
-        ["result"],
-        buckets=BUCKETS_SEARCH,
-    ),
-    litellm_routed_completions=Counter(
-        "mlpa_litellm_routed_completions_total",
-        "Successful chat completions with LiteLLM routing labels from response headers.",
-        ["requested_model", "backend", "service_type", "purpose", "fallback_used"],
-    ),
-    litellm_attempted_fallbacks=Histogram(
-        "mlpa_litellm_attempted_fallbacks",
-        "LiteLLM-reported fallback attempts per successful completion (from x-litellm-attempted-fallbacks).",
-        ["requested_model", "backend", "service_type", "purpose"],
-        buckets=BUCKETS_LITELLM_ATTEMPTS,
-    ),
-    litellm_attempted_retries=Histogram(
-        "mlpa_litellm_attempted_retries",
-        "LiteLLM-reported retry attempts per successful completion (from x-litellm-attempted-retries).",
-        ["requested_model", "backend", "service_type", "purpose"],
-        buckets=BUCKETS_LITELLM_ATTEMPTS,
-    ),
-    litellm_reported_duration_seconds=Histogram(
-        "mlpa_litellm_reported_duration_seconds",
-        "LiteLLM proxy-reported request duration in seconds (x-litellm-response-duration-ms / 1000).",
-        ["requested_model", "backend", "service_type", "purpose", "fallback_used"],
-        buckets=BUCKETS_COMPLETION,
-    ),
-    litellm_reported_cost_usd_total=Counter(
-        "mlpa_litellm_reported_cost_usd_total",
-        "Cumulative LiteLLM-reported spend in USD (x-litellm-response-cost); use increase() over a range for windowed sums.",
-        ["requested_model", "backend", "service_type", "purpose", "fallback_used"],
-    ),
-    litellm_routed_tokens=Counter(
-        "mlpa_litellm_routed_tokens_total",
-        "Token counts attributed to LiteLLM winning backend (from usage, same completion as routing headers).",
-        [
-            "type",
-            "requested_model",
-            "backend",
-            "service_type",
-            "purpose",
-            "fallback_used",
-        ],
-    ),
-)
+def build_metrics(registry: CollectorRegistry = REGISTRY) -> PrometheusMetrics:
+    """Construct a fresh `PrometheusMetrics` bound to `registry`.
+
+    Production uses the default global registry; tests pass a per-test
+    `CollectorRegistry` so they can assert on samples in isolation.
+    """
+    return PrometheusMetrics(
+        in_progress_requests=Gauge(
+            "mlpa_in_progress_requests",
+            "Number of requests currently in progress.",
+            registry=registry,
+        ),
+        requests_total=Counter(
+            "mlpa_requests_total",
+            "Total number of requests handled by the proxy.",
+            ["method", "endpoint", "service_type", "purpose"],
+            registry=registry,
+        ),
+        response_status_codes=Counter(
+            "mlpa_response_status_codes_total",
+            "Total number of response status codes.",
+            ["status_code"],
+            registry=registry,
+        ),
+        request_latency=Histogram(
+            "mlpa_request_latency_seconds",
+            "Request latency in seconds.",
+            ["method", "endpoint"],
+            buckets=BUCKETS_REQUEST,
+            registry=registry,
+        ),
+        validate_challenge_latency=Histogram(
+            "mlpa_validate_challenge_latency_seconds",
+            "Challenge validation latency in seconds.",
+            ["result"],
+            buckets=BUCKETS_FAST_AUTH,
+            registry=registry,
+        ),
+        validate_app_attest_latency=Histogram(
+            "mlpa_validate_app_attest_latency_seconds",
+            "App Attest authentication latency in seconds.",
+            ["result"],
+            buckets=BUCKETS_AUTH,
+            registry=registry,
+        ),
+        validate_app_assert_latency=Histogram(
+            "mlpa_validate_app_assert_latency_seconds",
+            "App Assert authentication latency in seconds.",
+            ["result"],
+            buckets=BUCKETS_AUTH,
+            registry=registry,
+        ),
+        validate_fxa_latency=Histogram(
+            "mlpa_validate_fxa_latency_seconds",
+            "FxA authentication latency in seconds.",
+            ["result", "verification_source"],
+            buckets=BUCKETS_FXA,
+            registry=registry,
+        ),
+        validate_play_latency=Histogram(
+            "mlpa_validate_play_latency_seconds",
+            "Play Integrity authentication latency in seconds.",
+            ["result"],
+            buckets=BUCKETS_AUTH,
+            registry=registry,
+        ),
+        validate_access_token_latency=Histogram(
+            "mlpa_validate_access_token_latency_seconds",
+            "Access token authentication latency in seconds.",
+            ["result"],
+            buckets=BUCKETS_AUTH,
+            registry=registry,
+        ),
+        fxa_verifications_total=Counter(
+            "mlpa_fxa_verifications_total",
+            "Total number of FxA token verifications.",
+            ["verification_source"],
+            registry=registry,
+        ),
+        play_verifications_total=Counter(
+            "mlpa_play_verifications_total",
+            "Total number of Play Integrity token verifications.",
+            registry=registry,
+        ),
+        access_token_verifications_total=Counter(
+            "mlpa_access_token_verifications_total",
+            "Total number of Access token verifications.",
+            registry=registry,
+        ),
+        chat_completion_latency=Histogram(
+            "mlpa_chat_completion_latency_seconds",
+            "Chat completion latency in seconds.",
+            ["result", "model", "service_type", "purpose"],
+            buckets=BUCKETS_COMPLETION,
+            registry=registry,
+        ),
+        chat_completion_ttft=Histogram(
+            "mlpa_chat_completion_ttft_seconds",
+            "Time to first token for streaming chat completions in seconds.",
+            ["model"],
+            buckets=BUCKETS_TTFT,
+            registry=registry,
+        ),
+        chat_tokens=Counter(
+            "mlpa_chat_tokens",
+            "Number of tokens for chat completions.",
+            ["type", "model", "service_type", "purpose"],
+            registry=registry,
+        ),
+        chat_tokens_per_request=Histogram(
+            "mlpa_chat_tokens_per_request",
+            "Distribution of tokens per chat completion request.",
+            ["type", "model", "service_type", "purpose"],
+            buckets=BUCKETS_TOKENS,
+            registry=registry,
+        ),
+        chat_tool_calls=Counter(
+            "mlpa_chat_tool_calls_total",
+            "Total number of LLM tool invocations.",
+            ["tool_name", "model", "service_type", "purpose"],
+            registry=registry,
+        ),
+        chat_completions_with_tools=Counter(
+            "mlpa_chat_completions_with_tools_total",
+            "Number of completions that contained at least one tool call.",
+            ["tool_name", "model", "service_type", "purpose"],
+            registry=registry,
+        ),
+        chat_tool_calls_per_completion=Histogram(
+            "mlpa_chat_tool_calls_per_completion",
+            "Distribution of tool calls per completion.",
+            ["tool_name", "model", "service_type", "purpose"],
+            buckets=BUCKETS_TOOL_CALLS,
+            registry=registry,
+        ),
+        chat_requests_with_tools=Counter(
+            "mlpa_chat_requests_with_tools_total",
+            "Number of chat requests that included a tools payload.",
+            ["tool_name", "model", "service_type", "purpose"],
+            registry=registry,
+        ),
+        chat_request_rejections=Counter(
+            "mlpa_chat_request_rejections_total",
+            "Number of chat requests rejected due to budget, rate limit, payload size, or managed-user signup cap.",
+            ["reason", "model", "service_type", "purpose"],
+            registry=registry,
+        ),
+        search_latency=Histogram(
+            "mlpa_search_latency_seconds",
+            "Search latency in seconds.",
+            ["result"],
+            buckets=BUCKETS_SEARCH,
+            registry=registry,
+        ),
+        litellm_routed_completions=Counter(
+            "mlpa_litellm_routed_completions_total",
+            "Successful chat completions with LiteLLM routing labels from response headers.",
+            ["requested_model", "backend", "service_type", "purpose", "fallback_used"],
+            registry=registry,
+        ),
+        litellm_attempted_fallbacks=Histogram(
+            "mlpa_litellm_attempted_fallbacks",
+            "LiteLLM-reported fallback attempts per successful completion (from x-litellm-attempted-fallbacks).",
+            ["requested_model", "backend", "service_type", "purpose"],
+            buckets=BUCKETS_LITELLM_ATTEMPTS,
+            registry=registry,
+        ),
+        litellm_attempted_retries=Histogram(
+            "mlpa_litellm_attempted_retries",
+            "LiteLLM-reported retry attempts per successful completion (from x-litellm-attempted-retries).",
+            ["requested_model", "backend", "service_type", "purpose"],
+            buckets=BUCKETS_LITELLM_ATTEMPTS,
+            registry=registry,
+        ),
+        litellm_reported_duration_seconds=Histogram(
+            "mlpa_litellm_reported_duration_seconds",
+            "LiteLLM proxy-reported request duration in seconds (x-litellm-response-duration-ms / 1000).",
+            ["requested_model", "backend", "service_type", "purpose", "fallback_used"],
+            buckets=BUCKETS_COMPLETION,
+            registry=registry,
+        ),
+        litellm_reported_cost_usd_total=Counter(
+            "mlpa_litellm_reported_cost_usd_total",
+            "Cumulative LiteLLM-reported spend in USD (x-litellm-response-cost); use increase() over a range for windowed sums.",
+            ["requested_model", "backend", "service_type", "purpose", "fallback_used"],
+            registry=registry,
+        ),
+        litellm_routed_tokens=Counter(
+            "mlpa_litellm_routed_tokens_total",
+            "Token counts attributed to LiteLLM winning backend (from usage, same completion as routing headers).",
+            [
+                "type",
+                "requested_model",
+                "backend",
+                "service_type",
+                "purpose",
+                "fallback_used",
+            ],
+            registry=registry,
+        ),
+    )
+
+
+metrics = build_metrics()

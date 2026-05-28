@@ -8,7 +8,6 @@ service_account.json
 play_integrity_service_account.json
 .ruff_cache
 # Since we are running it as a library, better not to commit the lock file
-uv.lock
 .secrets
 logs/
 qa_certificates/

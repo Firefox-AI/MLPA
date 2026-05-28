@@ -3,6 +3,7 @@ from unittest.mock import AsyncMock, MagicMock
 import pytest
 
 from mlpa.core.config import env
+from tests.metrics_spy import metrics_spy  # noqa: F401 — re-export as fixture
 
 
 @pytest.fixture
