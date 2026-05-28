@@ -160,6 +160,29 @@ def is_context_window_error(error_text: str) -> bool:
     return any(ind in text for ind in indicators)
 
 
+def is_invalid_model_name_error(error_text: str) -> bool:
+    """Detect LiteLLM "Invalid model name passed in" 400 from the proxy."""
+    if not error_text:
+        return False
+    return "invalid model name passed in" in error_text.lower()
+
+
+def is_invalid_request_error(error_text: str) -> bool:
+    """Detect upstream BadRequest errors that indicate a malformed client request.
+
+    Covers Vertex `INVALID_ARGUMENT` / "Expected a valid JSON object" and the
+    LiteLLM `BadRequestError` wrapper from non-rate, non-context-window providers.
+    """
+    if not error_text:
+        return False
+    text = error_text.lower()
+    if "expected a valid json object" in text or "badrequesterror" in text:
+        return True
+    # Anchor to the Vertex JSON status field to avoid matching unrelated
+    # substrings like "invalid_argument_count".
+    return '"status":"invalid_argument"' in text.replace(" ", "")
+
+
 def parse_app_attest_jwt(authorization: str, type: str):
     # Parse App Attest/Assert authorization JWT
     try:

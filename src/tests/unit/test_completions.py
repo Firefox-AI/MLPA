@@ -11,6 +11,8 @@ from mlpa.core.classes import AuthorizedChatRequest
 from mlpa.core.completions import get_completion, stream_completion
 from mlpa.core.config import (
     ERROR_CODE_BUDGET_LIMIT_EXCEEDED,
+    ERROR_CODE_INVALID_MODEL_NAME,
+    ERROR_CODE_INVALID_REQUEST,
     ERROR_CODE_RATE_LIMIT_EXCEEDED,
     ERROR_CODE_REQUEST_TOO_LARGE,
     ERROR_CODE_UPSTREAM_RATE_LIMIT_EXCEEDED,
@@ -600,6 +602,73 @@ async def test_get_completion_context_window_exceeded(mocker, metrics_spy):
     assert _latency_count(metrics_spy, PrometheusResult.ERROR) == 1
 
 
+async def test_get_completion_invalid_model_name(mocker, metrics_spy):
+    error_text = json.dumps(
+        {
+            "error": "/chat/completions: Invalid model name passed in model=moz-summarizarion. "
+            "Call `/v1/models` to view available models for your key."
+        }
+    )
+    mock_response = MagicMock()
+    mock_response.text = error_text
+    mock_response.status_code = 400
+
+    mock_http_status_error = httpx.HTTPStatusError(
+        "Bad Request", request=MagicMock(), response=mock_response
+    )
+    mock_response.raise_for_status.side_effect = mock_http_status_error
+
+    mock_client = AsyncMock()
+    mock_client.post.return_value = mock_response
+    mocker.patch("mlpa.core.completions.get_http_client", return_value=mock_client)
+    mock_logger = mocker.patch("mlpa.core.completions.logger")
+
+    with pytest.raises(HTTPException) as exc_info:
+        await get_completion(SAMPLE_REQUEST)
+
+    assert exc_info.value.status_code == 400
+    assert exc_info.value.detail == {"error": ERROR_CODE_INVALID_MODEL_NAME}
+    mock_logger.warning.assert_called_once()
+    assert "Invalid model name" in str(mock_logger.warning.call_args)
+    metrics_spy.assert_only({"chat_request_rejections", "chat_completion_latency"})
+    assert (
+        _rejection_count(metrics_spy, PrometheusRejectionReason.INVALID_MODEL_NAME) == 1
+    )
+    assert _latency_count(metrics_spy, PrometheusResult.ERROR) == 1
+
+
+async def test_get_completion_invalid_request_vertex(mocker, metrics_spy):
+    error_text = (
+        "litellm.BadRequestError: Vertex_aiException BadRequestError - "
+        '[{"error": {"code": 400, "message": "Expected a valid JSON object in the request", '
+        '"status": "INVALID_ARGUMENT"}}]'
+    )
+    mock_response = MagicMock()
+    mock_response.text = error_text
+    mock_response.status_code = 400
+
+    mock_http_status_error = httpx.HTTPStatusError(
+        "Bad Request", request=MagicMock(), response=mock_response
+    )
+    mock_response.raise_for_status.side_effect = mock_http_status_error
+
+    mock_client = AsyncMock()
+    mock_client.post.return_value = mock_response
+    mocker.patch("mlpa.core.completions.get_http_client", return_value=mock_client)
+    mock_logger = mocker.patch("mlpa.core.completions.logger")
+
+    with pytest.raises(HTTPException) as exc_info:
+        await get_completion(SAMPLE_REQUEST)
+
+    assert exc_info.value.status_code == 400
+    assert exc_info.value.detail == {"error": ERROR_CODE_INVALID_REQUEST}
+    mock_logger.warning.assert_called_once()
+    assert "Invalid request" in str(mock_logger.warning.call_args)
+    metrics_spy.assert_only({"chat_request_rejections", "chat_completion_latency"})
+    assert _rejection_count(metrics_spy, PrometheusRejectionReason.INVALID_REQUEST) == 1
+    assert _latency_count(metrics_spy, PrometheusResult.ERROR) == 1
+
+
 async def test_get_completion_429_invalid_json(mocker, metrics_spy):
     mock_response = MagicMock()
     mock_response.text = "Invalid JSON response"
@@ -764,6 +833,75 @@ async def test_stream_completion_context_window_exceeded(
     assert (
         _rejection_count(metrics_spy, PrometheusRejectionReason.PAYLOAD_TOO_LARGE) == 1
     )
+    assert _latency_count(metrics_spy, PrometheusResult.ERROR) == 1
+
+
+async def test_stream_completion_invalid_model_name(
+    httpx_mock: HTTPXMock, mocker, mock_request, metrics_spy
+):
+    error_response = json.dumps(
+        {
+            "error": "/chat/completions: Invalid model name passed in model=moz-summarizarion. "
+            "Call `/v1/models` to view available models for your key."
+        }
+    )
+    httpx_mock.add_response(
+        method="POST",
+        url=LITELLM_COMPLETIONS_URL,
+        content=error_response.encode(),
+        status_code=400,
+    )
+
+    mock_logger = mocker.patch("mlpa.core.completions.logger")
+
+    received_chunks = [
+        chunk async for chunk in stream_completion(SAMPLE_REQUEST, mock_request)
+    ]
+
+    assert len(received_chunks) == 1
+    assert (
+        received_chunks[0]
+        == f'data: {{"error": {ERROR_CODE_INVALID_MODEL_NAME}}}\n\n'.encode()
+    )
+    mock_logger.warning.assert_called_once()
+    assert "Invalid model name" in str(mock_logger.warning.call_args)
+    metrics_spy.assert_only({"chat_request_rejections", "chat_completion_latency"})
+    assert (
+        _rejection_count(metrics_spy, PrometheusRejectionReason.INVALID_MODEL_NAME) == 1
+    )
+    assert _latency_count(metrics_spy, PrometheusResult.ERROR) == 1
+
+
+async def test_stream_completion_invalid_request_vertex(
+    httpx_mock: HTTPXMock, mocker, mock_request, metrics_spy
+):
+    error_response = (
+        "litellm.BadRequestError: Vertex_aiException BadRequestError - "
+        '[{"error": {"code": 400, "message": "Expected a valid JSON object in the request", '
+        '"status": "INVALID_ARGUMENT"}}]'
+    )
+    httpx_mock.add_response(
+        method="POST",
+        url=LITELLM_COMPLETIONS_URL,
+        content=error_response.encode(),
+        status_code=400,
+    )
+
+    mock_logger = mocker.patch("mlpa.core.completions.logger")
+
+    received_chunks = [
+        chunk async for chunk in stream_completion(SAMPLE_REQUEST, mock_request)
+    ]
+
+    assert len(received_chunks) == 1
+    assert (
+        received_chunks[0]
+        == f'data: {{"error": {ERROR_CODE_INVALID_REQUEST}}}\n\n'.encode()
+    )
+    mock_logger.warning.assert_called_once()
+    assert "Invalid request" in str(mock_logger.warning.call_args)
+    metrics_spy.assert_only({"chat_request_rejections", "chat_completion_latency"})
+    assert _rejection_count(metrics_spy, PrometheusRejectionReason.INVALID_REQUEST) == 1
     assert _latency_count(metrics_spy, PrometheusResult.ERROR) == 1
 
 

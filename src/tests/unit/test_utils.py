@@ -3,7 +3,13 @@ import base64
 import pytest
 from fastapi import HTTPException
 
-from mlpa.core.utils import b64decode_safe, is_context_window_error, is_rate_limit_error
+from mlpa.core.utils import (
+    b64decode_safe,
+    is_context_window_error,
+    is_invalid_model_name_error,
+    is_invalid_request_error,
+    is_rate_limit_error,
+)
 
 
 def test_b64decode_safe():
@@ -144,3 +150,36 @@ def test_is_context_window_error_no_match():
     assert is_context_window_error("Invalid request parameters") is False
     assert is_context_window_error("Rate limit exceeded") is False
     assert is_context_window_error("") is False
+
+
+def test_is_invalid_model_name_error_match():
+    text = (
+        '{"error": "/chat/completions: Invalid model name passed in model=foo. '
+        'Call `/v1/models` to view available models for your key."}'
+    )
+    assert is_invalid_model_name_error(text) is True
+
+
+def test_is_invalid_model_name_error_no_match():
+    assert is_invalid_model_name_error("rate limit exceeded") is False
+    assert is_invalid_model_name_error("") is False
+
+
+def test_is_invalid_request_error_vertex_json():
+    text = (
+        "litellm.BadRequestError: Vertex_aiException BadRequestError - "
+        '[{"error": {"code": 400, "message": "Expected a valid JSON object in the request", '
+        '"status": "INVALID_ARGUMENT"}}]'
+    )
+    assert is_invalid_request_error(text) is True
+
+
+def test_is_invalid_request_error_generic_bad_request():
+    text = "litellm.BadRequestError: SomeProviderException - something went wrong"
+    assert is_invalid_request_error(text) is True
+
+
+def test_is_invalid_request_error_no_match():
+    assert is_invalid_request_error("Invalid request parameters") is False
+    assert is_invalid_request_error("rate limit exceeded") is False
+    assert is_invalid_request_error("") is False

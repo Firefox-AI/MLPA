@@ -3,6 +3,8 @@ from dataclasses import dataclass
 
 from mlpa.core.config import (
     ERROR_CODE_BUDGET_LIMIT_EXCEEDED,
+    ERROR_CODE_INVALID_MODEL_NAME,
+    ERROR_CODE_INVALID_REQUEST,
     ERROR_CODE_RATE_LIMIT_EXCEEDED,
     ERROR_CODE_REQUEST_TOO_LARGE,
     ERROR_CODE_UPSTREAM_RATE_LIMIT_EXCEEDED,
@@ -10,6 +12,8 @@ from mlpa.core.config import (
 from mlpa.core.prometheus_metrics import PrometheusRejectionReason
 from mlpa.core.utils import (
     is_context_window_error,
+    is_invalid_model_name_error,
+    is_invalid_request_error,
     is_litellm_upstream_rate_limit,
     is_rate_limit_error,
 )
@@ -83,4 +87,19 @@ def classify_upstream_error(
             http_status=413,
             log_message=f"Context window exceeded for user {user}",
         )
+    if status_code == 400:
+        if is_invalid_model_name_error(error_text):
+            return RejectionMatch(
+                reason=PrometheusRejectionReason.INVALID_MODEL_NAME,
+                error_code=ERROR_CODE_INVALID_MODEL_NAME,
+                http_status=400,
+                log_message=f"Invalid model name for user {user}: {error_text}",
+            )
+        if is_invalid_request_error(error_text):
+            return RejectionMatch(
+                reason=PrometheusRejectionReason.INVALID_REQUEST,
+                error_code=ERROR_CODE_INVALID_REQUEST,
+                http_status=400,
+                log_message=f"Invalid request for user {user}: {error_text}",
+            )
     return None
