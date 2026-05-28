@@ -354,7 +354,7 @@ ERROR_CODE_FASTLY_WAF_RATE_LIMIT: int = 6
 ERROR_CODE_INVALID_MODEL_NAME: int = 7
 ERROR_CODE_INVALID_REQUEST: int = 8
 
-RATE_LIMIT_ERROR_RESPONSE = {
+ERROR_RESPONSES = {
     429: {
         "description": (
             "Too Many Requests — budget or rate limit exceeded from MLPA/LiteLLM, "
@@ -449,7 +449,7 @@ RATE_LIMIT_ERROR_RESPONSE = {
                     "invalid_request": {
                         "summary": "Invalid request body",
                         "value": {"error": ERROR_CODE_INVALID_REQUEST},
-                        "description": "Upstream rejected the request (malformed JSON or invalid parameters).",
+                        "description": "Upstream rejected the request as malformed (e.g. invalid JSON body).",
                     },
                 },
             }

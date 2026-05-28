@@ -174,9 +174,26 @@ def test_is_invalid_request_error_vertex_json():
     assert is_invalid_request_error(text) is True
 
 
-def test_is_invalid_request_error_generic_bad_request():
+def test_is_invalid_request_error_generic_bad_request_not_matched():
     text = "litellm.BadRequestError: SomeProviderException - something went wrong"
+    assert is_invalid_request_error(text) is False
+
+
+def test_is_invalid_request_error_vertex_pretty_printed():
+    text = (
+        "Vertex error:\n"
+        "{\n"
+        '  "error": {\n'
+        '    "code": 400,\n'
+        '    "status" : "INVALID_ARGUMENT"\n'
+        "  }\n"
+        "}"
+    )
     assert is_invalid_request_error(text) is True
+
+
+def test_is_invalid_request_error_anchored_not_substring():
+    assert is_invalid_request_error('{"flag":"invalid_argument_count"}') is False
 
 
 def test_is_invalid_request_error_no_match():

@@ -19,7 +19,7 @@ from mlpa.core.completions import (
     stream_completion,
 )
 from mlpa.core.config import (
-    RATE_LIMIT_ERROR_RESPONSE,
+    ERROR_RESPONSES,
     SENSITIVE_FIELDS_TO_SCRUB_FROM_SENTRY,
     env,
 )
@@ -158,7 +158,7 @@ Authorize first using App Attest, Play Integrity, FxA, or dev tier.
     "/v1/chat/completions",
     tags=["LiteLLM"],
     description=CHAT_COMPLETION_DESCRIPTION.strip(),
-    responses=cast(dict[int | str, dict[str, Any]], RATE_LIMIT_ERROR_RESPONSE),
+    responses=cast(dict[int | str, dict[str, Any]], ERROR_RESPONSES),
 )
 async def chat_completion(
     request: Request,
@@ -188,7 +188,7 @@ async def chat_completion(
 @app.post(
     "/v1/search",
     tags=["LiteLLM"],
-    responses=cast(dict[int | str, dict[str, Any]], RATE_LIMIT_ERROR_RESPONSE),
+    responses=cast(dict[int | str, dict[str, Any]], ERROR_RESPONSES),
 )
 async def search(
     request: Request,
