@@ -7,7 +7,7 @@ from mlpa.core.prometheus_metrics import PrometheusResult
 from mlpa.core.routers.fxa import fxa as fxa_module
 
 
-async def test_fxa_auth_returns_first_successful_scope(mocker):
+async def test_fxa_auth_returns_first_successful_scope(mocker, metrics_spy):
     scopes = ("profile:uid", "scope-a", "scope-b")
     mocker.patch.object(fxa_module, "FXA_SCOPES", scopes)
 
@@ -21,22 +21,25 @@ async def test_fxa_auth_returns_first_successful_scope(mocker):
         raise Exception(f"invalid-{scope}")
 
     mocker.patch.object(fxa_module, "run_in_threadpool", new=fake_run_in_threadpool)
-    mock_metrics = mocker.patch.object(fxa_module, "metrics")
 
     profile = await fxa_module.fxa_auth("Bearer test-token")
 
     assert profile == {"user": "ok", "verification_source": "local"}
-    mock_metrics.validate_fxa_latency.labels.assert_called_once_with(
-        result=PrometheusResult.SUCCESS, verification_source="local"
+    metrics_spy.assert_only({"validate_fxa_latency", "fxa_verifications_total"})
+    assert (
+        metrics_spy.histogram_count(
+            "validate_fxa_latency",
+            result=PrometheusResult.SUCCESS,
+            verification_source="local",
+        )
+        == 1
     )
-    mock_metrics.validate_fxa_latency.labels().observe.assert_called_once()
-    mock_metrics.fxa_verifications_total.labels.assert_called_once_with(
-        verification_source="local"
+    assert (
+        metrics_spy.value("fxa_verifications_total", verification_source="local") == 1
     )
-    mock_metrics.fxa_verifications_total.labels().inc.assert_called_once()
 
 
-async def test_fxa_auth_raises_when_all_scopes_fail(mocker):
+async def test_fxa_auth_raises_when_all_scopes_fail(mocker, metrics_spy):
     scopes = ("profile:uid", "scope-a")
     mocker.patch.object(fxa_module, "FXA_SCOPES", scopes)
 
@@ -47,13 +50,17 @@ async def test_fxa_auth_raises_when_all_scopes_fail(mocker):
         raise Exception(f"invalid-{scope}")
 
     mocker.patch.object(fxa_module, "run_in_threadpool", new=fake_run_in_threadpool)
-    mock_metrics = mocker.patch.object(fxa_module, "metrics")
 
     with pytest.raises(HTTPException) as exc_info:
         await fxa_module.fxa_auth("Bearer test-token")
 
     assert exc_info.value.status_code == 401
-    mock_metrics.validate_fxa_latency.labels.assert_called_once_with(
-        result=PrometheusResult.ERROR, verification_source="unknown"
+    metrics_spy.assert_only({"validate_fxa_latency"})
+    assert (
+        metrics_spy.histogram_count(
+            "validate_fxa_latency",
+            result=PrometheusResult.ERROR,
+            verification_source="unknown",
+        )
+        == 1
     )
-    mock_metrics.validate_fxa_latency.labels().observe.assert_called_once()
