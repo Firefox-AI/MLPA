@@ -16,7 +16,6 @@ from mlpa.core.classes import AuthorizedChatRequest, AuthorizedSearchRequest
 from mlpa.core.completions import (
     get_completion,
     get_or_create_user_for_completion,
-    get_search,
     stream_completion,
 )
 from mlpa.core.config import (
@@ -35,6 +34,7 @@ from mlpa.core.routers.health import health_router
 from mlpa.core.routers.mock import mock_router
 from mlpa.core.routers.play import play_router
 from mlpa.core.routers.user import user_router
+from mlpa.core.search import get_search
 
 tags_metadata = [
     {"name": "Health", "description": "Health check endpoints."},
