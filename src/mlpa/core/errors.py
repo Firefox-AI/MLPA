@@ -85,7 +85,7 @@ def classify_upstream_error(
             reason=PrometheusRejectionReason.PAYLOAD_TOO_LARGE,
             error_code=ERROR_CODE_REQUEST_TOO_LARGE,
             http_status=413,
-            log_message=f"Context window exceeded for user {user}",
+            log_message=f"Context window exceeded for user {user}: {error_text}",
         )
     if status_code == 400:
         if is_invalid_model_name_error(error_text):
