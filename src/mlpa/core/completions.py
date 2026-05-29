@@ -255,6 +255,14 @@ async def stream_completion(
                 snapshot=litellm_routing_snapshot,
             )
             result = PrometheusResult.SUCCESS
+    except (GeneratorExit, asyncio.CancelledError):
+        # Client went away mid-stream: Starlette tears the generator down by
+        # throwing GeneratorExit (or cancelling the task) at the paused
+        # `yield chunk`. This often beats the disconnect poller, so classify it
+        # as an abort here rather than letting the initial ERROR stand.
+        result = PrometheusResult.ABORT
+        logger.info(_client_disconnected_msg)
+        raise
     except httpx.ReadError as e:
         if disconnect_event.is_set() or await request.is_disconnected():
             disconnect_event.set()
