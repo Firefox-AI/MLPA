@@ -15,6 +15,8 @@ class PrometheusRejectionReason(StrEnum):
     RATE_LIMITED = "rate_limited"
     PAYLOAD_TOO_LARGE = "payload_too_large"
     SIGNUP_CAP_EXCEEDED = "signup_cap_exceeded"
+    INVALID_MODEL_NAME = "invalid_model_name"
+    INVALID_REQUEST = "invalid_request"
 
 
 class TokenType(StrEnum):
@@ -267,7 +269,7 @@ def build_metrics(registry: CollectorRegistry = REGISTRY) -> PrometheusMetrics:
         ),
         chat_request_rejections=Counter(
             "mlpa_chat_request_rejections_total",
-            "Number of chat requests rejected due to budget, rate limit, payload size, or managed-user signup cap.",
+            "Number of chat requests rejected due to budget, rate limit, payload size, signup cap, invalid model name, or invalid request body.",
             ["reason", "model", "service_type", "purpose"],
             registry=registry,
         ),

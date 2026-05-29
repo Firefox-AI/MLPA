@@ -1,6 +1,7 @@
 import ast
 import base64
 import json
+import re
 import time
 from functools import lru_cache
 from typing import Any, Literal, NoReturn, cast, overload
@@ -158,6 +159,24 @@ def is_context_window_error(error_text: str) -> bool:
         "context length",
     ]
     return any(ind in text for ind in indicators)
+
+
+_INVALID_ARGUMENT_STATUS_RE = re.compile(r'"status"\s*:\s*"invalid_argument"')
+
+
+def is_invalid_model_name_error(error_text: str) -> bool:
+    if not error_text:
+        return False
+    return "invalid model name passed in" in error_text.lower()
+
+
+def is_invalid_request_error(error_text: str) -> bool:
+    if not error_text:
+        return False
+    text = error_text.lower()
+    if "expected a valid json object" in text:
+        return True
+    return _INVALID_ARGUMENT_STATUS_RE.search(text) is not None
 
 
 def parse_app_attest_jwt(authorization: str, type: str):
