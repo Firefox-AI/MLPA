@@ -9,8 +9,8 @@ from fastapi import APIRouter, HTTPException
 from fastapi.concurrency import run_in_threadpool
 from google.auth.transport.requests import Request
 
-from mlpa.core.classes import PlayIntegrityRequest
-from mlpa.core.config import env
+from mlpa.core.classes import PlayIntegrityRequest, PlayIntegrityTokenResponse
+from mlpa.core.config import PLAY_VERIFY_RESPONSES, env
 from mlpa.core.http_client import get_http_client
 from mlpa.core.prometheus_metrics import PrometheusResult, metrics
 from mlpa.core.utils import issue_mlpa_access_token, raise_and_log
@@ -103,7 +103,12 @@ def _validate_integrity_payload(payload: dict, expected_hash: str) -> None:
         raise HTTPException(status_code=401, detail="Device integrity check failed")
 
 
-@router.post("/play", tags=["Play Integrity"])
+@router.post(
+    "/play",
+    tags=["Play Integrity"],
+    response_model=PlayIntegrityTokenResponse,
+    responses=PLAY_VERIFY_RESPONSES,
+)
 async def verify_play_integrity(payload: PlayIntegrityRequest):
     start_time = time.perf_counter()
     try:

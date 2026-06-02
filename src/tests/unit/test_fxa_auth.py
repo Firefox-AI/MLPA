@@ -3,8 +3,8 @@ import asyncio
 import pytest
 from fastapi import HTTPException
 
+from mlpa.core.auth import fxa as fxa_module
 from mlpa.core.prometheus_metrics import PrometheusResult
-from mlpa.core.routers.fxa import fxa as fxa_module
 
 
 async def test_fxa_auth_returns_first_successful_scope(mocker, metrics_spy):

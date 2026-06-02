@@ -4,6 +4,7 @@ from typing import Annotated, Callable, TypeVar
 from fastapi import Header, HTTPException, Request
 
 from mlpa.core.auth.dev_auth import auth_with_key
+from mlpa.core.auth.fxa import fxa_auth
 from mlpa.core.classes import (
     AuthorizedChatRequest,
     AuthorizedSearchRequest,
@@ -13,7 +14,6 @@ from mlpa.core.classes import (
 )
 from mlpa.core.config import env
 from mlpa.core.routers.appattest import app_attest_auth
-from mlpa.core.routers.fxa import fxa_auth
 from mlpa.core.utils import extract_user_from_play_integrity_jwt, parse_app_attest_jwt
 
 TAuthorizedRequest = TypeVar(

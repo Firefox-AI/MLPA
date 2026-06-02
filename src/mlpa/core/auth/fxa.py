@@ -2,15 +2,13 @@ import asyncio
 import time
 from typing import Annotated
 
-from fastapi import APIRouter, Header, HTTPException
+from fastapi import Header, HTTPException
 from fastapi.concurrency import run_in_threadpool
 
 from mlpa.core.config import env
 from mlpa.core.logger import logger
 from mlpa.core.prometheus_metrics import PrometheusResult, metrics
 from mlpa.core.utils import get_fxa_client
-
-router = APIRouter()
 
 client = get_fxa_client()
 FXA_DEFAULT_SCOPE = "profile:uid"
