@@ -1,4 +1,5 @@
 from functools import cached_property
+from typing import Any
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -455,6 +456,42 @@ ERROR_RESPONSES = {
             }
         },
     },
+    401: {
+        "description": (
+            "Unauthorized - Missing or invalid authentication. Returned when the "
+            "Authorization header is absent or the FxA / App Attest / Play Integrity "
+            "credentials fail verification, or the x-dev-authorization token is invalid "
+            "for dev service types."
+        ),
+        "content": {
+            "application/json": {
+                "schema": {
+                    "type": "object",
+                    "properties": {
+                        "detail": {
+                            "type": "string",
+                            "description": "Human-readable reason the request was not authorized.",
+                        }
+                    },
+                    "required": ["detail"],
+                },
+                "examples": {
+                    "missing_authorization_header": {
+                        "summary": "Missing authorization header",
+                        "value": {"detail": "Missing authorization header"},
+                    },
+                    "invalid_fxa_auth": {
+                        "summary": "Invalid FxA auth",
+                        "value": {"detail": "Invalid FxA auth"},
+                    },
+                    "invalid_dev_authorization": {
+                        "summary": "Invalid dev authorization",
+                        "value": {"detail": "Invalid x-dev-authorization"},
+                    },
+                },
+            }
+        },
+    },
     403: {
         "description": "Forbidden - Maximum signed-in users reached",
         "content": {
@@ -475,6 +512,151 @@ ERROR_RESPONSES = {
                         "value": {"error": ERROR_CODE_MAX_USERS_REACHED},
                         "description": "New sign-ins for cap-managed service types are rejected because capacity is full.",
                     }
+                },
+            }
+        },
+    },
+}
+
+# Reusable response docs for admin endpoints, which carry their own auth header
+# (master_key / mlpa_ui_access_key) and return FastAPI's default detail envelope.
+ADMIN_UNAUTHORIZED_RESPONSE: dict[int | str, dict[str, Any]] = {
+    401: {
+        "description": (
+            "Unauthorized - missing or invalid admin credential "
+            "(master_key or mlpa_ui_access_key header)."
+        ),
+        "content": {
+            "application/json": {
+                "schema": {
+                    "type": "object",
+                    "properties": {
+                        "detail": {
+                            "type": "object",
+                            "properties": {"error": {"type": "string"}},
+                        }
+                    },
+                    "required": ["detail"],
+                },
+                "example": {"detail": {"error": "Unauthorized"}},
+            }
+        },
+    },
+}
+
+USER_NOT_FOUND_RESPONSE: dict[int | str, dict[str, Any]] = {
+    404: {
+        "description": "User not found.",
+        "content": {
+            "application/json": {
+                "schema": {
+                    "type": "object",
+                    "properties": {"detail": {"type": "string"}},
+                    "required": ["detail"],
+                },
+                "example": {"detail": "User not found"},
+            }
+        },
+    },
+}
+
+UNKNOWN_SERVICE_TYPE_RESPONSE: dict[int | str, dict[str, Any]] = {
+    422: {
+        "description": "Unprocessable Entity - unknown service type in payload.",
+        "content": {
+            "application/json": {
+                "schema": {
+                    "type": "object",
+                    "properties": {
+                        "detail": {
+                            "type": "object",
+                            "properties": {"error": {"type": "string"}},
+                        }
+                    },
+                    "required": ["detail"],
+                },
+                "example": {
+                    "detail": {
+                        "error": "Unknown service type: foo. Valid values: ai, ai-dev, ..."
+                    }
+                },
+            }
+        },
+    },
+}
+
+# Response docs for the Play Integrity verification endpoint, which is itself the
+# authentication step (no inbound auth header) and rejects bad payloads with 401/403.
+PLAY_VERIFY_RESPONSES: dict[int | str, dict[str, Any]] = {
+    401: {
+        "description": (
+            "Unauthorized - Play Integrity token invalid, or its package name, "
+            "request hash, app, or device integrity verdicts failed verification. "
+            "`detail` is a string for verdict failures; when the upstream Play "
+            "Integrity API itself rejects the token, `detail` is an object "
+            '(`{"error": ...}`).'
+        ),
+        "content": {
+            "application/json": {
+                "schema": {
+                    "type": "object",
+                    "properties": {
+                        "detail": {
+                            "anyOf": [
+                                {"type": "string"},
+                                {
+                                    "type": "object",
+                                    "properties": {"error": {"type": "string"}},
+                                },
+                            ]
+                        }
+                    },
+                    "required": ["detail"],
+                },
+                "examples": {
+                    "verdict_failed": {
+                        "summary": "Verdict failed (string detail)",
+                        "value": {"detail": "Invalid Play Integrity token"},
+                    },
+                    "upstream_rejected": {
+                        "summary": "Upstream Play API rejected the token (object detail)",
+                        "value": {
+                            "detail": {"error": "Upstream service returned an error"}
+                        },
+                    },
+                },
+            }
+        },
+    },
+    403: {
+        "description": "Forbidden - the requested package name is not allowed.",
+        "content": {
+            "application/json": {
+                "schema": {
+                    "type": "object",
+                    "properties": {"detail": {"type": "string"}},
+                    "required": ["detail"],
+                },
+                "example": {"detail": "Package name not allowed"},
+            }
+        },
+    },
+    502: {
+        "description": "Bad Gateway - the Play Integrity validation service is unavailable.",
+        "content": {
+            "application/json": {
+                "schema": {
+                    "type": "object",
+                    "properties": {
+                        "detail": {
+                            "type": "object",
+                            "properties": {"error": {"type": "string"}},
+                        }
+                    },
+                    "required": ["detail"],
+                },
+                "example": {
+                    "detail": {"error": "Play Integrity validation service unavailable"}
                 },
             }
         },

@@ -5,7 +5,13 @@ import httpx
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
 
 from mlpa.core.classes import BudgetUpdatePayload
-from mlpa.core.config import LITELLM_MASTER_AUTH_HEADERS, env
+from mlpa.core.config import (
+    ADMIN_UNAUTHORIZED_RESPONSE,
+    LITELLM_MASTER_AUTH_HEADERS,
+    UNKNOWN_SERVICE_TYPE_RESPONSE,
+    USER_NOT_FOUND_RESPONSE,
+    env,
+)
 from mlpa.core.http_client import get_http_client
 from mlpa.core.logger import logger
 from mlpa.core.pg_services.services import app_attest_pg, litellm_pg
@@ -42,7 +48,7 @@ def require_ui_access_key(
         raise HTTPException(status_code=401, detail={"error": "Unauthorized"})
 
 
-@router.get("", tags=["User Management"])
+@router.get("", tags=["User Management"], responses=ADMIN_UNAUTHORIZED_RESPONSE)
 async def list_users(
     limit: Annotated[int, Query(ge=1, le=200)] = 50,
     offset: Annotated[int, Query(ge=0)] = 0,
@@ -52,7 +58,11 @@ async def list_users(
     return await litellm_pg.list_users(limit=limit, offset=offset)
 
 
-@router.get("/counts-by-service-type", tags=["User Management"])
+@router.get(
+    "/counts-by-service-type",
+    tags=["User Management"],
+    responses=ADMIN_UNAUTHORIZED_RESPONSE,
+)
 async def count_users_by_service_type(
     _: Annotated[None, Depends(require_ui_access_key)] = None,
 ):
@@ -60,7 +70,11 @@ async def count_users_by_service_type(
     return await litellm_pg.count_users_by_service_type()
 
 
-@router.get("/signup-cap-status", tags=["User Management"])
+@router.get(
+    "/signup-cap-status",
+    tags=["User Management"],
+    responses=ADMIN_UNAUTHORIZED_RESPONSE,
+)
 async def signup_cap_status(
     _: Annotated[None, Depends(require_ui_access_key)] = None,
 ):
@@ -68,7 +82,7 @@ async def signup_cap_status(
     return await app_attest_pg.get_signup_cap_status()
 
 
-@router.get("/{user_id}", tags=["User"])
+@router.get("/{user_id}", tags=["User"], responses=USER_NOT_FOUND_RESPONSE)
 async def user_info(user_id: str):
     if not user_id or user_id.strip() == "":
         raise HTTPException(status_code=404, detail="User not found")
@@ -91,7 +105,15 @@ async def user_info(user_id: str):
     return user
 
 
-@router.post("/{user_id}/budget", tags=["User Management"])
+@router.post(
+    "/{user_id}/budget",
+    tags=["User Management"],
+    responses={
+        **ADMIN_UNAUTHORIZED_RESPONSE,
+        **USER_NOT_FOUND_RESPONSE,
+        **UNKNOWN_SERVICE_TYPE_RESPONSE,
+    },
+)
 async def update_user_budget(
     user_id: str,
     payload: BudgetUpdatePayload,
@@ -117,7 +139,9 @@ async def update_user_budget(
     }
 
 
-@router.post("/{user_id}/block", tags=["User Management"])
+@router.post(
+    "/{user_id}/block", tags=["User Management"], responses=ADMIN_UNAUTHORIZED_RESPONSE
+)
 async def block_user(
     user_id: str,
     _: Annotated[None, Depends(require_master_key)] = None,
@@ -126,7 +150,11 @@ async def block_user(
     return await litellm_pg.block_user(user_id, blocked=True)
 
 
-@router.post("/{user_id}/unblock", tags=["User Management"])
+@router.post(
+    "/{user_id}/unblock",
+    tags=["User Management"],
+    responses=ADMIN_UNAUTHORIZED_RESPONSE,
+)
 async def unblock_user(
     user_id: str,
     _: Annotated[None, Depends(require_master_key)] = None,

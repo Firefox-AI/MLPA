@@ -29,7 +29,6 @@ from mlpa.core.middleware import register_middleware
 from mlpa.core.openapi import customize_openapi
 from mlpa.core.pg_services.services import app_attest_pg, litellm_pg
 from mlpa.core.routers.appattest import appattest_router
-from mlpa.core.routers.fxa import fxa_router
 from mlpa.core.routers.health import health_router
 from mlpa.core.routers.mock import mock_router
 from mlpa.core.routers.play import play_router
@@ -128,7 +127,6 @@ async def get_metrics():
 app.include_router(health_router, prefix="/health")
 app.include_router(appattest_router, prefix="/verify")
 app.include_router(play_router, prefix="/verify")
-app.include_router(fxa_router, prefix="/fxa")
 app.include_router(user_router, prefix="/user")
 app.include_router(mock_router, prefix="/mock")
 customize_openapi(app, tags_metadata)
@@ -154,11 +152,48 @@ Authorize first using App Attest, Play Integrity, FxA, or dev tier.
 """
 
 
+SEARCH_DESCRIPTION = """
+Web search proxied to Exa via LiteLLM. Authorize the same way as /v1/chat/completions.
+
+**Headers:**
+
+- **Authorization** (required): Bearer token — FxA OAuth token, Play Integrity MLPA token, or App Attest JWT.
+- **service-type** (required): Must be `search`; any other value returns 400. Has its own budget pool and no `purpose` header.
+
+**Body:** `{"query": str, "max_results": int (1-10)}`.
+"""
+
+# Success (200) response docs for the proxied LiteLLM endpoints. The chat endpoint
+# returns either a JSON chat completion or an SSE stream depending on `stream`.
+CHAT_COMPLETION_SUCCESS_RESPONSE = {
+    200: {
+        "description": (
+            "OpenAI-compatible chat completion. Returns a JSON completion object, or "
+            "a `text/event-stream` of SSE chunks when `stream` is `true`."
+        ),
+        "content": {
+            "application/json": {},
+            "text/event-stream": {},
+        },
+    }
+}
+
+SEARCH_SUCCESS_RESPONSE = {
+    200: {
+        "description": "Search results returned from the Exa search backend.",
+        "content": {"application/json": {}},
+    }
+}
+
+
 @app.post(
     "/v1/chat/completions",
     tags=["LiteLLM"],
     description=CHAT_COMPLETION_DESCRIPTION.strip(),
-    responses=cast(dict[int | str, dict[str, Any]], ERROR_RESPONSES),
+    responses=cast(
+        dict[int | str, dict[str, Any]],
+        {**CHAT_COMPLETION_SUCCESS_RESPONSE, **ERROR_RESPONSES},
+    ),
 )
 async def chat_completion(
     request: Request,
@@ -188,7 +223,11 @@ async def chat_completion(
 @app.post(
     "/v1/search",
     tags=["LiteLLM"],
-    responses=cast(dict[int | str, dict[str, Any]], ERROR_RESPONSES),
+    description=SEARCH_DESCRIPTION.strip(),
+    responses=cast(
+        dict[int | str, dict[str, Any]],
+        {**SEARCH_SUCCESS_RESPONSE, **ERROR_RESPONSES},
+    ),
 )
 async def search(
     request: Request,
