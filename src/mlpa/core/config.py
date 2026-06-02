@@ -355,7 +355,7 @@ ERROR_CODE_FASTLY_WAF_RATE_LIMIT: int = 6
 ERROR_CODE_INVALID_MODEL_NAME: int = 7
 ERROR_CODE_INVALID_REQUEST: int = 8
 
-ERROR_RESPONSES = {
+ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
     429: {
         "description": (
             "Too Many Requests — budget or rate limit exceeded from MLPA/LiteLLM, "
@@ -458,10 +458,10 @@ ERROR_RESPONSES = {
     },
     401: {
         "description": (
-            "Unauthorized - Missing or invalid authentication. Returned when the "
-            "Authorization header is absent or the FxA / App Attest / Play Integrity "
-            "credentials fail verification, or the x-dev-authorization token is invalid "
-            "for dev service types."
+            "Unauthorized - authentication failed or was missing. Either the "
+            "Authorization header is absent, the FxA / App Attest / Play Integrity "
+            "credentials did not verify, or the x-dev-authorization token is wrong "
+            "for a dev service type."
         ),
         "content": {
             "application/json": {
@@ -523,8 +523,8 @@ ERROR_RESPONSES = {
 ADMIN_UNAUTHORIZED_RESPONSE: dict[int | str, dict[str, Any]] = {
     401: {
         "description": (
-            "Unauthorized - missing or invalid admin credential "
-            "(master_key or mlpa_ui_access_key header)."
+            "Unauthorized - the master_key or mlpa_ui_access_key header is "
+            "missing or wrong."
         ),
         "content": {
             "application/json": {
@@ -562,23 +562,50 @@ USER_NOT_FOUND_RESPONSE: dict[int | str, dict[str, Any]] = {
 
 UNKNOWN_SERVICE_TYPE_RESPONSE: dict[int | str, dict[str, Any]] = {
     422: {
-        "description": "Unprocessable Entity - unknown service type in payload.",
+        "description": (
+            "Unprocessable Entity. Two things return this status: an unknown "
+            "service type in the payload, where `detail` is an object like "
+            '`{"error": ...}`, and FastAPI body validation, where `detail` is a '
+            'list like `[{"loc", "msg", ...}]`.'
+        ),
         "content": {
             "application/json": {
                 "schema": {
                     "type": "object",
                     "properties": {
                         "detail": {
-                            "type": "object",
-                            "properties": {"error": {"type": "string"}},
+                            "anyOf": [
+                                {
+                                    "type": "object",
+                                    "properties": {"error": {"type": "string"}},
+                                },
+                                {"type": "array", "items": {"type": "object"}},
+                            ]
                         }
                     },
                     "required": ["detail"],
                 },
-                "example": {
-                    "detail": {
-                        "error": "Unknown service type: foo. Valid values: ai, ai-dev, ..."
-                    }
+                "examples": {
+                    "unknown_service_type": {
+                        "summary": "Unknown service type (object detail)",
+                        "value": {
+                            "detail": {
+                                "error": "Unknown service type: foo. Valid values: ai, ai-dev, ..."
+                            }
+                        },
+                    },
+                    "request_validation": {
+                        "summary": "Request body validation (list detail)",
+                        "value": {
+                            "detail": [
+                                {
+                                    "loc": ["body", "service_type"],
+                                    "msg": "Field required",
+                                    "type": "missing",
+                                }
+                            ]
+                        },
+                    },
                 },
             }
         },
@@ -590,11 +617,11 @@ UNKNOWN_SERVICE_TYPE_RESPONSE: dict[int | str, dict[str, Any]] = {
 PLAY_VERIFY_RESPONSES: dict[int | str, dict[str, Any]] = {
     401: {
         "description": (
-            "Unauthorized - Play Integrity token invalid, or its package name, "
-            "request hash, app, or device integrity verdicts failed verification. "
-            "`detail` is a string for verdict failures; when the upstream Play "
-            "Integrity API itself rejects the token, `detail` is an object "
-            '(`{"error": ...}`).'
+            "Unauthorized - the Play Integrity check did not pass. The token, "
+            "package name, request hash, or the app/device verdicts failed "
+            "verification. `detail` is a string for verdict failures, or an object "
+            'like `{"error": ...}` when the upstream Play Integrity API rejects the '
+            "token."
         ),
         "content": {
             "application/json": {
@@ -638,6 +665,18 @@ PLAY_VERIFY_RESPONSES: dict[int | str, dict[str, Any]] = {
                     "required": ["detail"],
                 },
                 "example": {"detail": "Package name not allowed"},
+            }
+        },
+    },
+    422: {
+        "description": (
+            "Validation Error - the request body did not match the schema, for "
+            "example a missing or wrong-typed field. FastAPI returns this before "
+            "the handler runs, so it is not an auth failure (those return 401)."
+        ),
+        "content": {
+            "application/json": {
+                "schema": {"$ref": "#/components/schemas/HTTPValidationError"}
             }
         },
     },

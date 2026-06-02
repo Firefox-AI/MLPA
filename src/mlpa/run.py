@@ -1,7 +1,8 @@
+import importlib.metadata
 import json
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Annotated, Any, cast
+from typing import Annotated, Any
 
 import sentry_sdk
 import uvicorn
@@ -108,7 +109,7 @@ sentry_sdk.init(
 app = FastAPI(
     title="MLPA",
     description="Authenticates and proxies LLM requests through LiteLLM to enact budgets and per-user management.",
-    version="1.0.0",
+    version=importlib.metadata.version("mlpa"),
     docs_url="/api/docs",
     openapi_tags=tags_metadata,
     lifespan=lifespan,
@@ -165,7 +166,7 @@ Web search proxied to Exa via LiteLLM. Authorize the same way as /v1/chat/comple
 
 # Success (200) response docs for the proxied LiteLLM endpoints. The chat endpoint
 # returns either a JSON chat completion or an SSE stream depending on `stream`.
-CHAT_COMPLETION_SUCCESS_RESPONSE = {
+CHAT_COMPLETION_SUCCESS_RESPONSE: dict[int | str, dict[str, Any]] = {
     200: {
         "description": (
             "OpenAI-compatible chat completion. Returns a JSON completion object, or "
@@ -178,7 +179,7 @@ CHAT_COMPLETION_SUCCESS_RESPONSE = {
     }
 }
 
-SEARCH_SUCCESS_RESPONSE = {
+SEARCH_SUCCESS_RESPONSE: dict[int | str, dict[str, Any]] = {
     200: {
         "description": "Search results returned from the Exa search backend.",
         "content": {"application/json": {}},
@@ -190,10 +191,7 @@ SEARCH_SUCCESS_RESPONSE = {
     "/v1/chat/completions",
     tags=["LiteLLM"],
     description=CHAT_COMPLETION_DESCRIPTION.strip(),
-    responses=cast(
-        dict[int | str, dict[str, Any]],
-        {**CHAT_COMPLETION_SUCCESS_RESPONSE, **ERROR_RESPONSES},
-    ),
+    responses={**CHAT_COMPLETION_SUCCESS_RESPONSE, **ERROR_RESPONSES},
 )
 async def chat_completion(
     request: Request,
@@ -224,10 +222,7 @@ async def chat_completion(
     "/v1/search",
     tags=["LiteLLM"],
     description=SEARCH_DESCRIPTION.strip(),
-    responses=cast(
-        dict[int | str, dict[str, Any]],
-        {**SEARCH_SUCCESS_RESPONSE, **ERROR_RESPONSES},
-    ),
+    responses={**SEARCH_SUCCESS_RESPONSE, **ERROR_RESPONSES},
 )
 async def search(
     request: Request,
