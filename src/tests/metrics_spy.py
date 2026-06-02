@@ -12,7 +12,7 @@ _METRICS_REFS = (
     "mlpa.core.prometheus_metrics.metrics",
     "mlpa.core.metrics.metrics",
     "mlpa.core.utils.metrics",
-    "mlpa.core.routers.fxa.fxa.metrics",
+    "mlpa.core.auth.fxa.metrics",
     "mlpa.core.routers.play.play.metrics",
     "mlpa.core.routers.appattest.appattest.metrics",
     "mlpa.core.middleware.instrumentation.metrics",

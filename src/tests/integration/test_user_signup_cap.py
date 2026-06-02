@@ -91,7 +91,7 @@ def test_managed_cap_rejects_new_identities_and_s2s_bypasses(
         patch("mlpa.core.config.env.MLPA_CAPPED_SERVICE_TYPES", ["ai", "memories"]),
     ):
         mocker.patch(
-            "mlpa.core.routers.fxa.fxa.client.verify_token",
+            "mlpa.core.auth.fxa.client.verify_token",
             side_effect=verify_token_side_effect,
         )
 
@@ -179,7 +179,7 @@ def test_release_reserved_slot_when_litellm_user_creation_fails(
         mocker.patch("mlpa.core.utils.get_http_client", return_value=fake_http_client)
 
         mocker.patch(
-            "mlpa.core.routers.fxa.fxa.client.verify_token",
+            "mlpa.core.auth.fxa.client.verify_token",
             side_effect=verify_token_side_effect,
         )
 

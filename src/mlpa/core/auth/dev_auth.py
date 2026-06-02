@@ -2,8 +2,8 @@ import secrets
 
 from fastapi import HTTPException
 
+from mlpa.core.auth.fxa import fxa_auth
 from mlpa.core.config import env
-from mlpa.core.routers.fxa import fxa_auth
 
 
 async def auth_with_key(
