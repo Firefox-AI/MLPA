@@ -5,7 +5,7 @@ on:
     inputs:
       pr_number:
         description: "Pull request number associated with this dev build"
-        required: false
+        required: true
         type: string
 
 jobs:
@@ -21,3 +21,4 @@ jobs:
       gar_name: llm-proxy-prod
       project_id: moz-fx-llm-proxy-prod-b0b8
       should_tag_latest: false
+      image_tag_metadata: pr-${{ inputs.pr_number }}
