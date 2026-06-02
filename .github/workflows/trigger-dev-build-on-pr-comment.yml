@@ -8,7 +8,7 @@ jobs:
   trigger-dev-build:
     if: >
       github.event.issue.pull_request != null &&
-      contains(github.event.comment.body, '/build-dev') &&
+      contains(github.event.comment.body, '/build-pr') &&
       (
         github.event.comment.author_association == 'OWNER' ||
         github.event.comment.author_association == 'MEMBER' ||
@@ -37,7 +37,7 @@ jobs:
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 issue_number: issueNumber,
-                body: "Dev build not started. `/build-dev` currently supports only PR branches in this repository, not forks.",
+                body: "Dev build not started. `/build-pr` currently supports only PR branches in this repository, not forks.",
               });
               return;
             }
