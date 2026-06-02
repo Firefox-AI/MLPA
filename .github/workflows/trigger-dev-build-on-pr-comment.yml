@@ -9,7 +9,6 @@ jobs:
     if: >
       github.event.issue.pull_request != null &&
       (
-        contains(github.event.comment.body, '/build-dev') ||
         contains(github.event.comment.body, '/build-pr')
       ) &&
       (

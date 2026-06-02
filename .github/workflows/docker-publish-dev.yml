@@ -21,4 +21,3 @@ jobs:
       gar_name: llm-proxy-prod
       project_id: moz-fx-llm-proxy-prod-b0b8
       should_tag_latest: false
-      image_tag_metadata: pr-${{ inputs.pr_number }}
