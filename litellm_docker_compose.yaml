@@ -35,7 +35,7 @@ services:
     command: redis-server --appendonly yes
 
   litellm:
-    image: ghcr.io/berriai/litellm:v1.83.10-stable
+    image: ghcr.io/berriai/litellm:v1.84.4
     container_name: litellm
     platform: linux/amd64
     depends_on:

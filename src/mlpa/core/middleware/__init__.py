@@ -27,6 +27,9 @@ CURRENT EXECUTION ORDER (request -> response):
 from mlpa.core.middleware.instrumentation import instrument_requests_middleware
 from mlpa.core.middleware.request_size import check_request_size_middleware
 from mlpa.core.middleware.security_headers import security_headers_middleware
+from mlpa.core.middleware.set_json_content_type import (
+    set_json_content_type_middleware,
+)
 
 # Define middleware execution order explicitly (innermost to outermost)
 # This is the DESIRED execution order from request to handler
@@ -35,6 +38,7 @@ MIDDLEWARE_EXECUTION_ORDER = [
     check_request_size_middleware,
     instrument_requests_middleware,
     security_headers_middleware,
+    set_json_content_type_middleware,
 ]
 
 __all__ = [func.__name__ for func in MIDDLEWARE_EXECUTION_ORDER] + [
