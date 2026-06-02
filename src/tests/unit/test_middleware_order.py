@@ -11,6 +11,9 @@ from fastapi.testclient import TestClient
 
 from mlpa.core.config import ERROR_CODE_REQUEST_TOO_LARGE
 from mlpa.core.middleware import register_middleware
+from mlpa.core.middleware.set_json_content_type import (
+    set_json_content_type_middleware,
+)
 
 
 @pytest.fixture
@@ -78,3 +81,49 @@ def test_register_middleware_function():
     )
     assert response.status_code == 413
     assert response.json() == {"error": ERROR_CODE_REQUEST_TOO_LARGE}
+
+
+def test_set_json_content_type_sets_json_for_verify_play():
+    app = FastAPI()
+    seen_content_types = []
+
+    app.middleware("http")(set_json_content_type_middleware)
+
+    @app.post("/verify/play")
+    async def verify_play(request: Request):
+        seen_content_types.append(request.headers.get("content-type"))
+        return {"content_type": request.headers.get("content-type")}
+
+    client = TestClient(app)
+    response = client.post(
+        "/verify/play",
+        content="integrity_token=test-token&user_id=test-user",
+        headers={"content-type": "application/x-www-form-urlencoded"},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"content_type": "application/json"}
+    assert seen_content_types == ["application/json"]
+
+
+def test_set_json_content_type_does_not_change_other_routes():
+    app = FastAPI()
+    seen_content_types = []
+
+    app.middleware("http")(set_json_content_type_middleware)
+
+    @app.post("/other")
+    async def other_route(request: Request):
+        seen_content_types.append(request.headers.get("content-type"))
+        return {"content_type": request.headers.get("content-type")}
+
+    client = TestClient(app)
+    response = client.post(
+        "/other",
+        content="payload=test",
+        headers={"content-type": "application/x-www-form-urlencoded"},
+    )
+
+    assert response.status_code == 200
+    assert response.json() == {"content_type": "application/x-www-form-urlencoded"}
+    assert seen_content_types == ["application/x-www-form-urlencoded"]
