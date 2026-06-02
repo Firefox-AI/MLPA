@@ -8,7 +8,10 @@ jobs:
   trigger-dev-build:
     if: >
       github.event.issue.pull_request != null &&
-      contains(github.event.comment.body, '/build-pr') &&
+      (
+        contains(github.event.comment.body, '/build-dev') ||
+        contains(github.event.comment.body, '/build-pr')
+      ) &&
       (
         github.event.comment.author_association == 'OWNER' ||
         github.event.comment.author_association == 'MEMBER' ||
@@ -18,7 +21,6 @@ jobs:
     permissions:
       actions: write
       contents: read
-      issues: write
       pull-requests: read
     steps:
       - name: Dispatch dev build workflow for PR branch
@@ -33,12 +35,7 @@ jobs:
             });
 
             if (pr.head.repo.full_name !== `${context.repo.owner}/${context.repo.repo}`) {
-              await github.rest.issues.createComment({
-                owner: context.repo.owner,
-                repo: context.repo.repo,
-                issue_number: issueNumber,
-                body: "Dev build not started. `/build-pr` currently supports only PR branches in this repository, not forks.",
-              });
+              core.setFailed("Dev build not started. `/build-pr` currently supports only same-repo PR branches, not forks.");
               return;
             }
 
@@ -51,10 +48,4 @@ jobs:
                 pr_number: String(issueNumber),
               },
             });
-
-            await github.rest.issues.createComment({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: issueNumber,
-              body: `Started dev image build for \`${pr.head.ref}\` at \`${pr.head.sha}\`.`,
-            });
+            core.notice(`Started dev image build for ${pr.head.ref} at ${pr.head.sha}.`);
