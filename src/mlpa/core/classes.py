@@ -84,7 +84,7 @@ class PlayIntegrityTokenResponse(BaseModel):
     """Short-lived MLPA access token issued after Play Integrity verification."""
 
     access_token: str
-    token_type: str = "Bearer"
+    token_type: str
     expires_in: int
 
 
