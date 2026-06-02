@@ -1,0 +1,60 @@
+name: Trigger Dev Build From PR Comment
+
+on:
+  issue_comment:
+    types: [created]
+
+jobs:
+  trigger-dev-build:
+    if: >
+      github.event.issue.pull_request != null &&
+      contains(github.event.comment.body, '/build-pr') &&
+      (
+        github.event.comment.author_association == 'OWNER' ||
+        github.event.comment.author_association == 'MEMBER' ||
+        github.event.comment.author_association == 'COLLABORATOR'
+      )
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+      contents: read
+      issues: write
+      pull-requests: read
+    steps:
+      - name: Dispatch dev build workflow for PR branch
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issueNumber = context.issue.number;
+            const { data: pr } = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: issueNumber,
+            });
+
+            if (pr.head.repo.full_name !== `${context.repo.owner}/${context.repo.repo}`) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issueNumber,
+                body: "Dev build not started. `/build-pr` currently supports only PR branches in this repository, not forks.",
+              });
+              return;
+            }
+
+            await github.rest.actions.createWorkflowDispatch({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              workflow_id: "docker-publish-dev.yml",
+              ref: pr.head.ref,
+              inputs: {
+                pr_number: String(issueNumber),
+              },
+            });
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issueNumber,
+              body: `Started dev image build for \`${pr.head.ref}\` at \`${pr.head.sha}\`.`,
+            });
