@@ -16,7 +16,6 @@ repos:
           - "--fix=lf"
       - id: sort-simple-yaml
       - id: trailing-whitespace
-        exclude: ^docs/index\.html$
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: "v0.14.0"
@@ -36,15 +35,13 @@ repos:
 
   - repo: local
     hooks:
+      - id: build-docs
+        name: make docs
+        entry: make docs
+        language: system
       - id: ty-check
         name: ty check
         entry: uv run ty check
         language: system
         pass_filenames: false
         files: ^(src/mlpa/.*\.(py|pyi)|pyproject\.toml)$
-      - id: build-docs
-        name: make docs
-        entry: make docs
-        language: system
-        pass_filenames: false
-        always_run: true
