@@ -36,3 +36,9 @@ jobs:
 
       - name: Run integration tests
         run: uv run pytest src/tests/integration -v
+
+      - name: Build docs
+        run: make docs
+
+      - name: Verify docs are up to date
+        run: git diff --exit-code -- docs/index.html
