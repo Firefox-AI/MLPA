@@ -438,7 +438,7 @@ ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
                     "properties": {
                         "error": {
                             "type": "integer",
-                            "description": "Error code: 7 invalid model name, 8 invalid request body",
+                            "description": "Error code: 8 invalid model name, 9 invalid request body",
                         }
                     },
                     "required": ["error"],
