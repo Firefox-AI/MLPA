@@ -16,7 +16,6 @@ repos:
           - "--fix=lf"
       - id: sort-simple-yaml
       - id: trailing-whitespace
-        exclude: ^docs/index\.html$
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
     rev: "v0.14.0"
