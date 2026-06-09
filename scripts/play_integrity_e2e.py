@@ -57,7 +57,7 @@ def run(args: argparse.Namespace) -> None:
         "service-type": args.service_type,
     }
     payload = {
-        "model": args.model or env.MODEL_NAME,
+        "model": args.model,
         "messages": [{"role": "user", "content": args.message}],
         "stream": args.stream,
     }

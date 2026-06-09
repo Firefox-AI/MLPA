@@ -174,7 +174,7 @@ def is_invalid_request_error(error_text: str) -> bool:
     if not error_text:
         return False
     text = error_text.lower()
-    if "expected a valid json object" in text:
+    if "expected a valid json object" in text or "litellm.badrequesterror" in text:
         return True
     return _INVALID_ARGUMENT_STATUS_RE.search(text) is not None
 

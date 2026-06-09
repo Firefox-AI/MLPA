@@ -29,7 +29,9 @@ async def test_authorize_chat_request_returns_authorized_chat_request(mocker):
 
     result = await authorize_module.authorize_chat_request(
         request=_make_request("/v1/chat/completions"),
-        chat_request=ChatRequest(messages=[{"role": "user", "content": "hello"}]),
+        chat_request=ChatRequest(
+            model="openai/gpt-4o", messages=[{"role": "user", "content": "hello"}]
+        ),
         authorization="Bearer token",
         service_type=authorize_module.ServiceType.ai,
         purpose="chat",
