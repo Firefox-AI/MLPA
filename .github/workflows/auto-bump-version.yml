@@ -3,10 +3,11 @@ name: Auto Bump Version
 on:
   workflow_dispatch:
     inputs:
-      target_branch: fix-bump-version
-      required: false
-      default: main
-      type: string
+      target_branch:
+        description: Branch to test against
+        required: false
+        default: main
+        type: string
   workflow_run:
     workflows: ["linters and tests"]
     types: [completed]
@@ -14,19 +15,22 @@ on:
 jobs:
   bump-version:
     if: >
-      github.event.workflow_run.conclusion == 'success' &&
-      github.event.workflow_run.head_branch == 'main' &&
-      github.event.workflow_run.event == 'push'
+      github.event_name == 'workflow_dispatch' ||
+      (
+        github.event.workflow_run.conclusion == 'success' &&
+        github.event.workflow_run.head_branch == 'main' &&
+        github.event.workflow_run.event == 'push'
+      )
     runs-on: ubuntu-latest
     permissions:
       contents: write
       pull-requests: write
 
     steps:
-      - name: Check out main
+      - name: Check out target branch
         uses: actions/checkout@v4
         with:
-          ref: main
+          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.target_branch || 'main' }}
           fetch-depth: 0
 
       - name: Determine whether a bump is needed
