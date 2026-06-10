@@ -1,6 +1,9 @@
 name: Auto Bump Version
 
 on:
+  push:
+    branches:
+      - fix-bump-version
   workflow_dispatch:
     inputs:
       target_branch:
@@ -15,6 +18,7 @@ on:
 jobs:
   bump-version:
     if: >
+      github.ref == 'refs/heads/fix-bump-version' ||
       github.event_name == 'workflow_dispatch' ||
       (
         github.event.workflow_run.conclusion == 'success' &&
@@ -30,7 +34,7 @@ jobs:
       - name: Check out target branch
         uses: actions/checkout@v4
         with:
-          ref: ${{ github.event_name == 'workflow_dispatch' && inputs.target_branch || 'main' }}
+          ref: ${{ github.ref == 'refs/heads/fix-bump-version' && 'fix-bump-version' || (github.event_name == 'workflow_dispatch' && inputs.target_branch || 'main') }}
           fetch-depth: 0
 
       - name: Determine whether a bump is needed
