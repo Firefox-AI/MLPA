@@ -14,6 +14,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+      pull-requests: write
 
     steps:
       - name: Check out main
@@ -117,7 +118,7 @@ jobs:
         if: steps.version.outputs.bump_needed == 'true'
         run: make docs
 
-      - name: Commit and push version bump
+      - name: Commit version bump
         if: steps.version.outputs.bump_needed == 'true'
         env:
           NEW_VERSION: ${{ steps.version.outputs.new_version }}
@@ -126,7 +127,22 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add pyproject.toml docs/index.html
           git commit -m "chore: bump version to ${NEW_VERSION} [skip ci]"
-          git push
+
+      - name: Create pull request for version bump
+        if: steps.version.outputs.bump_needed == 'true'
+        uses: peter-evans/create-pull-request@v7
+        with:
+          branch: auto/bump-version-${{ steps.version.outputs.new_version }}
+          delete-branch: true
+          title: "chore: bump version to ${{ steps.version.outputs.new_version }}"
+          commit-message: "chore: bump version to ${{ steps.version.outputs.new_version }} [skip ci]"
+          body: |
+            Automated version bump after code landed on `main` beyond the latest release tag.
+
+            Changes:
+            - bumps `pyproject.toml` version to `${{ steps.version.outputs.new_version }}`
+            - regenerates `docs/index.html`
+          labels: automated
 
       - name: No bump needed
         if: steps.version.outputs.bump_needed != 'true'
