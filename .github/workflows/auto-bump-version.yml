@@ -1,0 +1,134 @@
+name: Auto Bump Version
+
+on:
+  workflow_run:
+    workflows: ["linters and tests"]
+    types: [completed]
+
+jobs:
+  bump-version:
+    if: >
+      github.event.workflow_run.conclusion == 'success' &&
+      github.event.workflow_run.head_branch == 'main' &&
+      github.event.workflow_run.event == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Check out main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      - name: Determine whether a bump is needed
+        id: version
+        run: |
+          python <<'PY'
+          import pathlib
+          import subprocess
+          import tomllib
+
+          pyproject_path = pathlib.Path("pyproject.toml")
+          data = tomllib.loads(pyproject_path.read_text())
+          current_version = data["project"]["version"]
+
+          tags = subprocess.check_output(
+              ["git", "tag", "--sort=-v:refname"], text=True
+          ).splitlines()
+          latest_tag = next((tag for tag in tags if tag.startswith("v")), "")
+
+          def parse_version(value: str) -> tuple[int, int, int]:
+              return tuple(int(part) for part in value.split("."))
+
+          bump_needed = False
+          new_version = current_version
+
+          if latest_tag:
+              latest_version = latest_tag.removeprefix("v")
+              if parse_version(current_version) <= parse_version(latest_version):
+                  major, minor, patch = parse_version(latest_version)
+                  new_version = f"{major}.{minor}.{patch + 1}"
+                  bump_needed = True
+          else:
+              latest_version = ""
+
+          output_path = pathlib.Path(__import__("os").environ["GITHUB_OUTPUT"])
+          with output_path.open("a", encoding="utf-8") as fh:
+              fh.write(f"current_version={current_version}\n")
+              fh.write(f"latest_tag={latest_tag}\n")
+              fh.write(f"latest_version={latest_version}\n")
+              fh.write(f"new_version={new_version}\n")
+              fh.write(f"bump_needed={'true' if bump_needed else 'false'}\n")
+          PY
+
+      - name: Set up Python
+        if: steps.version.outputs.bump_needed == 'true'
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up Node.js
+        if: steps.version.outputs.bump_needed == 'true'
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install uv
+        if: steps.version.outputs.bump_needed == 'true'
+        run: pip install uv
+
+      - name: Sync dependencies
+        if: steps.version.outputs.bump_needed == 'true'
+        run: |
+          uv venv
+          uv sync --all-groups
+          uv pip install --no-cache-dir -e .
+
+      - name: Bump pyproject version
+        if: steps.version.outputs.bump_needed == 'true'
+        env:
+          NEW_VERSION: ${{ steps.version.outputs.new_version }}
+        run: |
+          python <<'PY'
+          import os
+          import pathlib
+          import re
+
+          path = pathlib.Path("pyproject.toml")
+          text = path.read_text()
+          new_text, count = re.subn(
+              r'(?m)^version = "[^"]+"$',
+              f'version = "{os.environ["NEW_VERSION"]}"',
+              text,
+              count=1,
+          )
+          if count != 1:
+              raise SystemExit("Failed to update project.version in pyproject.toml")
+          path.write_text(new_text)
+          PY
+
+      - name: Refresh editable install metadata
+        if: steps.version.outputs.bump_needed == 'true'
+        run: uv pip install --no-cache-dir -e .
+
+      - name: Regenerate docs
+        if: steps.version.outputs.bump_needed == 'true'
+        run: make docs
+
+      - name: Commit and push version bump
+        if: steps.version.outputs.bump_needed == 'true'
+        env:
+          NEW_VERSION: ${{ steps.version.outputs.new_version }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add pyproject.toml docs/index.html
+          git commit -m "chore: bump version to ${NEW_VERSION} [skip ci]"
+          git push
+
+      - name: No bump needed
+        if: steps.version.outputs.bump_needed != 'true'
+        run: |
+          echo "Current version ${{ steps.version.outputs.current_version }} is already ahead of latest tag ${{ steps.version.outputs.latest_tag }}."
