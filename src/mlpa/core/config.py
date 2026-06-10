@@ -283,7 +283,6 @@ class Env(BaseSettings):
     PG_PREPARED_STMT_CACHE_MAX_SIZE: int = 100
 
     # LLM request default values
-    MODEL_NAME: str = "openai/gpt-4o"
     TEMPERATURE: float = 0.1
     MAX_COMPLETION_TOKENS: int = 8192
     TOP_P: float = 0.01

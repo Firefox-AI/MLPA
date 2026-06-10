@@ -355,7 +355,7 @@ def build_payload() -> dict:
                 "content": "Hello, this is a test message from App Attest QA script.",
             }
         ],
-        "model": env.MODEL_NAME,
+        "model": "openai/gpt-4o",
         "temperature": env.TEMPERATURE,
         "max_completion_tokens": env.MAX_COMPLETION_TOKENS,
         "top_p": env.TOP_P,

@@ -37,7 +37,7 @@ clean:
 
 docs:
 	uv run python -c "from mlpa.run import app; import json; json.dump(app.openapi(), open('openapi.json', 'w'), indent=2)" && \
-	npx --yes @redocly/cli build-docs openapi.json -o docs/index.html && \
+	npx --yes @redocly/cli@2.5.0 build-docs openapi.json -o docs/index.html && \
 	rm -f openapi.json
 
 # NOTE: for local development only

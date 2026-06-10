@@ -7,7 +7,6 @@ import time
 from pathlib import Path
 
 import httpx
-import pytest
 
 
 def _pick_free_port() -> int:
