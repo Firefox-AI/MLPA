@@ -118,31 +118,57 @@ jobs:
         if: steps.version.outputs.bump_needed == 'true'
         run: make docs
 
-      - name: Commit version bump
+      - name: Commit and push version bump branch
         if: steps.version.outputs.bump_needed == 'true'
         env:
           NEW_VERSION: ${{ steps.version.outputs.new_version }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -b "auto/bump-version-${NEW_VERSION}"
           git add pyproject.toml docs/index.html
           git commit -m "chore: bump version to ${NEW_VERSION} [skip ci]"
+          git push --set-upstream origin "auto/bump-version-${NEW_VERSION}"
 
       - name: Create pull request for version bump
         if: steps.version.outputs.bump_needed == 'true'
-        uses: peter-evans/create-pull-request@v7
+        uses: actions/github-script@v7
         with:
-          branch: auto/bump-version-${{ steps.version.outputs.new_version }}
-          delete-branch: true
-          title: "chore: bump version to ${{ steps.version.outputs.new_version }}"
-          commit-message: "chore: bump version to ${{ steps.version.outputs.new_version }} [skip ci]"
-          body: |
-            Automated version bump after code landed on `main` beyond the latest release tag.
+          script: |
+            const newVersion = "${{ steps.version.outputs.new_version }}";
+            const branch = `auto/bump-version-${newVersion}`;
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
 
-            Changes:
-            - bumps `pyproject.toml` version to `${{ steps.version.outputs.new_version }}`
-            - regenerates `docs/index.html`
-          labels: automated
+            const existing = await github.rest.pulls.list({
+              owner,
+              repo,
+              state: "open",
+              head: `${owner}:${branch}`,
+              base: "main",
+            });
+
+            if (existing.data.length > 0) {
+              core.notice(`Version bump PR already exists: #${existing.data[0].number}`);
+              return;
+            }
+
+            const response = await github.rest.pulls.create({
+              owner,
+              repo,
+              title: `chore: bump version to ${newVersion}`,
+              head: branch,
+              base: "main",
+              body: [
+                "Automated version bump after code landed on `main` beyond the latest release tag.",
+                "",
+                "Changes:",
+                `- bumps \`pyproject.toml\` version to \`${newVersion}\``,
+                "- regenerates `docs/index.html`",
+              ].join("\n"),
+            });
+
+            core.notice(`Created version bump PR #${response.data.number}`);
 
       - name: No bump needed
         if: steps.version.outputs.bump_needed != 'true'
