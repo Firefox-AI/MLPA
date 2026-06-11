@@ -19,6 +19,55 @@ class PrometheusRejectionReason(StrEnum):
     INVALID_REQUEST = "invalid_request"
 
 
+class AvailabilityOutcome(StrEnum):
+    SUCCESS = "success"
+    FAILURE = "failure"
+    EXCLUDED = "excluded"
+    ABORT = "abort"
+
+
+class AvailabilityReason(StrEnum):
+    # Values overlapping PrometheusRejectionReason are kept identical so the
+    # availability counter and the rejection counter reconcile on shared strings.
+    # Keep them in sync if a rejection reason is added.
+    # success
+    CLEAN_COMPLETION = "clean_completion"
+    # failure
+    UPSTREAM_ERROR = "upstream_error"
+    EMPTY_RESPONSE = "empty_response"
+    # excluded (policy rejections)
+    BUDGET_EXCEEDED = "budget_exceeded"
+    RATE_LIMITED_OWN = "rate_limited_own"
+    RATE_LIMITED_UPSTREAM = "rate_limited_upstream"
+    PAYLOAD_TOO_LARGE = "payload_too_large"
+    INVALID_MODEL_NAME = "invalid_model_name"
+    INVALID_REQUEST = "invalid_request"
+    # abort
+    CLIENT_DISCONNECT = "client_disconnect"
+    # TODO: add pre-completion reasons (auth_rejected, auth_system_failure,
+    # signup_cap_exceeded, blocked, provisioning_failure, invalid_purpose,
+    # invalid_service_type_for_model) when those paths are instrumented.
+
+
+_AVAILABILITY_OUTCOME_BY_REASON: dict[AvailabilityReason, AvailabilityOutcome] = {
+    AvailabilityReason.CLEAN_COMPLETION: AvailabilityOutcome.SUCCESS,
+    AvailabilityReason.UPSTREAM_ERROR: AvailabilityOutcome.FAILURE,
+    AvailabilityReason.EMPTY_RESPONSE: AvailabilityOutcome.FAILURE,
+    AvailabilityReason.BUDGET_EXCEEDED: AvailabilityOutcome.EXCLUDED,
+    AvailabilityReason.RATE_LIMITED_OWN: AvailabilityOutcome.EXCLUDED,
+    AvailabilityReason.RATE_LIMITED_UPSTREAM: AvailabilityOutcome.EXCLUDED,
+    AvailabilityReason.PAYLOAD_TOO_LARGE: AvailabilityOutcome.EXCLUDED,
+    AvailabilityReason.INVALID_MODEL_NAME: AvailabilityOutcome.EXCLUDED,
+    AvailabilityReason.INVALID_REQUEST: AvailabilityOutcome.EXCLUDED,
+    AvailabilityReason.CLIENT_DISCONNECT: AvailabilityOutcome.ABORT,
+}
+
+
+def availability_outcome_for(reason: AvailabilityReason) -> AvailabilityOutcome:
+    """Pure classifier: the availability outcome is fully determined by the reason."""
+    return _AVAILABILITY_OUTCOME_BY_REASON[reason]
+
+
 class TokenType(StrEnum):
     PROMPT = "prompt"
     COMPLETION = "completion"
@@ -113,6 +162,7 @@ class PrometheusMetrics:
     chat_tool_calls_per_completion: Histogram
     chat_requests_with_tools: Counter
     chat_request_rejections: Counter
+    chat_availability: Counter
 
     # search
     search_latency: Histogram
@@ -271,6 +321,12 @@ def build_metrics(registry: CollectorRegistry = REGISTRY) -> PrometheusMetrics:
             "mlpa_chat_request_rejections_total",
             "Number of chat requests rejected due to budget, rate limit, payload size, signup cap, invalid model name, or invalid request body.",
             ["reason", "model", "service_type", "purpose"],
+            registry=registry,
+        ),
+        chat_availability=Counter(
+            "mlpa_chat_availability_total",
+            "Interim availability outcomes for chat completions. outcome is success/failure/excluded/abort; reason is the bounded cause. Availability = success / (success + failure).",
+            ["outcome", "reason", "model", "service_type", "purpose"],
             registry=registry,
         ),
         search_latency=Histogram(

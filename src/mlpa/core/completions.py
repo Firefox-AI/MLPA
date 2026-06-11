@@ -20,6 +20,7 @@ from mlpa.core.litellm_routing import parse_litellm_routing_headers
 from mlpa.core.logger import logger
 from mlpa.core.metrics import (
     extract_tool_names,
+    record_chat_availability,
     record_chat_request_rejection,
     record_completion_latency,
     record_completion_success,
@@ -27,6 +28,7 @@ from mlpa.core.metrics import (
     record_ttft,
 )
 from mlpa.core.prometheus_metrics import (
+    AvailabilityReason,
     PrometheusRejectionReason,
     PrometheusResult,
 )
@@ -80,6 +82,7 @@ async def stream_completion(
     record_request_with_tools(authorized_chat_request)
     body = _build_litellm_body(authorized_chat_request, stream=True)
     result = PrometheusResult.ERROR
+    availability_reason = AvailabilityReason.UPSTREAM_ERROR
     is_first_token = True
     prompt_tokens = 0
     completion_tokens = 0
@@ -139,6 +142,7 @@ async def stream_completion(
                     if match.log_message:
                         logger.warning(match.log_message)
                     record_chat_request_rejection(authorized_chat_request, match.reason)
+                    availability_reason = match.availability_reason()
                     yield f'data: {{"error": {match.error_code}}}\n\n'.encode()
                     return
 
@@ -237,6 +241,7 @@ async def stream_completion(
                 return
 
             if not streaming_started:
+                availability_reason = AvailabilityReason.EMPTY_RESPONSE
                 yield raise_and_log(
                     RuntimeError("LiteLLM returned an empty response"),
                     True,
@@ -256,6 +261,7 @@ async def stream_completion(
                 snapshot=litellm_routing_snapshot,
             )
             result = PrometheusResult.SUCCESS
+            availability_reason = AvailabilityReason.CLEAN_COMPLETION
     except (GeneratorExit, asyncio.CancelledError):
         # Client went away mid-stream: Starlette tears the generator down by
         # throwing GeneratorExit (or cancelling the task) at the paused
@@ -291,9 +297,12 @@ async def stream_completion(
         if result == PrometheusResult.ERROR and disconnect_event.is_set():
             result = PrometheusResult.ABORT
             logger.info(_client_disconnected_msg)
+        if result == PrometheusResult.ABORT:
+            availability_reason = AvailabilityReason.CLIENT_DISCONNECT
         record_completion_latency(
             authorized_chat_request, result, time.perf_counter() - start_time
         )
+        record_chat_availability(authorized_chat_request, availability_reason)
 
 
 async def get_completion(authorized_chat_request: AuthorizedChatRequest):
@@ -304,6 +313,7 @@ async def get_completion(authorized_chat_request: AuthorizedChatRequest):
     record_request_with_tools(authorized_chat_request)
     body = _build_litellm_body(authorized_chat_request, stream=False)
     result = PrometheusResult.ERROR
+    availability_reason = AvailabilityReason.UPSTREAM_ERROR
     logger.debug(
         f"Starting a non-stream completion using {authorized_chat_request.model}, for user {authorized_chat_request.user}",
     )
@@ -326,6 +336,7 @@ async def get_completion(authorized_chat_request: AuthorizedChatRequest):
                 if match.log_message:
                     logger.warning(match.log_message)
                 record_chat_request_rejection(authorized_chat_request, match.reason)
+                availability_reason = match.availability_reason()
                 headers = (
                     {"Retry-After": match.retry_after} if match.retry_after else None
                 )
@@ -362,6 +373,7 @@ async def get_completion(authorized_chat_request: AuthorizedChatRequest):
             snapshot=litellm_routing_snapshot,
         )
         result = PrometheusResult.SUCCESS
+        availability_reason = AvailabilityReason.CLEAN_COMPLETION
         return data
     except HTTPException:
         raise
@@ -371,3 +383,4 @@ async def get_completion(authorized_chat_request: AuthorizedChatRequest):
         record_completion_latency(
             authorized_chat_request, result, time.perf_counter() - start_time
         )
+        record_chat_availability(authorized_chat_request, availability_reason)
