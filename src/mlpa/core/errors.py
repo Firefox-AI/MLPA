@@ -9,7 +9,7 @@ from mlpa.core.config import (
     ERROR_CODE_REQUEST_TOO_LARGE,
     ERROR_CODE_UPSTREAM_RATE_LIMIT_EXCEEDED,
 )
-from mlpa.core.prometheus_metrics import PrometheusRejectionReason
+from mlpa.core.prometheus_metrics import AvailabilityReason, PrometheusRejectionReason
 from mlpa.core.utils import (
     is_context_window_error,
     is_invalid_model_name_error,
@@ -17,6 +17,15 @@ from mlpa.core.utils import (
     is_litellm_upstream_rate_limit,
     is_rate_limit_error,
 )
+
+_REJECTION_TO_AVAILABILITY_REASON: dict[
+    PrometheusRejectionReason, AvailabilityReason
+] = {
+    PrometheusRejectionReason.BUDGET_EXCEEDED: AvailabilityReason.BUDGET_EXCEEDED,
+    PrometheusRejectionReason.PAYLOAD_TOO_LARGE: AvailabilityReason.PAYLOAD_TOO_LARGE,
+    PrometheusRejectionReason.INVALID_MODEL_NAME: AvailabilityReason.INVALID_MODEL_NAME,
+    PrometheusRejectionReason.INVALID_REQUEST: AvailabilityReason.INVALID_REQUEST,
+}
 
 
 @dataclass(frozen=True)
@@ -26,6 +35,15 @@ class RejectionMatch:
     http_status: int
     retry_after: str | None = None
     log_message: str = ""
+
+    def availability_reason(self) -> AvailabilityReason:
+        # classify_upstream_error only ever produces these completion-stage
+        # rejection reasons; SIGNUP_CAP_EXCEEDED is recorded pre-completion.
+        if self.reason == PrometheusRejectionReason.RATE_LIMITED:
+            if self.error_code == ERROR_CODE_UPSTREAM_RATE_LIMIT_EXCEEDED:
+                return AvailabilityReason.RATE_LIMITED_UPSTREAM
+            return AvailabilityReason.RATE_LIMITED_OWN
+        return _REJECTION_TO_AVAILABILITY_REASON[self.reason]
 
 
 _RATE_LIMIT_REJECTION: dict[int, tuple[PrometheusRejectionReason, str, str]] = {
