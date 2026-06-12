@@ -1,6 +1,7 @@
 import json
 
 from mlpa.core.sanitization import (
+    MAX_SANITIZE_DEPTH,
     sanitize_request_body,
     strip_unpaired_surrogates,
 )
@@ -70,6 +71,43 @@ def test_strip_unpaired_surrogates_ascii_fast_path_returns_same_object():
     # Long all-ASCII strings hit the isascii() fast path and are returned as-is.
     text = "plain english text without anything fancy. " * 200
     assert strip_unpaired_surrogates(text) is text
+
+
+def test_strip_unpaired_surrogates_survives_pathologically_deep_payload():
+    # A malformed/abusive body nested far deeper than the recursion cap must not
+    # blow the Python stack; the function returns instead of raising RecursionError.
+    payload = inner = {}
+    for _ in range(MAX_SANITIZE_DEPTH * 10):
+        inner["nested"] = {}
+        inner = inner["nested"]
+    inner["content"] = "bad \ud83e"
+
+    # No RecursionError.
+    cleaned = strip_unpaired_surrogates(payload)
+
+    # Surrogates within the cap are still stripped; beyond it they pass through.
+    node = cleaned
+    for _ in range(MAX_SANITIZE_DEPTH):
+        node = node["nested"]
+    # node is now at the cap depth where descent stops, so its subtree is untouched.
+    assert isinstance(node, dict)
+
+
+def test_strip_unpaired_surrogates_strips_within_depth_cap():
+    # Surrogates nested shallower than the cap are still cleaned.
+    payload = inner = {}
+    for _ in range(MAX_SANITIZE_DEPTH - 2):
+        inner["nested"] = {}
+        inner = inner["nested"]
+    inner["content"] = "bad \ud83e"
+
+    cleaned = strip_unpaired_surrogates(payload)
+
+    node = cleaned
+    for _ in range(MAX_SANITIZE_DEPTH - 2):
+        node = node["nested"]
+    assert node["content"] == "bad "
+    assert _utf8_encodable(cleaned)
 
 
 def test_sanitize_request_body_runs_registered_sanitizers():

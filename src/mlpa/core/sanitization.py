@@ -4,8 +4,14 @@ from typing import Any
 # NOTE: matches lone UTF-16 surrogates; used to skip the rebuild for clean strings.
 _SURROGATE_RE = re.compile("[\ud800-\udfff]")
 
+# Realistic chat/search bodies nest well under 10 levels; cap recursion well above
+# that so an abusive or malformed deeply-nested payload can't exhaust the Python
+# stack and raise RecursionError. Past the cap we stop descending and return the
+# value unchanged (fail-open) rather than introduce a new failure mode.
+MAX_SANITIZE_DEPTH = 32
 
-def strip_unpaired_surrogates(value: Any) -> Any:
+
+def strip_unpaired_surrogates(value: Any, _depth: int = 0) -> Any:
     """Recursively drop lone UTF-16 surrogates from strings in ``value``.
 
     Clients occasionally truncate text mid-emoji, leaving an unpaired surrogate
@@ -17,6 +23,11 @@ def strip_unpaired_surrogates(value: Any) -> Any:
     of the text through unharmed. Lists, dict keys and dict values are sanitized
     recursively; non-str scalars and clean values are returned unchanged (no copy).
     """
+    if _depth >= MAX_SANITIZE_DEPTH:
+        # Past any realistic body nesting; stop descending rather than risk a
+        # RecursionError. Surrogates this deep pass through unsanitized, which is
+        # acceptable versus crashing the whole request.
+        return value
     if isinstance(value, str):
         # isascii() reads a cached flag (O(1)); a surrogate is never ASCII, so this
         # skips the regex scan for the common all-ASCII case.
@@ -24,13 +35,15 @@ def strip_unpaired_surrogates(value: Any) -> Any:
             return value
         return value.encode("utf-8", "ignore").decode("utf-8")
     if isinstance(value, list):
-        cleaned = [strip_unpaired_surrogates(item) for item in value]
+        cleaned = [strip_unpaired_surrogates(item, _depth + 1) for item in value]
         if all(new is old for new, old in zip(cleaned, value)):
             return value
         return cleaned
     if isinstance(value, dict):
         cleaned = {
-            strip_unpaired_surrogates(key): strip_unpaired_surrogates(item)
+            strip_unpaired_surrogates(key, _depth + 1): strip_unpaired_surrogates(
+                item, _depth + 1
+            )
             for key, item in value.items()
         }
         if cleaned.keys() == value.keys() and all(

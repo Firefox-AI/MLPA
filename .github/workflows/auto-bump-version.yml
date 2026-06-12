@@ -78,7 +78,7 @@ jobs:
 
       - name: Install uv
         if: steps.version.outputs.bump_needed == 'true'
-        run: pip install uv
+        run: pip install uv==0.10.8
 
       - name: Sync dependencies
         if: steps.version.outputs.bump_needed == 'true'
