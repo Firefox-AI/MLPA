@@ -738,7 +738,7 @@ wheels = [
 
 [[package]]
 name = "mlpa"
-version = "1.0.11"
+version = "1.0.10"
 source = { editable = "." }
 dependencies = [
     { name = "alembic" },
