@@ -44,9 +44,19 @@ class AvailabilityReason(StrEnum):
     INVALID_REQUEST = "invalid_request"
     # abort
     CLIENT_DISCONNECT = "client_disconnect"
-    # TODO: add pre-completion reasons (auth_rejected, auth_system_failure,
-    # signup_cap_exceeded, blocked, provisioning_failure, invalid_purpose,
-    # invalid_service_type_for_model) when those paths are instrumented.
+    # pre-completion (auth dependency and route body, before the completion path)
+    # excluded
+    AUTH_REJECTED = "auth_rejected"
+    INVALID_AUTH_REQUEST = "invalid_auth_request"
+    INVALID_SERVICE_TYPE_FOR_MODEL = "invalid_service_type_for_model"
+    SIGNUP_CAP_EXCEEDED = "signup_cap_exceeded"
+    BLOCKED = "blocked"
+    # failure
+    PROVISIONING_FAILURE = "provisioning_failure"
+    # Defined but not emitted yet: auth backends normalize system failures to 401
+    # (indistinguishable from expected rejections), so capturing this is left to a
+    # follow-on auth backend change that surfaces a real disposition.
+    AUTH_SYSTEM_FAILURE = "auth_system_failure"
 
 
 _AVAILABILITY_OUTCOME_BY_REASON: dict[AvailabilityReason, AvailabilityOutcome] = {
@@ -60,6 +70,13 @@ _AVAILABILITY_OUTCOME_BY_REASON: dict[AvailabilityReason, AvailabilityOutcome] =
     AvailabilityReason.INVALID_MODEL_NAME: AvailabilityOutcome.EXCLUDED,
     AvailabilityReason.INVALID_REQUEST: AvailabilityOutcome.EXCLUDED,
     AvailabilityReason.CLIENT_DISCONNECT: AvailabilityOutcome.ABORT,
+    AvailabilityReason.AUTH_REJECTED: AvailabilityOutcome.EXCLUDED,
+    AvailabilityReason.INVALID_AUTH_REQUEST: AvailabilityOutcome.EXCLUDED,
+    AvailabilityReason.INVALID_SERVICE_TYPE_FOR_MODEL: AvailabilityOutcome.EXCLUDED,
+    AvailabilityReason.SIGNUP_CAP_EXCEEDED: AvailabilityOutcome.EXCLUDED,
+    AvailabilityReason.BLOCKED: AvailabilityOutcome.EXCLUDED,
+    AvailabilityReason.PROVISIONING_FAILURE: AvailabilityOutcome.FAILURE,
+    AvailabilityReason.AUTH_SYSTEM_FAILURE: AvailabilityOutcome.FAILURE,
 }
 
 

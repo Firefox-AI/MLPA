@@ -13,6 +13,8 @@ from mlpa.core.classes import (
     ServiceType,
 )
 from mlpa.core.config import env
+from mlpa.core.metrics import record_chat_availability_for
+from mlpa.core.prometheus_metrics import AvailabilityReason
 from mlpa.core.routers.appattest import app_attest_auth
 from mlpa.core.utils import extract_user_from_play_integrity_jwt, parse_app_attest_jwt
 
@@ -123,27 +125,57 @@ async def authorize_chat_request(
     )
 
     if not is_service_type_valid:
+        record_chat_availability_for(
+            AvailabilityReason.INVALID_SERVICE_TYPE_FOR_MODEL,
+            model=chat_request.model,
+            service_type=service_type.value,
+            purpose="",
+        )
         raise HTTPException(
             status_code=400,
             detail=f"Invalid service-type value for model {chat_request.model}. Should be one of {env.forced_model_service_type_pairs.get(chat_request.model)}",
         )
 
-    return await _authorize_common_request(
-        request=request,
-        build_authorized_request=lambda user, purpose_value: AuthorizedChatRequest(
-            user=user,
+    try:
+        return await _authorize_common_request(
+            request=request,
+            build_authorized_request=lambda user, purpose_value: AuthorizedChatRequest(
+                user=user,
+                service_type=service_type.value,
+                purpose=purpose_value,
+                **chat_request.model_dump(exclude_unset=True),
+            ),
+            authorization=authorization,
+            service_type=service_type,
+            purpose=purpose,
+            x_dev_authorization=x_dev_authorization,
+            use_app_attest=use_app_attest,
+            use_qa_certificates=use_qa_certificates,
+            use_play_integrity=use_play_integrity,
+        )
+    except HTTPException as exc:
+        # Record only the terminal auth dispositions the dependency intentionally
+        # emits. 401 is an expected or normalized auth rejection. 400 is a
+        # client-error request to the auth layer (invalid purpose, or malformed App
+        # Attest base64 decoded in app_attest_auth). Any other status, including App
+        # Attest's explicit 500, is re-raised unrecorded; auth-system-failure capture
+        # is left to a follow-on auth backend change. Non-HTTPException errors are not
+        # caught here and propagate unrecorded. Purpose is unresolved at these
+        # dispositions, so a stable "" placeholder is used, never the unvalidated
+        # header value.
+        if exc.status_code == 401:
+            reason = AvailabilityReason.AUTH_REJECTED
+        elif exc.status_code == 400:
+            reason = AvailabilityReason.INVALID_AUTH_REQUEST
+        else:
+            raise
+        record_chat_availability_for(
+            reason,
+            model=chat_request.model,
             service_type=service_type.value,
-            purpose=purpose_value,
-            **chat_request.model_dump(exclude_unset=True),
-        ),
-        authorization=authorization,
-        service_type=service_type,
-        purpose=purpose,
-        x_dev_authorization=x_dev_authorization,
-        use_app_attest=use_app_attest,
-        use_qa_certificates=use_qa_certificates,
-        use_play_integrity=use_play_integrity,
-    )
+            purpose="",
+        )
+        raise
 
 
 async def authorize_search_request(

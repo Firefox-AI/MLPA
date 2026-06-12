@@ -54,20 +54,29 @@ def _build_litellm_body(req: AuthorizedChatRequest, *, stream: bool) -> dict:
 async def get_or_create_user_for_completion(
     user_id: str, req: AuthorizedChatRequest | AuthorizedSearchRequest
 ):
-    """Wraps get_or_create_user and records a signup-cap rejection metric if applicable."""
+    """Wraps get_or_create_user, recording the signup-cap rejection metric and the
+    pre-completion availability disposition (signup cap, or a 5xx provisioning
+    failure) for chat requests."""
     try:
         return await get_or_create_user(user_id)
     except HTTPException as exc:
-        if (
-            exc.status_code == 403
-            and isinstance(exc.detail, dict)
-            and exc.detail.get("error") == ERROR_CODE_MAX_USERS_REACHED
-            and isinstance(req, AuthorizedChatRequest)
-        ):
-            record_chat_request_rejection(
-                req,
-                PrometheusRejectionReason.SIGNUP_CAP_EXCEEDED,
-            )
+        if isinstance(req, AuthorizedChatRequest):
+            if (
+                exc.status_code == 403
+                and isinstance(exc.detail, dict)
+                and exc.detail.get("error") == ERROR_CODE_MAX_USERS_REACHED
+            ):
+                record_chat_request_rejection(
+                    req,
+                    PrometheusRejectionReason.SIGNUP_CAP_EXCEEDED,
+                )
+                record_chat_availability(req, AvailabilityReason.SIGNUP_CAP_EXCEEDED)
+            elif exc.status_code >= 500:
+                # User-resolution / provisioning system failure for an eligible
+                # request. Non-signup-cap, non-5xx dispositions are left unrecorded;
+                # a future client-side 4xx should get its own classification rather
+                # than counting as an availability failure.
+                record_chat_availability(req, AvailabilityReason.PROVISIONING_FAILURE)
         raise
 
 

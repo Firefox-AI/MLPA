@@ -43,14 +43,31 @@ def record_search_request_rejection(
     metrics.search_request_rejections.labels(reason=reason, **_search_labels(req)).inc()
 
 
-def record_chat_availability(
-    req: AuthorizedChatRequest, reason: AvailabilityReason
+def record_chat_availability_for(
+    reason: AvailabilityReason,
+    *,
+    model: str,
+    service_type: str,
+    purpose: str,
 ) -> None:
     metrics.chat_availability.labels(
         outcome=availability_outcome_for(reason),
         reason=reason,
-        **_chat_labels(req),
+        model=model,
+        service_type=service_type,
+        purpose=purpose,
     ).inc()
+
+
+def record_chat_availability(
+    req: AuthorizedChatRequest, reason: AvailabilityReason
+) -> None:
+    record_chat_availability_for(
+        reason,
+        model=req.model,
+        service_type=req.service_type,
+        purpose=req.purpose,
+    )
 
 
 def record_completion_latency(
