@@ -30,6 +30,7 @@ from mlpa.core.prometheus_metrics import (
     PrometheusRejectionReason,
     PrometheusResult,
 )
+from mlpa.core.sanitization import sanitize_request_body, sanitize_response_body
 from mlpa.core.utils import (
     get_or_create_user,
     raise_and_log,
@@ -45,7 +46,7 @@ def _build_litellm_body(req: AuthorizedChatRequest, *, stream: bool) -> dict:
     body["stream"] = stream
     if stream:
         body["stream_options"] = {"include_usage": True}
-    return body
+    return sanitize_request_body(body)
 
 
 async def get_or_create_user_for_completion(
@@ -335,7 +336,7 @@ async def get_completion(authorized_chat_request: AuthorizedChatRequest):
                 )
             raise_and_log(e)
         litellm_routing_snapshot = parse_litellm_routing_headers(response.headers)
-        data = response.json()
+        data = sanitize_response_body(response.json())
         usage = data.get("usage", {})
         prompt_tokens = usage.get("prompt_tokens", 0)
         completion_tokens = usage.get("completion_tokens", 0)

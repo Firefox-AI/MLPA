@@ -114,6 +114,10 @@ jobs:
         if: steps.version.outputs.bump_needed == 'true'
         run: uv pip install --no-cache-dir -e .
 
+      - name: Update lockfile with new version
+        if: steps.version.outputs.bump_needed == 'true'
+        run: uv lock
+
       - name: Regenerate docs
         if: steps.version.outputs.bump_needed == 'true'
         run: make docs
@@ -126,7 +130,7 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git checkout -b "auto/bump-version-${NEW_VERSION}"
-          git add pyproject.toml docs/index.html
+          git add pyproject.toml uv.lock docs/index.html
           git commit -m "chore: bump version to ${NEW_VERSION} [skip ci]"
           git push --set-upstream origin "auto/bump-version-${NEW_VERSION}"
 

@@ -8,7 +8,11 @@ from fastapi import HTTPException
 from pytest_httpx import HTTPXMock, IteratorStream
 
 from mlpa.core.classes import AuthorizedChatRequest
-from mlpa.core.completions import get_completion, stream_completion
+from mlpa.core.completions import (
+    _build_litellm_body,
+    get_completion,
+    stream_completion,
+)
 from mlpa.core.config import (
     ERROR_CODE_BUDGET_LIMIT_EXCEEDED,
     ERROR_CODE_INVALID_MODEL_NAME,
@@ -1301,3 +1305,71 @@ async def test_stream_uses_httpx_timeout_object_preserving_pool_timeout(
     )
     assert timeout.read == env.STREAMING_TIMEOUT_SECONDS
     assert timeout.pool == env.HTTPX_POOL_TIMEOUT_SECONDS
+
+
+def _httpx_encode_json(body: dict) -> bytes:
+    """Mirror how httpx (0.28) serializes a ``json=`` body.
+
+    httpx.encode_json uses ``ensure_ascii=False`` then ``.encode("utf-8")``, so a
+    lone/unpaired UTF-16 surrogate survives ``json.dumps`` and then raises
+    ``UnicodeEncodeError: surrogates not allowed`` on the encode. In prod this
+    surfaced as 502 "Failed to proxy request" for ``memory-generation`` requests
+    (the OpenAI JS client truncated conversation text mid-emoji).
+    """
+    return json.dumps(
+        body, ensure_ascii=False, separators=(",", ":"), allow_nan=False
+    ).encode("utf-8")
+
+
+def test_build_litellm_body_handles_unpaired_surrogate():
+    """A message truncated mid-emoji (lone ``\\ud83e``) must not break the
+    outgoing UTF-8 encode that httpx performs on the request body."""
+    req = AuthorizedChatRequest(
+        user="test-user-123:memories",
+        service_type="memories",
+        purpose="memory-generation",
+        model="test-model",
+        messages=[{"role": "user", "content": "summarize this \ud83e"}],
+        max_completion_tokens=150,
+    )
+
+    body = _build_litellm_body(req, stream=False)
+
+    # Must not raise UnicodeEncodeError the way httpx encodes the body.
+    encoded = _httpx_encode_json(body)
+    # The unpaired surrogate is gone and the surrounding text is preserved.
+    assert "\ud83e" not in body["messages"][0]["content"]
+    assert body["messages"][0]["content"].startswith("summarize this ")
+    assert encoded.decode("utf-8")
+
+
+async def test_get_completion_sanitizes_response_surrogates(mocker):
+    """Upstream content with a lone surrogate must be cleaned before we return it,
+    otherwise FastAPI's JSON encoder 500s when serializing the response."""
+    bad_response = {
+        "id": "x",
+        "model": "test-model",
+        "object": "chat.completion",
+        "choices": [
+            {
+                "finish_reason": "stop",
+                "index": 0,
+                "message": {"role": "assistant", "content": "done \ud83e"},
+            }
+        ],
+        "usage": {"completion_tokens": 1, "prompt_tokens": 1, "total_tokens": 2},
+    }
+    mock_response = MagicMock()
+    mock_response.json.return_value = bad_response
+    mock_response.headers = _sample_litellm_response_headers()
+    mock_response.raise_for_status.return_value = None
+
+    mock_client = AsyncMock()
+    mock_client.post.return_value = mock_response
+    mocker.patch("mlpa.core.completions.get_http_client", return_value=mock_client)
+
+    data = await get_completion(SAMPLE_REQUEST)
+
+    assert "\ud83e" not in data["choices"][0]["message"]["content"]
+    assert data["choices"][0]["message"]["content"].startswith("done ")
+    _httpx_encode_json(data)  # must not raise

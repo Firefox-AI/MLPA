@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mlpa"
-version = "1.0.10"
+version = "1.0.11"
 description = "Authenticates and proxies LLM requests through LiteLLM to enact budgets and per-user management."
 authors = [
     { name = "Noah Podgurski", email = "npodgurski@mozilla.com" },
@@ -81,6 +81,12 @@ where = ["src"]
 
 [project.scripts]
 mlpa = "mlpa.run:main"
+
+[tool.uv]
+# Pin uv so every contributor and CI regenerate uv.lock identically (avoids
+# unrelated lock churn from differing uv versions). Keep in sync with the
+# uv-lock pre-commit hook rev and astral-sh/setup-uv in CI.
+required-version = ">=0.10,<0.11"
 
 [tool.ruff.format]
 quote-style = "double"
