@@ -22,7 +22,6 @@ from mlpa.core.config import ERROR_CODE_MAX_USERS_REACHED
 from mlpa.core.prometheus_metrics import (
     AvailabilityOutcome,
     AvailabilityReason,
-    PrometheusRejectionReason,
 )
 from tests.consts import SAMPLE_REQUEST
 

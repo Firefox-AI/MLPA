@@ -37,8 +37,8 @@ class RejectionMatch:
     log_message: str = ""
 
     def availability_reason(self) -> AvailabilityReason:
-        # classify_upstream_error only ever produces these completion-stage
-        # rejection reasons; SIGNUP_CAP_EXCEEDED is recorded pre-completion.
+        # SIGNUP_CAP_EXCEEDED is recorded pre-completion, not via classify_upstream_error,
+        # so it is not in the mapping below.
         if self.reason == PrometheusRejectionReason.RATE_LIMITED:
             if self.error_code == ERROR_CODE_UPSTREAM_RATE_LIMIT_EXCEEDED:
                 return AvailabilityReason.RATE_LIMITED_UPSTREAM

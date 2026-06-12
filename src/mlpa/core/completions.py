@@ -54,9 +54,12 @@ def _build_litellm_body(req: AuthorizedChatRequest, *, stream: bool) -> dict:
 async def get_or_create_user_for_completion(
     user_id: str, req: AuthorizedChatRequest | AuthorizedSearchRequest
 ):
-    """Wraps get_or_create_user, recording the signup-cap rejection metric and the
-    pre-completion availability disposition (signup cap, or a 5xx provisioning
-    failure) for chat requests."""
+    """
+    Wraps get_or_create_user and records availability for chat requests:
+    - signup cap (403 + MAX_USERS_REACHED): excluded, alongside the existing rejection metric
+    - user-resolution failure (status >= 500): failure
+    - search requests and non-signup-cap, non-5xx failures: not recorded
+    """
     try:
         return await get_or_create_user(user_id)
     except HTTPException as exc:
@@ -72,10 +75,9 @@ async def get_or_create_user_for_completion(
                 )
                 record_chat_availability(req, AvailabilityReason.SIGNUP_CAP_EXCEEDED)
             elif exc.status_code >= 500:
-                # User-resolution / provisioning system failure for an eligible
-                # request. Non-signup-cap, non-5xx dispositions are left unrecorded;
-                # a future client-side 4xx should get its own classification rather
-                # than counting as an availability failure.
+                # User-resolution system failure. Non-signup-cap 4xx errors are
+                # not recorded; a client-side 4xx should get its own classification
+                # rather than counting as an availability failure.
                 record_chat_availability(req, AvailabilityReason.PROVISIONING_FAILURE)
         raise
 
