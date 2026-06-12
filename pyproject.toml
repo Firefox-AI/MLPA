@@ -82,6 +82,12 @@ where = ["src"]
 [project.scripts]
 mlpa = "mlpa.run:main"
 
+[tool.uv]
+# Span the uv versions actually in use (local + CI's `pip install uv`, currently
+# 0.11.x). The uv-lock pre-commit hook pins the exact uv used to (re)generate the
+# lockfile, so this only needs to be loose enough not to block uv venv/sync/run.
+required-version = ">=0.10,<0.12"
+
 [tool.ruff.format]
 quote-style = "double"
 indent-style = "space"

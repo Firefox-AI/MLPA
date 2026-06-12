@@ -12,12 +12,15 @@ from mlpa.core.http_client import get_http_client
 from mlpa.core.logger import logger
 from mlpa.core.metrics import record_search_latency
 from mlpa.core.prometheus_metrics import PrometheusResult
+from mlpa.core.sanitization import sanitize_request_body, sanitize_response_body
 from mlpa.core.utils import raise_and_log
 
 
 async def get_search(authorized_search_request: AuthorizedSearchRequest):
     start_time = time.perf_counter()
-    body = authorized_search_request.model_dump(exclude_none=True)
+    body = sanitize_request_body(
+        authorized_search_request.model_dump(exclude_none=True)
+    )
     result = PrometheusResult.ERROR
     logger.debug(
         f"Starting a search request using for user {authorized_search_request.user}",
@@ -34,7 +37,7 @@ async def get_search(authorized_search_request: AuthorizedSearchRequest):
         except httpx.HTTPStatusError as e:
             raise_and_log(e)
 
-        data = response.json()
+        data = sanitize_response_body(response.json())
 
         result = PrometheusResult.SUCCESS
         return data

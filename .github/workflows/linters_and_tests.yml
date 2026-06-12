@@ -20,7 +20,7 @@ jobs:
           python-version: "3.12"
 
       - name: Install uv
-        run: pip install uv
+        run: pip install uv==0.10.8
 
       - name: Sync dependencies
         run: |
