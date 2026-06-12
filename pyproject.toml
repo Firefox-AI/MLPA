@@ -83,10 +83,10 @@ where = ["src"]
 mlpa = "mlpa.run:main"
 
 [tool.uv]
-# Pin uv so every contributor and CI regenerate uv.lock identically (avoids
-# unrelated lock churn from differing uv versions). Keep in sync with the
-# uv-lock pre-commit hook rev and astral-sh/setup-uv in CI.
-required-version = ">=0.10,<0.11"
+# Span the uv versions actually in use (local + CI's `pip install uv`, currently
+# 0.11.x). The uv-lock pre-commit hook pins the exact uv used to (re)generate the
+# lockfile, so this only needs to be loose enough not to block uv venv/sync/run.
+required-version = ">=0.10,<0.12"
 
 [tool.ruff.format]
 quote-style = "double"
