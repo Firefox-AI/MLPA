@@ -154,15 +154,14 @@ async def authorize_chat_request(
             use_play_integrity=use_play_integrity,
         )
     except HTTPException as exc:
-        # Record only the terminal auth dispositions the dependency intentionally
-        # emits. 401 is an expected or normalized auth rejection. 400 is a
-        # client-error request to the auth layer (invalid purpose, or malformed App
-        # Attest base64 decoded in app_attest_auth). Any other status, including App
-        # Attest's explicit 500, is re-raised unrecorded; auth-system-failure capture
-        # is left to a follow-on auth backend change. Non-HTTPException errors are not
-        # caught here and propagate unrecorded. Purpose is unresolved at these
-        # dispositions, so a stable "" placeholder is used, never the unvalidated
-        # header value.
+        # Only record terminal HTTP failures from the shared auth call:
+        # - 401: expected or normalized auth rejection (bad creds, expired token, etc.)
+        # - 400: client error to the auth layer (invalid purpose, or malformed App
+        #        Attest base64 decoded in app_attest_auth before its try block)
+        # - anything else (e.g. App Attest's explicit 500): re-raised unrecorded;
+        #   auth-system-failure capture is left to a follow-on auth backend change
+        # Non-HTTPException errors are not caught here and propagate unrecorded.
+        # Purpose is unknown at this point, so "" is always used as a placeholder.
         if exc.status_code == 401:
             reason = AvailabilityReason.AUTH_REJECTED
         elif exc.status_code == 400:

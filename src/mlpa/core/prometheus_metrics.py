@@ -27,36 +27,33 @@ class AvailabilityOutcome(StrEnum):
 
 
 class AvailabilityReason(StrEnum):
-    # Values overlapping PrometheusRejectionReason are kept identical so the
-    # availability counter and the rejection counter reconcile on shared strings.
-    # Keep them in sync if a rejection reason is added.
-    # success
-    CLEAN_COMPLETION = "clean_completion"
-    # failure
-    UPSTREAM_ERROR = "upstream_error"
-    EMPTY_RESPONSE = "empty_response"
-    # excluded (policy rejections)
-    BUDGET_EXCEEDED = "budget_exceeded"
-    RATE_LIMITED_OWN = "rate_limited_own"
-    RATE_LIMITED_UPSTREAM = "rate_limited_upstream"
-    PAYLOAD_TOO_LARGE = "payload_too_large"
-    INVALID_MODEL_NAME = "invalid_model_name"
-    INVALID_REQUEST = "invalid_request"
-    # abort
-    CLIENT_DISCONNECT = "client_disconnect"
-    # pre-completion (auth dependency and route body, before the completion path)
-    # excluded
-    AUTH_REJECTED = "auth_rejected"
-    INVALID_AUTH_REQUEST = "invalid_auth_request"
-    INVALID_SERVICE_TYPE_FOR_MODEL = "invalid_service_type_for_model"
-    SIGNUP_CAP_EXCEEDED = "signup_cap_exceeded"
-    BLOCKED = "blocked"
-    # failure
-    PROVISIONING_FAILURE = "provisioning_failure"
-    # Defined but not emitted yet: auth backends normalize system failures to 401
-    # (indistinguishable from expected rejections), so capturing this is left to a
-    # follow-on auth backend change that surfaces a real disposition.
-    AUTH_SYSTEM_FAILURE = "auth_system_failure"
+    # Strings shared with PrometheusRejectionReason are kept identical so the
+    # two counters reconcile. Keep them in sync when a rejection reason is added.
+
+    # --- completion-stage reasons (recorded inside stream_completion / get_completion) ---
+    CLEAN_COMPLETION = "clean_completion"  # success
+    UPSTREAM_ERROR = "upstream_error"  # failure
+    EMPTY_RESPONSE = "empty_response"  # failure
+    BUDGET_EXCEEDED = "budget_exceeded"  # excluded
+    RATE_LIMITED_OWN = "rate_limited_own"  # excluded
+    RATE_LIMITED_UPSTREAM = "rate_limited_upstream"  # excluded
+    PAYLOAD_TOO_LARGE = "payload_too_large"  # excluded
+    INVALID_MODEL_NAME = "invalid_model_name"  # excluded
+    INVALID_REQUEST = "invalid_request"  # excluded
+    CLIENT_DISCONNECT = "client_disconnect"  # abort
+
+    # --- pre-completion reasons (recorded in the auth dependency and route body) ---
+    AUTH_REJECTED = "auth_rejected"  # excluded
+    INVALID_AUTH_REQUEST = "invalid_auth_request"  # excluded
+    INVALID_SERVICE_TYPE_FOR_MODEL = "invalid_service_type_for_model"  # excluded
+    SIGNUP_CAP_EXCEEDED = "signup_cap_exceeded"  # excluded
+    BLOCKED = "blocked"  # excluded
+    PROVISIONING_FAILURE = "provisioning_failure"  # failure
+
+    # Defined but not yet emitted: auth backends normalize system failures to 401,
+    # making them indistinguishable from expected rejections. Capturing this
+    # properly requires a follow-on change to the auth backends themselves.
+    AUTH_SYSTEM_FAILURE = "auth_system_failure"  # failure
 
 
 _AVAILABILITY_OUTCOME_BY_REASON: dict[AvailabilityReason, AvailabilityOutcome] = {
