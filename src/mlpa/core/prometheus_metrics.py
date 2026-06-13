@@ -19,6 +19,69 @@ class PrometheusRejectionReason(StrEnum):
     INVALID_REQUEST = "invalid_request"
 
 
+class AvailabilityOutcome(StrEnum):
+    SUCCESS = "success"
+    FAILURE = "failure"
+    EXCLUDED = "excluded"
+    ABORT = "abort"
+
+
+class AvailabilityReason(StrEnum):
+    # Strings shared with PrometheusRejectionReason are kept identical so the
+    # two counters reconcile. Keep them in sync when a rejection reason is added.
+
+    # --- completion-stage reasons (recorded inside stream_completion / get_completion) ---
+    CLEAN_COMPLETION = "clean_completion"  # success
+    UPSTREAM_ERROR = "upstream_error"  # failure
+    EMPTY_RESPONSE = "empty_response"  # failure
+    BUDGET_EXCEEDED = "budget_exceeded"  # excluded
+    RATE_LIMITED_OWN = "rate_limited_own"  # excluded
+    RATE_LIMITED_UPSTREAM = "rate_limited_upstream"  # excluded
+    PAYLOAD_TOO_LARGE = "payload_too_large"  # excluded
+    INVALID_MODEL_NAME = "invalid_model_name"  # excluded
+    INVALID_REQUEST = "invalid_request"  # excluded
+    CLIENT_DISCONNECT = "client_disconnect"  # abort
+
+    # --- pre-completion reasons (recorded in the auth dependency and route body) ---
+    AUTH_REJECTED = "auth_rejected"  # excluded
+    INVALID_AUTH_REQUEST = "invalid_auth_request"  # excluded
+    INVALID_SERVICE_TYPE_FOR_MODEL = "invalid_service_type_for_model"  # excluded
+    SIGNUP_CAP_EXCEEDED = "signup_cap_exceeded"  # excluded
+    BLOCKED = "blocked"  # excluded
+    PROVISIONING_FAILURE = "provisioning_failure"  # failure
+
+    # Defined but not yet emitted: auth backends normalize system failures to 401,
+    # making them indistinguishable from expected rejections. Capturing this
+    # properly requires a follow-on change to the auth backends themselves.
+    AUTH_SYSTEM_FAILURE = "auth_system_failure"  # failure
+
+
+_AVAILABILITY_OUTCOME_BY_REASON: dict[AvailabilityReason, AvailabilityOutcome] = {
+    AvailabilityReason.CLEAN_COMPLETION: AvailabilityOutcome.SUCCESS,
+    AvailabilityReason.UPSTREAM_ERROR: AvailabilityOutcome.FAILURE,
+    AvailabilityReason.EMPTY_RESPONSE: AvailabilityOutcome.FAILURE,
+    AvailabilityReason.BUDGET_EXCEEDED: AvailabilityOutcome.EXCLUDED,
+    AvailabilityReason.RATE_LIMITED_OWN: AvailabilityOutcome.EXCLUDED,
+    AvailabilityReason.RATE_LIMITED_UPSTREAM: AvailabilityOutcome.EXCLUDED,
+    AvailabilityReason.PAYLOAD_TOO_LARGE: AvailabilityOutcome.EXCLUDED,
+    AvailabilityReason.INVALID_MODEL_NAME: AvailabilityOutcome.EXCLUDED,
+    AvailabilityReason.INVALID_REQUEST: AvailabilityOutcome.EXCLUDED,
+    AvailabilityReason.CLIENT_DISCONNECT: AvailabilityOutcome.ABORT,
+    AvailabilityReason.AUTH_REJECTED: AvailabilityOutcome.EXCLUDED,
+    AvailabilityReason.INVALID_AUTH_REQUEST: AvailabilityOutcome.EXCLUDED,
+    AvailabilityReason.INVALID_SERVICE_TYPE_FOR_MODEL: AvailabilityOutcome.EXCLUDED,
+    AvailabilityReason.SIGNUP_CAP_EXCEEDED: AvailabilityOutcome.EXCLUDED,
+    AvailabilityReason.BLOCKED: AvailabilityOutcome.EXCLUDED,
+    AvailabilityReason.PROVISIONING_FAILURE: AvailabilityOutcome.FAILURE,
+    AvailabilityReason.AUTH_SYSTEM_FAILURE: AvailabilityOutcome.FAILURE,
+}
+
+
+def availability_outcome_for(reason: AvailabilityReason) -> AvailabilityOutcome:
+    """Pure classifier: the availability outcome is fully determined by the reason."""
+    return _AVAILABILITY_OUTCOME_BY_REASON[reason]
+
+
 class TokenType(StrEnum):
     PROMPT = "prompt"
     COMPLETION = "completion"
@@ -113,6 +176,7 @@ class PrometheusMetrics:
     chat_tool_calls_per_completion: Histogram
     chat_requests_with_tools: Counter
     chat_request_rejections: Counter
+    chat_availability: Counter
 
     # search
     search_latency: Histogram
@@ -271,6 +335,12 @@ def build_metrics(registry: CollectorRegistry = REGISTRY) -> PrometheusMetrics:
             "mlpa_chat_request_rejections_total",
             "Number of chat requests rejected due to budget, rate limit, payload size, signup cap, invalid model name, or invalid request body.",
             ["reason", "model", "service_type", "purpose"],
+            registry=registry,
+        ),
+        chat_availability=Counter(
+            "mlpa_chat_availability_total",
+            "Interim availability outcomes for chat completions. outcome is success/failure/excluded/abort; reason is the bounded cause. Availability = success / (success + failure).",
+            ["outcome", "reason", "model", "service_type", "purpose"],
             registry=registry,
         ),
         search_latency=Histogram(
