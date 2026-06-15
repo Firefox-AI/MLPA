@@ -1,7 +1,16 @@
 import json
 from unittest.mock import AsyncMock, MagicMock
 
+import httpx
+import pytest
+from fastapi import HTTPException
+
 from mlpa.core.classes import AuthorizedSearchRequest
+from mlpa.core.config import (
+    ERROR_CODE_BUDGET_LIMIT_EXCEEDED,
+    ERROR_CODE_REQUEST_TOO_LARGE,
+)
+from mlpa.core.prometheus_metrics import PrometheusRejectionReason, PrometheusResult
 from mlpa.core.search import get_search
 
 
@@ -67,3 +76,105 @@ async def test_get_search_sanitizes_response_surrogates(mocker):
 
     assert "\ud83e" not in data["results"][0]["title"]
     _httpx_encode_json(data)  # must not raise
+
+
+def _search_rejection_count(
+    spy,
+    reason: PrometheusRejectionReason,
+    req: AuthorizedSearchRequest,
+) -> float:
+    return spy.value(
+        "search_request_rejections",
+        reason=reason,
+        model="exa",
+        service_type=req.service_type,
+        purpose=req.purpose,
+    )
+
+
+def _search_latency_count(spy, result: PrometheusResult) -> float:
+    return spy.histogram_count("search_latency", result=result)
+
+
+async def test_get_search_budget_limit_exceeded_records_rejection(mocker, metrics_spy):
+    req = AuthorizedSearchRequest(
+        user="test-user:search",
+        service_type="search",
+        purpose="",
+        query="weather in tokyo",
+        max_results=5,
+    )
+
+    mock_response = MagicMock()
+    mock_response.text = json.dumps(
+        {
+            "error": {
+                "type": "budget_exceeded",
+                "message": "ExceededBudget",
+            }
+        }
+    )
+    mock_response.status_code = 429
+    mock_response.raise_for_status.side_effect = httpx.HTTPStatusError(
+        "Too Many Requests",
+        request=MagicMock(),
+        response=mock_response,
+    )
+
+    mock_client = AsyncMock()
+    mock_client.post.return_value = mock_response
+    mocker.patch("mlpa.core.search.get_http_client", return_value=mock_client)
+
+    with pytest.raises(HTTPException) as exc_info:
+        await get_search(req)
+
+    assert exc_info.value.status_code == 429
+    assert exc_info.value.detail == {"error": ERROR_CODE_BUDGET_LIMIT_EXCEEDED}
+    assert exc_info.value.headers == {"Retry-After": "86400"}
+    metrics_spy.assert_only({"search_request_rejections", "search_latency"})
+    assert (
+        _search_rejection_count(
+            metrics_spy, PrometheusRejectionReason.BUDGET_EXCEEDED, req
+        )
+        == 1
+    )
+    assert _search_latency_count(metrics_spy, PrometheusResult.ERROR) == 1
+
+
+async def test_get_search_context_window_exceeded_records_rejection(
+    mocker, metrics_spy
+):
+    req = AuthorizedSearchRequest(
+        user="test-user:search",
+        service_type="search",
+        purpose="",
+        query="weather in tokyo",
+        max_results=5,
+    )
+
+    mock_response = MagicMock()
+    mock_response.text = "maximum context length exceeded"
+    mock_response.status_code = 413
+    mock_response.raise_for_status.side_effect = httpx.HTTPStatusError(
+        "Payload Too Large",
+        request=MagicMock(),
+        response=mock_response,
+    )
+
+    mock_client = AsyncMock()
+    mock_client.post.return_value = mock_response
+    mocker.patch("mlpa.core.search.get_http_client", return_value=mock_client)
+
+    with pytest.raises(HTTPException) as exc_info:
+        await get_search(req)
+
+    assert exc_info.value.status_code == 413
+    assert exc_info.value.detail == {"error": ERROR_CODE_REQUEST_TOO_LARGE}
+    metrics_spy.assert_only({"search_request_rejections", "search_latency"})
+    assert (
+        _search_rejection_count(
+            metrics_spy, PrometheusRejectionReason.PAYLOAD_TOO_LARGE, req
+        )
+        == 1
+    )
+    assert _search_latency_count(metrics_spy, PrometheusResult.ERROR) == 1
