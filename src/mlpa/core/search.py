@@ -8,9 +8,10 @@ from mlpa.core.config import (
     LITELLM_SEARCH_URL,
     LITELLM_VIRTUAL_AUTH_HEADERS,
 )
+from mlpa.core.errors import classify_upstream_error
 from mlpa.core.http_client import get_http_client
 from mlpa.core.logger import logger
-from mlpa.core.metrics import record_search_latency
+from mlpa.core.metrics import record_search_latency, record_search_request_rejection
 from mlpa.core.prometheus_metrics import PrometheusResult
 from mlpa.core.sanitization import sanitize_request_body, sanitize_response_body
 from mlpa.core.utils import raise_and_log
@@ -35,6 +36,23 @@ async def get_search(authorized_search_request: AuthorizedSearchRequest):
         try:
             response.raise_for_status()
         except httpx.HTTPStatusError as e:
+            match = classify_upstream_error(
+                error_text=e.response.text,
+                status_code=e.response.status_code,
+                user=authorized_search_request.user,
+            )
+            if match is not None:
+                if match.log_message:
+                    logger.warning(match.log_message)
+                record_search_request_rejection(authorized_search_request, match.reason)
+                headers = (
+                    {"Retry-After": match.retry_after} if match.retry_after else None
+                )
+                raise HTTPException(
+                    status_code=match.http_status,
+                    detail={"error": match.error_code},
+                    headers=headers,
+                )
             raise_and_log(e)
 
         data = sanitize_response_body(response.json())

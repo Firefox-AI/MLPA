@@ -116,6 +116,7 @@ class PrometheusMetrics:
 
     # search
     search_latency: Histogram
+    search_request_rejections: Counter
 
     # litellm
     litellm_routed_completions: Counter
@@ -278,6 +279,12 @@ def build_metrics(registry: CollectorRegistry = REGISTRY) -> PrometheusMetrics:
             "Search latency in seconds.",
             ["result"],
             buckets=BUCKETS_SEARCH,
+            registry=registry,
+        ),
+        search_request_rejections=Counter(
+            "mlpa_search_request_rejections_total",
+            "Number of search requests rejected due to budget, rate limit, payload size, signup cap, invalid model name, or invalid request body.",
+            ["reason", "model", "service_type", "purpose"],
             registry=registry,
         ),
         litellm_routed_completions=Counter(
