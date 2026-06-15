@@ -1,6 +1,10 @@
 from collections.abc import Iterable
 
-from mlpa.core.classes import AuthorizedChatRequest, LitellmRoutingSnapshot
+from mlpa.core.classes import (
+    AuthorizedChatRequest,
+    AuthorizedSearchRequest,
+    LitellmRoutingSnapshot,
+)
 from mlpa.core.prometheus_metrics import (
     PrometheusRejectionReason,
     PrometheusResult,
@@ -17,10 +21,24 @@ def _chat_labels(req: AuthorizedChatRequest) -> dict[str, str]:
     }
 
 
+def _search_labels(req: AuthorizedSearchRequest) -> dict[str, str]:
+    return {
+        "model": "exa",
+        "service_type": req.service_type,
+        "purpose": req.purpose,
+    }
+
+
 def record_chat_request_rejection(
     req: AuthorizedChatRequest, reason: PrometheusRejectionReason
 ) -> None:
     metrics.chat_request_rejections.labels(reason=reason, **_chat_labels(req)).inc()
+
+
+def record_search_request_rejection(
+    req: AuthorizedSearchRequest, reason: PrometheusRejectionReason
+) -> None:
+    metrics.search_request_rejections.labels(reason=reason, **_search_labels(req)).inc()
 
 
 def record_completion_latency(
