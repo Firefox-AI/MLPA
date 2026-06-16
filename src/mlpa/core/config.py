@@ -192,6 +192,7 @@ class Env(BaseSettings):
             "convo-starters-sidebar",
         ]
         memories_purposes = ["memory-generation"]
+        telemetry_purposes = ["telemetry"]
         return {
             "ai": ai_purposes,
             "ai-dev": ai_purposes,
@@ -201,7 +202,7 @@ class Env(BaseSettings):
             "s2s": [],
             "s2s-android": [],
             "search": [],
-            "telemetry": [],
+            "telemetry": telemetry_purposes,
         }
 
     def valid_purposes_for_service_type(self, service_type: str) -> list[str]:
