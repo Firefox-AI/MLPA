@@ -72,19 +72,8 @@ async def lifespan(app: FastAPI):
         await app_attest_pg.connect()
         app_attest_connected = True
 
-        # Startup maintenance (budget upsert, capacity reconciliation) is
-        # best-effort: it runs under a raised maintenance statement_timeout, but
-        # if it still fails (e.g. timeout on a very large/slow DB) we log and
-        # continue rather than crash-loop the whole app. Both paths leave prior
-        # state intact on failure, so the app serves with last-known config.
-        try:
-            await litellm_pg.create_budget()
-        except Exception as e:
-            logger.error(f"Startup budget creation failed; continuing: {e}")
-        try:
-            await app_attest_pg.ensure_capacity_state()
-        except Exception as e:
-            logger.error(f"Startup capacity reconciliation failed; continuing: {e}")
+        await litellm_pg.create_budget()
+        await app_attest_pg.ensure_capacity_state()
 
         yield
     finally:

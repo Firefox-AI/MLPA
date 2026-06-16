@@ -12,6 +12,7 @@ def test_pg_timeout_config_from_env():
         "PG_STATEMENT_TIMEOUT_MS": "5000",
         "PG_IDLE_IN_TX_TIMEOUT_MS": "15000",
         "PG_MAINTENANCE_STATEMENT_TIMEOUT_MS": "45000",
+        "PG_ADMIN_READ_TIMEOUT_MS": "20000",
         "PG_COMMAND_TIMEOUT_S": "6.5",
     }
 
@@ -21,6 +22,7 @@ def test_pg_timeout_config_from_env():
         assert test_env.PG_STATEMENT_TIMEOUT_MS == 5000
         assert test_env.PG_IDLE_IN_TX_TIMEOUT_MS == 15000
         assert test_env.PG_MAINTENANCE_STATEMENT_TIMEOUT_MS == 45000
+        assert test_env.PG_ADMIN_READ_TIMEOUT_MS == 20000
         assert test_env.PG_COMMAND_TIMEOUT_S == 6.5
 
 
@@ -29,6 +31,7 @@ def test_pg_timeout_defaults():
     assert env.PG_STATEMENT_TIMEOUT_MS == 3000
     assert env.PG_IDLE_IN_TX_TIMEOUT_MS == 10000
     assert env.PG_MAINTENANCE_STATEMENT_TIMEOUT_MS == 30000
+    assert env.PG_ADMIN_READ_TIMEOUT_MS == 15000
     assert env.PG_COMMAND_TIMEOUT_S is None
 
 
@@ -95,17 +98,68 @@ def _set_local_calls(conn, guc):
     ]
 
 
-async def test_maintenance_transaction_raises_both_timeouts(mocker):
-    """The helper lifts statement_timeout AND idle_in_transaction_session_timeout."""
+async def test_admission_transaction_sets_lock_and_statement_timeout(mocker):
+    """admission_transaction lifts lock_timeout and a statement_timeout above it."""
     conn = _mock_maintenance_conn()
     mocker.patch.object(PGService, "pool", new=_mock_pool(conn))
 
     service = PGService("some_db")
-    async with service.maintenance_transaction() as yielded:
+    async with service.admission_transaction() as yielded:
         assert yielded is conn
 
-    assert _set_local_calls(conn, "statement_timeout")
-    assert _set_local_calls(conn, "idle_in_transaction_session_timeout")
+    assert _set_local_calls(conn, "lock_timeout")
+    stmt_calls = _set_local_calls(conn, "statement_timeout")
+    assert stmt_calls
+    # statement_timeout must exceed lock_timeout so the lock wait is governed by
+    # lock_timeout, not silently capped by the tight pool-wide statement_timeout.
+    expected = env.MLPA_ADMISSION_LOCK_TIMEOUT_MS + env.PG_STATEMENT_TIMEOUT_MS
+    assert str(expected) in stmt_calls[0]
+
+
+async def test_statement_timeout_sets_only_statement_timeout(mocker):
+    """statement_timeout() lifts statement_timeout but not idle-in-tx (read-only helper)."""
+    conn = _mock_maintenance_conn()
+    mocker.patch.object(PGService, "pool", new=_mock_pool(conn))
+
+    service = PGService("some_db")
+    async with service.statement_timeout(15000) as yielded:
+        assert yielded is conn
+
+    stmt_calls = _set_local_calls(conn, "statement_timeout")
+    assert stmt_calls
+    assert "15000" in stmt_calls[0]
+    assert not _set_local_calls(conn, "idle_in_transaction_session_timeout")
+
+
+async def test_count_users_by_service_type_uses_admin_read_timeout(mocker):
+    """The unindexable full-table GROUP BY runs under the admin-read timeout, not 3s."""
+    from mlpa.core.pg_services.litellm_pg_service import LiteLLMPGService
+
+    conn = _mock_maintenance_conn()
+    mocker.patch.object(PGService, "pool", new=_mock_pool(conn))
+
+    service = LiteLLMPGService()
+    await service.count_users_by_service_type()
+
+    timeout_calls = _set_local_calls(conn, "statement_timeout")
+    assert timeout_calls
+    assert str(env.PG_ADMIN_READ_TIMEOUT_MS) in timeout_calls[0]
+    conn.fetch.assert_awaited_once()
+
+
+async def test_list_users_uses_admin_read_timeout(mocker):
+    """The full-table COUNT(*) + deep OFFSET page run under the admin-read timeout."""
+    from mlpa.core.pg_services.litellm_pg_service import LiteLLMPGService
+
+    conn = _mock_maintenance_conn()
+    mocker.patch.object(PGService, "pool", new=_mock_pool(conn))
+
+    service = LiteLLMPGService()
+    await service.list_users()
+
+    timeout_calls = _set_local_calls(conn, "statement_timeout")
+    assert timeout_calls
+    assert str(env.PG_ADMIN_READ_TIMEOUT_MS) in timeout_calls[0]
 
 
 async def test_list_managed_base_identities_uses_maintenance_timeout(mocker):
@@ -124,8 +178,15 @@ async def test_list_managed_base_identities_uses_maintenance_timeout(mocker):
     conn.fetch.assert_awaited_once()
 
 
-async def test_ensure_capacity_state_reads_identities_before_transaction(mocker):
-    """The cross-pool read happens before the app_attest transaction is opened."""
+async def test_ensure_capacity_state_reads_identities_before_reconcile_transaction(
+    mocker,
+):
+    """The cross-pool read must not be issued inside the reconcile transaction.
+
+    The session must never sit idle-in-transaction across the cross-pool await,
+    so the litellm read has to land AFTER the (self-contained) seed transaction
+    and BEFORE the destructive claim rebuild (DELETE ...).
+    """
     order: list[str] = []
 
     litellm_pg = MagicMock()
@@ -139,7 +200,7 @@ async def test_ensure_capacity_state_reads_identities_before_transaction(mocker)
     conn = _mock_maintenance_conn()
 
     async def _execute(sql, *_args, **_kwargs):
-        order.append(f"exec:{sql.strip().split()[0]}")
+        order.append(f"exec:{sql.strip()}")
 
     conn.execute = AsyncMock(side_effect=_execute)
     mocker.patch.object(PGService, "pool", new=_mock_pool(conn))
@@ -147,11 +208,21 @@ async def test_ensure_capacity_state_reads_identities_before_transaction(mocker)
     service = AppAttestPGService(litellm_pg)
     await service.ensure_capacity_state()
 
-    # The litellm read must precede every statement issued inside the app_attest
-    # transaction, so the session is never idle-in-transaction across that await.
-    assert order[0] == "read"
-    assert all(step == "read" or step.startswith("exec:") for step in order)
     assert order.count("read") == 1
+    read_idx = order.index("read")
+
+    # The claim rebuild (DELETE) — the first statement of the reconcile
+    # transaction — must come strictly after the cross-pool read.
+    delete_idx = next(
+        i for i, step in enumerate(order) if step.startswith("exec:DELETE")
+    )
+    assert read_idx < delete_idx
+
+    # The seed (INSERT/UPDATE on mlpa_user_capacity) runs in its own transaction
+    # and commits before the read, so no cross-pool await spans an open tx.
+    assert any(
+        step.startswith("exec:INSERT INTO mlpa_user_capacity ") for step in order
+    )
 
 
 async def test_ensure_capacity_state_raises_maintenance_timeout(mocker):

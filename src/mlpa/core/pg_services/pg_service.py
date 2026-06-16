@@ -15,8 +15,6 @@ class PGService:
     def __init__(self, db_name: str, statement_timeout_ms: int | None = None):
         self.db_name = db_name
         self.db_url = f"{cast(str, env.PG_DB_URL).rstrip('/')}/{db_name}"
-        # Pool-wide server-enforced statement timeout. Subclasses (or a future
-        # third pool) may override per-DB; defaults to the global config value.
         self.statement_timeout_ms = (
             statement_timeout_ms
             if statement_timeout_ms is not None
@@ -31,9 +29,8 @@ class PGService:
 
     async def connect(self):
         try:
-            # Applied at connect and automatically re-applied on every reconnect,
-            # so the timeout is durable across the pool's lifetime without
-            # touching call sites. Values are passed as bare-integer ms strings.
+            # asyncpg re-applies server_settings on every reconnect, so these
+            # are durable for the pool's lifetime. Values are ms-integer strings.
             server_settings = {
                 "statement_timeout": str(self.statement_timeout_ms),
                 "idle_in_transaction_session_timeout": str(
@@ -62,25 +59,54 @@ class PGService:
             self.connected = False
 
     @asynccontextmanager
-    async def maintenance_transaction(self):
+    async def _timed_transaction(
+        self,
+        statement_timeout_ms: int,
+        idle_in_tx_timeout_ms: int | None = None,
+        lock_timeout_ms: int | None = None,
+    ):
         """
-        Yield a connection inside a transaction whose statement and
-        idle-in-transaction timeouts are raised to the maintenance value.
-
-        For known-heavy startup work (capacity reconciliation, budget upsert)
-        that legitimately exceeds the tight pool-wide statement_timeout. Both
-        GUCs are raised via SET LOCAL: statement_timeout for slow statements,
-        and idle_in_transaction_session_timeout because such work may await
-        other queries between statements without the session being reaped.
+        Yield a connection in a transaction with statement_timeout (and
+        optionally idle_in_transaction_session_timeout / lock_timeout) set via
+        SET LOCAL, scoped to the transaction so the connection reverts to the
+        pool-wide defaults on release. Timeout values are config ints, not input.
         """
-        timeout_ms = env.PG_MAINTENANCE_STATEMENT_TIMEOUT_MS
         async with self.pool.acquire() as conn:
             async with conn.transaction():
-                await conn.execute(f"SET LOCAL statement_timeout = '{timeout_ms}'")
                 await conn.execute(
-                    f"SET LOCAL idle_in_transaction_session_timeout = '{timeout_ms}'"
+                    f"SET LOCAL statement_timeout = '{statement_timeout_ms}'"
                 )
+                if idle_in_tx_timeout_ms is not None:
+                    await conn.execute(
+                        f"SET LOCAL idle_in_transaction_session_timeout = '{idle_in_tx_timeout_ms}'"
+                    )
+                if lock_timeout_ms is not None:
+                    await conn.execute(
+                        f"SET LOCAL lock_timeout = '{lock_timeout_ms}ms'"
+                    )
                 yield conn
+
+    @asynccontextmanager
+    async def statement_timeout(self, timeout_ms: int):
+        """
+        Raise statement_timeout for statements that legitimately exceed the
+        tight pool-wide default (e.g. unindexable full-table scans).
+        """
+        async with self._timed_transaction(timeout_ms) as conn:
+            yield conn
+
+    @asynccontextmanager
+    async def admission_transaction(self):
+        """
+        Signup-capacity admission path: a bounded lock_timeout for the FOR UPDATE
+        on the singleton capacity row, plus a statement_timeout set above it so
+        the lock wait is governed by lock_timeout rather than silently capped by
+        the pool-wide statement_timeout (Postgres counts lock-wait toward it).
+        """
+        lock_ms = env.MLPA_ADMISSION_LOCK_TIMEOUT_MS
+        stmt_ms = lock_ms + env.PG_STATEMENT_TIMEOUT_MS
+        async with self._timed_transaction(stmt_ms, lock_timeout_ms=lock_ms) as conn:
+            yield conn
 
     async def ping(self, timeout_s: float | None = None) -> bool:
         """Run a bounded live query to prove the pool can serve a request."""

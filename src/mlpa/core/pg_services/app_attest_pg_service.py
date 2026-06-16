@@ -102,53 +102,66 @@ class AppAttestPGService(PGService):
 
     async def ensure_capacity_state(self) -> None:
         """
-        Ensure the singleton capacity row and base-identity claim table exist.
+        Seed the singleton capacity row, then reconcile the claim table.
 
-        Reconciles the claim table with current LiteLLM end-user rows for
-        cap-managed service types on every startup (blocked rows included) so
-        the counter reflects reality after external writes and config changes.
+        The seed is critical and fatal on failure: without the row every
+        admission 500s, so a failure should crash startup rather than serve
+        broken. Reconciliation is best-effort (see _reconcile_capacity_claims):
+        if it fails the row still exists with a stale count and admissions work.
         """
+        # Seed the singleton row (fatal on failure).
+        async with self.pool.acquire() as conn:
+            async with conn.transaction():
+                await conn.execute(
+                    """
+                    INSERT INTO mlpa_user_capacity (id, max_identities, current_identities)
+                    VALUES (1, $1, 0)
+                    ON CONFLICT (id) DO NOTHING
+                    """,
+                    env.MLPA_MAX_SIGNED_IN_USERS,
+                )
+                await conn.execute(
+                    """
+                    UPDATE mlpa_user_capacity
+                    SET max_identities = $1,
+                        updated_at = NOW()
+                    WHERE id = 1
+                    """,
+                    env.MLPA_MAX_SIGNED_IN_USERS,
+                )
+
+        # Reconcile the claim table (best-effort).
+        try:
+            await self._reconcile_capacity_claims()
+        except Exception as e:
+            logger.error(
+                f"Capacity reconciliation failed; serving with last-known "
+                f"current_identities count: {e}"
+            )
+
+    async def _reconcile_capacity_claims(self) -> None:
+        """Rebuild the claim table from LiteLLM and refresh current_identities."""
         managed_service_types = list(env.MLPA_CAPPED_SERVICE_TYPES)
 
-        # Read cap-managed identities from the *litellm* pool before opening the
-        # app_attest transaction. Doing this inside the transaction would leave
-        # the app_attest session idle-in-transaction across a cross-pool await,
-        # where idle_in_transaction_session_timeout could reap it mid-rebuild.
+        # Read from the litellm pool before opening the app_attest transaction:
+        # doing it inside would leave the session idle-in-transaction across a
+        # cross-pool await, where idle_in_transaction_session_timeout could reap it.
         base_identities = await self.litellm_pg.list_managed_base_identities(
             managed_service_types
         )
 
-        # Reconciliation rebuilds the entire claim table (bulk delete + insert of
-        # all base identities), which can exceed the tight pool-wide
-        # statement_timeout as the user base grows; maintenance_transaction
-        # raises both timeouts for this work.
-        async with self.maintenance_transaction() as conn:
-            await conn.execute(
-                """
-                INSERT INTO mlpa_user_capacity (id, max_identities, current_identities)
-                VALUES (1, $1, 0)
-                ON CONFLICT (id) DO NOTHING
-                """,
-                env.MLPA_MAX_SIGNED_IN_USERS,
-            )
-
-            # Serialize seeding and reconciliation so concurrent app startups
-            # do not race on the claim table.
+        # Bulk delete + insert scales with the user base and can exceed the tight
+        # pool-wide statement_timeout. Statements run back-to-back (no inter-
+        # statement await), so the raised statement_timeout alone suffices.
+        async with self.statement_timeout(
+            env.PG_MAINTENANCE_STATEMENT_TIMEOUT_MS
+        ) as conn:
+            # Serialize so concurrent app startups do not race on the claim table.
             await conn.fetchrow(
                 "SELECT 1 FROM mlpa_user_capacity WHERE id = 1 FOR UPDATE"
             )
-            await conn.execute(
-                """
-                UPDATE mlpa_user_capacity
-                SET max_identities = $1,
-                    updated_at = NOW()
-                WHERE id = 1
-                """,
-                env.MLPA_MAX_SIGNED_IN_USERS,
-            )
 
-            # Rebuild claims from LiteLLM so the counter matches reality after deletes
-            # or manual DB edits. Blocked rows still count toward capacity.
+            # Blocked rows still count toward capacity.
             await conn.execute("DELETE FROM mlpa_user_capacity_identities")
 
             if base_identities:
@@ -185,57 +198,53 @@ class AppAttestPGService(PGService):
         if not env.MLPA_ENFORCE_SIGNIN_CAP:
             return True, False
 
-        async with self.pool.acquire() as conn:
-            async with conn.transaction():
-                await conn.execute(
-                    f"SET LOCAL lock_timeout = '{env.MLPA_ADMISSION_LOCK_TIMEOUT_MS}ms'"
+        async with self.admission_transaction() as conn:
+            capacity_row = await conn.fetchrow(
+                """
+                SELECT max_identities, current_identities
+                FROM mlpa_user_capacity
+                WHERE id = 1
+                FOR UPDATE
+                """
+            )
+            if capacity_row is None:
+                raise HTTPException(
+                    status_code=500,
+                    detail="Capacity state not initialized",
                 )
-                capacity_row = await conn.fetchrow(
-                    """
-                    SELECT max_identities, current_identities
-                    FROM mlpa_user_capacity
-                    WHERE id = 1
-                    FOR UPDATE
-                    """
-                )
-                if capacity_row is None:
-                    raise HTTPException(
-                        status_code=500,
-                        detail="Capacity state not initialized",
-                    )
 
-                already_claimed = await conn.fetchval(
-                    """
-                    SELECT 1
-                    FROM mlpa_user_capacity_identities
-                    WHERE base_identity = $1
-                    """,
-                    base_identity,
-                )
-                if already_claimed:
-                    return True, False
+            already_claimed = await conn.fetchval(
+                """
+                SELECT 1
+                FROM mlpa_user_capacity_identities
+                WHERE base_identity = $1
+                """,
+                base_identity,
+            )
+            if already_claimed:
+                return True, False
 
-                max_identities = int(capacity_row["max_identities"])
-                current_identities = int(capacity_row["current_identities"])
-                if current_identities >= max_identities:
-                    return False, False
+            max_identities = int(capacity_row["max_identities"])
+            current_identities = int(capacity_row["current_identities"])
+            if current_identities >= max_identities:
+                return False, False
 
-                await conn.execute(
-                    """
-                    INSERT INTO mlpa_user_capacity_identities (base_identity)
-                    VALUES ($1)
-                    """,
-                    base_identity,
-                )
-                await conn.execute(
-                    """
-                    UPDATE mlpa_user_capacity
-                    SET current_identities = current_identities + 1,
-                        updated_at = NOW()
-                    WHERE id = 1
-                    """
-                )
-                return True, True
+            await conn.execute(
+                """
+                INSERT INTO mlpa_user_capacity_identities (base_identity)
+                VALUES ($1)
+                """,
+                base_identity,
+            )
+            await conn.execute(
+                """
+                UPDATE mlpa_user_capacity
+                SET current_identities = current_identities + 1,
+                    updated_at = NOW()
+                WHERE id = 1
+                """
+            )
+            return True, True
 
     async def maybe_release_managed_base_identity_if_no_managed_users(
         self, base_identity: str
@@ -249,55 +258,55 @@ class AppAttestPGService(PGService):
 
         managed_service_types = list(env.MLPA_CAPPED_SERVICE_TYPES)
 
-        async with self.pool.acquire() as conn:
-            async with conn.transaction():
-                await conn.execute(
-                    f"SET LOCAL lock_timeout = '{env.MLPA_ADMISSION_LOCK_TIMEOUT_MS}ms'"
-                )
-                capacity_row = await conn.fetchrow(
-                    """
-                    SELECT max_identities, current_identities
-                    FROM mlpa_user_capacity
-                    WHERE id = 1
-                    FOR UPDATE
-                    """
-                )
-                if capacity_row is None:
-                    return
+        # Read the litellm state before opening the app_attest transaction: doing
+        # it inside would hold the FOR UPDATE lock idle-in-transaction across a
+        # cross-pool await, where idle_in_transaction_session_timeout could reap
+        # it and abort the release, leaking the claim (mirrors ensure_capacity_state).
+        has_managed_user_rows = await self.litellm_pg.has_managed_user_rows(
+            base_identity,
+            managed_service_types,
+        )
+        if has_managed_user_rows:
+            return
 
-                claimed = await conn.fetchval(
-                    """
-                    SELECT 1
-                    FROM mlpa_user_capacity_identities
-                    WHERE base_identity = $1
-                    """,
-                    base_identity,
-                )
-                if not claimed:
-                    return
+        async with self.admission_transaction() as conn:
+            capacity_row = await conn.fetchrow(
+                """
+                SELECT max_identities, current_identities
+                FROM mlpa_user_capacity
+                WHERE id = 1
+                FOR UPDATE
+                """
+            )
+            if capacity_row is None:
+                return
 
-                has_managed_user_rows = await self.litellm_pg.has_managed_user_rows(
-                    base_identity,
-                    managed_service_types,
-                )
-                if has_managed_user_rows:
-                    return
+            claimed = await conn.fetchval(
+                """
+                SELECT 1
+                FROM mlpa_user_capacity_identities
+                WHERE base_identity = $1
+                """,
+                base_identity,
+            )
+            if not claimed:
+                return
 
-                await conn.execute(
-                    """
-                    DELETE FROM mlpa_user_capacity_identities
-                    WHERE base_identity = $1
-                    """,
-                    base_identity,
-                )
-                await conn.execute(
-                    """
-                    UPDATE mlpa_user_capacity
-                    SET current_identities = GREATEST(current_identities - 1, 0),
-                        updated_at = NOW()
-                    WHERE id = 1
-                    """
-                )
+            await conn.execute(
+                """
+                DELETE FROM mlpa_user_capacity_identities
+                WHERE base_identity = $1
+                """,
+                base_identity,
+            )
+            await conn.execute(
+                """
+                UPDATE mlpa_user_capacity
+                SET current_identities = GREATEST(current_identities - 1, 0),
+                    updated_at = NOW()
+                WHERE id = 1
+                """
+            )
 
     async def get_signup_cap_status(self) -> dict:
         """

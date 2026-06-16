@@ -77,14 +77,17 @@ class LiteLLMPGService(PGService):
 
     async def list_users(self, limit: int = 50, offset: int = 0) -> dict:
         try:
-            total = await self.pool.fetchval(
-                'SELECT COUNT(*) FROM "LiteLLM_EndUserTable"'
-            )
-            users = await self.pool.fetch(
-                'SELECT * FROM "LiteLLM_EndUserTable" ORDER BY user_id LIMIT $1 OFFSET $2',
-                limit,
-                offset,
-            )
+            # COUNT(*) + deep OFFSET scan the full table; admin-read budget
+            # rather than the tight pool-wide default.
+            async with self.statement_timeout(env.PG_ADMIN_READ_TIMEOUT_MS) as conn:
+                total = await conn.fetchval(
+                    'SELECT COUNT(*) FROM "LiteLLM_EndUserTable"'
+                )
+                users = await conn.fetch(
+                    'SELECT * FROM "LiteLLM_EndUserTable" ORDER BY user_id LIMIT $1 OFFSET $2',
+                    limit,
+                    offset,
+                )
 
             return {
                 "users": [dict(user) for user in users],
@@ -106,16 +109,19 @@ class LiteLLMPGService(PGService):
         `{base_user_id}:{service_type}`.
         """
         try:
-            rows = await self.pool.fetch(
-                """
-                SELECT
-                    split_part(user_id, ':', 2) AS service_type,
-                    COUNT(*)::int AS total_users
-                FROM "LiteLLM_EndUserTable"
-                WHERE position(':' in user_id) > 0
-                GROUP BY service_type
-                """
-            )
+            # GROUP BY split_part(...) is unindexable, so always a full-table
+            # scan; admin-read budget rather than the tight pool-wide default.
+            async with self.statement_timeout(env.PG_ADMIN_READ_TIMEOUT_MS) as conn:
+                rows = await conn.fetch(
+                    """
+                    SELECT
+                        split_part(user_id, ':', 2) AS service_type,
+                        COUNT(*)::int AS total_users
+                    FROM "LiteLLM_EndUserTable"
+                    WHERE position(':' in user_id) > 0
+                    GROUP BY service_type
+                    """
+                )
 
             service_type_counts: dict[str, int] = {}
             for row in rows:
@@ -142,11 +148,13 @@ class LiteLLMPGService(PGService):
         """
         Return distinct base identities for cap-managed service types.
 
-        Runs under the maintenance timeout: the DISTINCT scan over the full
-        end-user table is startup reconciliation work that can exceed the tight
-        pool-wide statement_timeout on a large user base.
+        The DISTINCT scan over the full end-user table can exceed the tight
+        pool-wide statement_timeout on a large user base, so it runs under the
+        maintenance budget (startup reconciliation work).
         """
-        async with self.maintenance_transaction() as conn:
+        async with self.statement_timeout(
+            env.PG_MAINTENANCE_STATEMENT_TIMEOUT_MS
+        ) as conn:
             rows = await conn.fetch(
                 """
                 SELECT DISTINCT split_part(user_id, ':', 1) AS base_identity
@@ -191,32 +199,29 @@ class LiteLLMPGService(PGService):
 
         for service_type, budget_config in user_feature_budgets.items():
             try:
-                # Each upsert runs in its own maintenance transaction so a single
-                # failure rolls back only that budget (and is logged below) while
-                # the loop continues, and so a slow cold-start upsert is not
-                # cancelled by the tight pool-wide statement_timeout.
-                async with self.maintenance_transaction() as conn:
-                    await conn.fetchrow(
-                        """
-                        INSERT INTO "LiteLLM_BudgetTable"
-                        (budget_id, max_budget, rpm_limit, tpm_limit, budget_duration, created_at, updated_at, created_by, updated_by)
-                        VALUES ($1, $2, $3, $4, $5, NOW(), NOW(), $6, $6)
-                        ON CONFLICT (budget_id) DO UPDATE SET
-                        max_budget = EXCLUDED.max_budget,
-                        rpm_limit = EXCLUDED.rpm_limit,
-                        tpm_limit = EXCLUDED.tpm_limit,
-                        budget_duration = EXCLUDED.budget_duration,
-                        updated_at = NOW(),
-                        updated_by = EXCLUDED.updated_by
-                        RETURNING *
-                        """,
-                        budget_config["budget_id"],
-                        budget_config["max_budget"],
-                        budget_config["rpm_limit"],
-                        budget_config["tpm_limit"],
-                        budget_config["budget_duration"],
-                        "default_user_id",
-                    )
+                # Fast single-row PK upsert: stays a plain autocommit call (it
+                # cannot realistically hit the pool-wide statement_timeout).
+                await self.pool.fetchrow(
+                    """
+                    INSERT INTO "LiteLLM_BudgetTable"
+                    (budget_id, max_budget, rpm_limit, tpm_limit, budget_duration, created_at, updated_at, created_by, updated_by)
+                    VALUES ($1, $2, $3, $4, $5, NOW(), NOW(), $6, $6)
+                    ON CONFLICT (budget_id) DO UPDATE SET
+                    max_budget = EXCLUDED.max_budget,
+                    rpm_limit = EXCLUDED.rpm_limit,
+                    tpm_limit = EXCLUDED.tpm_limit,
+                    budget_duration = EXCLUDED.budget_duration,
+                    updated_at = NOW(),
+                    updated_by = EXCLUDED.updated_by
+                    RETURNING *
+                    """,
+                    budget_config["budget_id"],
+                    budget_config["max_budget"],
+                    budget_config["rpm_limit"],
+                    budget_config["tpm_limit"],
+                    budget_config["budget_duration"],
+                    "default_user_id",
+                )
                 logger.info(
                     f"Budget created/updated: budget_id={budget_config['budget_id']}, "
                     f"service_type={service_type}, max_budget={budget_config['max_budget']}"
