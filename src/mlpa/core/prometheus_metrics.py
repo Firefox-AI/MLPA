@@ -44,11 +44,11 @@ class AvailabilityReason(StrEnum):
     AUTH_SYSTEM_FAILURE = "auth_system_failure"  # failure
 
     # --- completion-stage reasons (recorded inside stream_completion / get_completion) ---
-    CLEAN_COMPLETION = "clean_completion"  # success
+    VALID_RESPONSE = "valid_response"  # success
     UPSTREAM_ERROR = "upstream_error"  # failure
     EMPTY_RESPONSE = "empty_response"  # failure
     BUDGET_EXCEEDED = "budget_exceeded"  # excluded
-    RATE_LIMITED_OWN = "rate_limited_own"  # excluded
+    RATE_LIMITED_PLATFORM = "rate_limited_platform"  # excluded
     RATE_LIMITED_UPSTREAM = "rate_limited_upstream"  # excluded
     PAYLOAD_TOO_LARGE = "payload_too_large"  # excluded
     INVALID_MODEL_NAME = "invalid_model_name"  # excluded
@@ -64,11 +64,11 @@ _AVAILABILITY_OUTCOME_BY_REASON: dict[AvailabilityReason, AvailabilityOutcome] =
     AvailabilityReason.BLOCKED: AvailabilityOutcome.EXCLUDED,
     AvailabilityReason.PROVISIONING_FAILURE: AvailabilityOutcome.FAILURE,
     AvailabilityReason.AUTH_SYSTEM_FAILURE: AvailabilityOutcome.FAILURE,
-    AvailabilityReason.CLEAN_COMPLETION: AvailabilityOutcome.SUCCESS,
+    AvailabilityReason.VALID_RESPONSE: AvailabilityOutcome.SUCCESS,
     AvailabilityReason.UPSTREAM_ERROR: AvailabilityOutcome.FAILURE,
     AvailabilityReason.EMPTY_RESPONSE: AvailabilityOutcome.FAILURE,
     AvailabilityReason.BUDGET_EXCEEDED: AvailabilityOutcome.EXCLUDED,
-    AvailabilityReason.RATE_LIMITED_OWN: AvailabilityOutcome.EXCLUDED,
+    AvailabilityReason.RATE_LIMITED_PLATFORM: AvailabilityOutcome.EXCLUDED,
     AvailabilityReason.RATE_LIMITED_UPSTREAM: AvailabilityOutcome.EXCLUDED,
     AvailabilityReason.PAYLOAD_TOO_LARGE: AvailabilityOutcome.EXCLUDED,
     AvailabilityReason.INVALID_MODEL_NAME: AvailabilityOutcome.EXCLUDED,

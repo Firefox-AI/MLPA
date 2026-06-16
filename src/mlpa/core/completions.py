@@ -272,7 +272,7 @@ async def stream_completion(
                 snapshot=litellm_routing_snapshot,
             )
             result = PrometheusResult.SUCCESS
-            availability_reason = AvailabilityReason.CLEAN_COMPLETION
+            availability_reason = AvailabilityReason.VALID_RESPONSE
     except (GeneratorExit, asyncio.CancelledError):
         # Client went away mid-stream: Starlette tears the generator down by
         # throwing GeneratorExit (or cancelling the task) at the paused
@@ -384,7 +384,7 @@ async def get_completion(authorized_chat_request: AuthorizedChatRequest):
             snapshot=litellm_routing_snapshot,
         )
         result = PrometheusResult.SUCCESS
-        availability_reason = AvailabilityReason.CLEAN_COMPLETION
+        availability_reason = AvailabilityReason.VALID_RESPONSE
         return data
     except HTTPException:
         raise

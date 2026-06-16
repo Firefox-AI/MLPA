@@ -174,7 +174,7 @@ async def test_get_completion_success(mocker, metrics_spy):
         _availability_count(
             metrics_spy,
             AvailabilityOutcome.SUCCESS,
-            AvailabilityReason.CLEAN_COMPLETION,
+            AvailabilityReason.VALID_RESPONSE,
         )
         == 1
     )
@@ -390,7 +390,7 @@ async def test_stream_completion_success(
         _availability_count(
             metrics_spy,
             AvailabilityOutcome.SUCCESS,
-            AvailabilityReason.CLEAN_COMPLETION,
+            AvailabilityReason.VALID_RESPONSE,
         )
         == 1
     )
@@ -569,7 +569,7 @@ async def test_get_completion_rate_limit_exceeded(mocker, metrics_spy):
         _availability_count(
             metrics_spy,
             AvailabilityOutcome.EXCLUDED,
-            AvailabilityReason.RATE_LIMITED_OWN,
+            AvailabilityReason.RATE_LIMITED_PLATFORM,
         )
         == 1
     )

@@ -42,7 +42,7 @@ class RejectionMatch:
         if self.reason == PrometheusRejectionReason.RATE_LIMITED:
             if self.error_code == ERROR_CODE_UPSTREAM_RATE_LIMIT_EXCEEDED:
                 return AvailabilityReason.RATE_LIMITED_UPSTREAM
-            return AvailabilityReason.RATE_LIMITED_OWN
+            return AvailabilityReason.RATE_LIMITED_PLATFORM
         return _REJECTION_TO_AVAILABILITY_REASON[self.reason]
 
 

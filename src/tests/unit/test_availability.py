@@ -65,7 +65,7 @@ def test_every_completion_stage_rejection_reason_maps_to_excluded():
         (
             PrometheusRejectionReason.RATE_LIMITED,
             ERROR_CODE_RATE_LIMIT_EXCEEDED,
-            AvailabilityReason.RATE_LIMITED_OWN,
+            AvailabilityReason.RATE_LIMITED_PLATFORM,
         ),
         (
             PrometheusRejectionReason.RATE_LIMITED,
