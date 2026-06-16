@@ -180,11 +180,6 @@ class Env(BaseSettings):
     def service_type_purposes(self) -> dict[str, list[str]]:
         """
         Valid purpose values per service type (for the purpose header and Prometheus).
-        AI-related types: chat, title-generation, convo-starters-sidebar.
-        Memories types: memory-generation.
-        s2s types: no purposes (empty list → purpose header not required, use empty value).
-        search: no purposes (empty list → purpose header not required, use empty value).
-        telemetry: no purposes (empty list → purpose header not required, use empty value).
         """
         ai_purposes = [
             "chat",
@@ -192,6 +187,7 @@ class Env(BaseSettings):
             "convo-starters-sidebar",
         ]
         memories_purposes = ["memory-generation"]
+        telemetry_purposes = ["chat"]
         return {
             "ai": ai_purposes,
             "ai-dev": ai_purposes,
@@ -201,7 +197,7 @@ class Env(BaseSettings):
             "s2s": [],
             "s2s-android": [],
             "search": [],
-            "telemetry": [],
+            "telemetry": telemetry_purposes,
         }
 
     def valid_purposes_for_service_type(self, service_type: str) -> list[str]:
