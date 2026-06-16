@@ -324,6 +324,7 @@ class Env(BaseSettings):
 env = Env()
 
 LITELLM_READINESS_URL = f"{env.LITELLM_API_BASE}/health/readiness"
+LITELLM_INFO_URL = f"{env.LITELLM_API_BASE}/public/model_hub/info"
 LITELLM_COMPLETIONS_URL = f"{env.LITELLM_API_BASE}/v1/chat/completions"
 LITELLM_SEARCH_URL = f"{env.LITELLM_API_BASE}/v1/search"
 LITELLM_MASTER_AUTH_HEADERS = {

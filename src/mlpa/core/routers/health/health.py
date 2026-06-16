@@ -2,7 +2,11 @@ import importlib.metadata
 
 from fastapi import APIRouter
 
-from mlpa.core.config import LITELLM_MASTER_AUTH_HEADERS, LITELLM_READINESS_URL
+from mlpa.core.config import (
+    LITELLM_INFO_URL,
+    LITELLM_MASTER_AUTH_HEADERS,
+    LITELLM_READINESS_URL,
+)
 from mlpa.core.http_client import get_http_client
 from mlpa.core.pg_services.services import app_attest_pg, litellm_pg
 
@@ -25,8 +29,10 @@ async def readiness_probe():
     response = await client.get(
         LITELLM_READINESS_URL, headers=LITELLM_MASTER_AUTH_HEADERS, timeout=3
     )
-    data = response.json()
-    litellm_status = data
+    litellm_status = response.json()
+
+    response = await client.get(LITELLM_INFO_URL, timeout=3)
+    litellm_info = response.json()
     return {
         "status": "connected",
         "mlpa_version": mlpa_version,
@@ -34,5 +40,8 @@ async def readiness_probe():
             "postgres": "connected" if pg_status else "offline",
             "app_attest": "connected" if app_attest_pg_status else "offline",
         },
-        "litellm": litellm_status,
+        "litellm": {
+            "litellm_version": litellm_info["litellm_version"],
+            **litellm_status,
+        },
     }

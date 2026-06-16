@@ -30,7 +30,7 @@ def test_ai_missing_purpose_is_allowed_by_default(mocked_client_integration):
             "authorization": f"Bearer {TEST_FXA_TOKEN}",
             "service-type": "ai",
         },
-        json=SAMPLE_REQUEST.dict(),
+        json=SAMPLE_REQUEST.model_dump(),
     )
     assert response.status_code == 200
     assert response.json() == SUCCESSFUL_CHAT_RESPONSE
@@ -45,7 +45,7 @@ def test_ai_invalid_purpose_returns_400(mocked_client_integration):
             "service-type": "ai",
             "purpose": "invalid-purpose",
         },
-        json=SAMPLE_REQUEST.dict(),
+        json=SAMPLE_REQUEST.model_dump(),
     )
     assert response.status_code == 400
     assert "purpose" in str(response.json().get("detail", "")).lower()
@@ -59,7 +59,7 @@ def test_invalid_fxa_auth(mocked_client_integration):
             "service-type": "ai",
             "purpose": "chat",
         },
-        json=SAMPLE_REQUEST.dict(),
+        json=SAMPLE_REQUEST.model_dump(),
     )
     assert response.status_code == 401
 
@@ -72,7 +72,7 @@ def test_successful_request_with_mocked_fxa_auth(mocked_client_integration):
             "service-type": "ai",
             "purpose": "chat",
         },
-        json=SAMPLE_REQUEST.dict(),
+        json=SAMPLE_REQUEST.model_dump(),
     )
     assert response.status_code != 401
     assert response.status_code != 400
@@ -93,7 +93,7 @@ def test_x_dev_authorization_success(mocked_client_integration):
                 "purpose": "chat",
                 "x-dev-authorization": DEV_TOKEN,
             },
-            json=SAMPLE_REQUEST.dict(),
+            json=SAMPLE_REQUEST.model_dump(),
         )
     assert response.status_code == 200
     assert response.json() == SUCCESSFUL_CHAT_RESPONSE
@@ -112,7 +112,7 @@ def test_x_dev_authorization_missing_fxa(mocked_client_integration):
                 "purpose": "chat",
                 "x-dev-authorization": DEV_TOKEN,
             },
-            json=SAMPLE_REQUEST.dict(),
+            json=SAMPLE_REQUEST.model_dump(),
         )
     assert response.status_code == 422
 
@@ -131,7 +131,7 @@ def test_x_dev_authorization_invalid_token(mocked_client_integration):
                 "purpose": "chat",
                 "x-dev-authorization": "wrong-token",
             },
-            json=SAMPLE_REQUEST.dict(),
+            json=SAMPLE_REQUEST.model_dump(),
         )
     assert response.status_code == 401
 
@@ -149,7 +149,7 @@ def test_x_dev_authorization_token_not_configured(mocked_client_integration):
                 "purpose": "chat",
                 "x-dev-authorization": "some-token",
             },
-            json=SAMPLE_REQUEST.dict(),
+            json=SAMPLE_REQUEST.model_dump(),
         )
     assert response.status_code == 422
 
@@ -163,7 +163,7 @@ def test_ai_dev_requires_x_dev_authorization(mocked_client_integration):
             "service-type": "ai-dev",
             "purpose": "chat",
         },
-        json=SAMPLE_REQUEST.dict(),
+        json=SAMPLE_REQUEST.model_dump(),
     )
     assert response.status_code == 401
     assert "x-dev-authorization required" in str(response.json().get("detail", ""))
@@ -186,7 +186,7 @@ def test_x_dev_authorization_ignored_for_non_dev_service_type(
                 "purpose": "chat",
                 "x-dev-authorization": DEV_TOKEN,
             },
-            json=SAMPLE_REQUEST.dict(),
+            json=SAMPLE_REQUEST.model_dump(),
         )
     assert response.status_code == 200
     assert response.json() == SUCCESSFUL_CHAT_RESPONSE
@@ -206,7 +206,7 @@ def test_x_dev_authorization_token_not_configured_with_fxa(mocked_client_integra
                 "purpose": "chat",
                 "x-dev-authorization": "some-token",
             },
-            json=SAMPLE_REQUEST.dict(),
+            json=SAMPLE_REQUEST.model_dump(),
         )
     assert response.status_code == 401
     assert "Invalid x-dev-authorization" in str(response.json().get("detail", ""))
