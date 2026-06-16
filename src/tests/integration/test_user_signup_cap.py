@@ -12,6 +12,11 @@ def use_real_get_or_create_user():
     return True
 
 
+@pytest.fixture(autouse=True)
+def single_fxa_scope(mocker):
+    mocker.patch("mlpa.core.auth.fxa.FXA_SCOPES", ("profile:uid",))
+
+
 class _FakeResponse:
     def __init__(self, payload: dict):
         self._payload = payload
