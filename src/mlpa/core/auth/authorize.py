@@ -129,6 +129,8 @@ async def authorize_chat_request(
             AvailabilityReason.INVALID_SERVICE_TYPE_FOR_MODEL,
             model=chat_request.model,
             service_type=service_type.value,
+            # `purpose` is not yet resolved here
+            # This serves as a placeholder until a validated purpose is available
             purpose="",
         )
         raise HTTPException(
