@@ -106,8 +106,8 @@ def test_valid_service_types_all_service_types():
     assert len(service_types) == 9
 
 
-def test_service_type_purposes_ai_and_memories():
-    """Test service_type_purposes: AI types have chat/title-generation/convo-starters-sidebar, memories have memory-generation."""
+def test_service_type_purposes():
+    """Test service_type_purposes: AI types have chat/title-generation/convo-starters-sidebar, memories have memory-generation. Telemetry has chat."""
     env = Env()
     purposes = env.service_type_purposes
     ai_purposes = ["chat", "title-generation", "convo-starters-sidebar"]
@@ -116,6 +116,7 @@ def test_service_type_purposes_ai_and_memories():
     assert purposes["mochi-dev"] == ai_purposes
     assert purposes["memories"] == ["memory-generation"]
     assert purposes["memories-dev"] == ["memory-generation"]
+    assert purposes["telemetry"] == ["chat"]
 
 
 def test_service_type_purposes_s2s_empty():
@@ -125,7 +126,6 @@ def test_service_type_purposes_s2s_empty():
     assert purposes["s2s"] == []
     assert purposes["s2s-android"] == []
     assert purposes["search"] == []
-    assert purposes["telemetry"] == []
 
 
 def test_service_type_requires_purpose():
@@ -139,7 +139,7 @@ def test_service_type_requires_purpose():
     assert env.service_type_requires_purpose("s2s") is False
     assert env.service_type_requires_purpose("s2s-android") is False
     assert env.service_type_requires_purpose("search") is False
-    assert env.service_type_requires_purpose("telemetry") is False
+    assert env.service_type_requires_purpose("telemetry") is True
 
 
 def test_valid_purposes_for_service_type():
@@ -153,7 +153,7 @@ def test_valid_purposes_for_service_type():
     assert env.valid_purposes_for_service_type("memories") == ["memory-generation"]
     assert env.valid_purposes_for_service_type("s2s") == []
     assert env.valid_purposes_for_service_type("search") == []
-    assert env.valid_purposes_for_service_type("telemetry") == []
+    assert env.valid_purposes_for_service_type("telemetry") == ["chat"]
 
 
 def test_user_feature_budget_structure_consistency():
