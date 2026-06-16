@@ -23,7 +23,7 @@ def test_request_size_under_limit(mocked_client_integration):
     assert response.status_code != 413
 
 
-def test_request_size_over_limit(mocked_client_integration):
+def test_request_size_over_limit(mocked_client_integration, metrics_spy):
     """Test that requests over the size limit return 413."""
     max_size = env.MAX_REQUEST_SIZE_BYTES
     oversized_size = max_size + 1
@@ -61,6 +61,17 @@ def test_request_size_over_limit(mocked_client_integration):
 
     assert response.status_code == 413
     assert response.json() == {"error": 3}
+    assert (
+        metrics_spy.value(
+            "chat_availability",
+            outcome="excluded",
+            reason="payload_too_large",
+            model="",
+            service_type="",
+            purpose="",
+        )
+        == 1
+    )
 
 
 def test_request_size_exactly_at_limit(mocked_client_integration):

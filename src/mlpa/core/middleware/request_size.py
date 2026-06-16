@@ -3,6 +3,8 @@ from fastapi.responses import JSONResponse
 
 from mlpa.core.config import ERROR_CODE_REQUEST_TOO_LARGE, env
 from mlpa.core.logger import logger
+from mlpa.core.metrics import record_chat_availability_for
+from mlpa.core.prometheus_metrics import AvailabilityReason
 
 
 async def check_request_size_middleware(request: Request, call_next):
@@ -18,6 +20,15 @@ async def check_request_size_middleware(request: Request, call_next):
                 if size > env.MAX_REQUEST_SIZE_BYTES:
                     logger.warning(
                         f"Request size {size} bytes exceeds maximum {env.MAX_REQUEST_SIZE_BYTES} bytes"
+                    )
+                    # Placeholders for `model`, `service_type`, and `purpose`
+                    # are used since values are not set until the body is parsed
+                    # and auth has run.
+                    record_chat_availability_for(
+                        AvailabilityReason.PAYLOAD_TOO_LARGE,
+                        model="",
+                        service_type="",
+                        purpose="",
                     )
                     return JSONResponse(
                         status_code=413,
