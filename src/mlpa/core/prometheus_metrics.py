@@ -30,18 +30,6 @@ class AvailabilityReason(StrEnum):
     # Strings shared with PrometheusRejectionReason are kept identical so the
     # two counters reconcile. Keep them in sync when a rejection reason is added.
 
-    # --- completion-stage reasons (recorded inside stream_completion / get_completion) ---
-    CLEAN_COMPLETION = "clean_completion"  # success
-    UPSTREAM_ERROR = "upstream_error"  # failure
-    EMPTY_RESPONSE = "empty_response"  # failure
-    BUDGET_EXCEEDED = "budget_exceeded"  # excluded
-    RATE_LIMITED_OWN = "rate_limited_own"  # excluded
-    RATE_LIMITED_UPSTREAM = "rate_limited_upstream"  # excluded
-    PAYLOAD_TOO_LARGE = "payload_too_large"  # excluded
-    INVALID_MODEL_NAME = "invalid_model_name"  # excluded
-    INVALID_REQUEST = "invalid_request"  # excluded
-    CLIENT_DISCONNECT = "client_disconnect"  # abort
-
     # --- pre-completion reasons (recorded in the auth dependency and route body) ---
     AUTH_REJECTED = "auth_rejected"  # excluded
     INVALID_AUTH_REQUEST = "invalid_auth_request"  # excluded
@@ -55,8 +43,27 @@ class AvailabilityReason(StrEnum):
     # properly requires a follow-on change to the auth backends themselves.
     AUTH_SYSTEM_FAILURE = "auth_system_failure"  # failure
 
+    # --- completion-stage reasons (recorded inside stream_completion / get_completion) ---
+    CLEAN_COMPLETION = "clean_completion"  # success
+    UPSTREAM_ERROR = "upstream_error"  # failure
+    EMPTY_RESPONSE = "empty_response"  # failure
+    BUDGET_EXCEEDED = "budget_exceeded"  # excluded
+    RATE_LIMITED_OWN = "rate_limited_own"  # excluded
+    RATE_LIMITED_UPSTREAM = "rate_limited_upstream"  # excluded
+    PAYLOAD_TOO_LARGE = "payload_too_large"  # excluded
+    INVALID_MODEL_NAME = "invalid_model_name"  # excluded
+    INVALID_REQUEST = "invalid_request"  # excluded
+    CLIENT_DISCONNECT = "client_disconnect"  # abort
+
 
 _AVAILABILITY_OUTCOME_BY_REASON: dict[AvailabilityReason, AvailabilityOutcome] = {
+    AvailabilityReason.AUTH_REJECTED: AvailabilityOutcome.EXCLUDED,
+    AvailabilityReason.INVALID_AUTH_REQUEST: AvailabilityOutcome.EXCLUDED,
+    AvailabilityReason.INVALID_SERVICE_TYPE_FOR_MODEL: AvailabilityOutcome.EXCLUDED,
+    AvailabilityReason.SIGNUP_CAP_EXCEEDED: AvailabilityOutcome.EXCLUDED,
+    AvailabilityReason.BLOCKED: AvailabilityOutcome.EXCLUDED,
+    AvailabilityReason.PROVISIONING_FAILURE: AvailabilityOutcome.FAILURE,
+    AvailabilityReason.AUTH_SYSTEM_FAILURE: AvailabilityOutcome.FAILURE,
     AvailabilityReason.CLEAN_COMPLETION: AvailabilityOutcome.SUCCESS,
     AvailabilityReason.UPSTREAM_ERROR: AvailabilityOutcome.FAILURE,
     AvailabilityReason.EMPTY_RESPONSE: AvailabilityOutcome.FAILURE,
@@ -67,13 +74,6 @@ _AVAILABILITY_OUTCOME_BY_REASON: dict[AvailabilityReason, AvailabilityOutcome] =
     AvailabilityReason.INVALID_MODEL_NAME: AvailabilityOutcome.EXCLUDED,
     AvailabilityReason.INVALID_REQUEST: AvailabilityOutcome.EXCLUDED,
     AvailabilityReason.CLIENT_DISCONNECT: AvailabilityOutcome.ABORT,
-    AvailabilityReason.AUTH_REJECTED: AvailabilityOutcome.EXCLUDED,
-    AvailabilityReason.INVALID_AUTH_REQUEST: AvailabilityOutcome.EXCLUDED,
-    AvailabilityReason.INVALID_SERVICE_TYPE_FOR_MODEL: AvailabilityOutcome.EXCLUDED,
-    AvailabilityReason.SIGNUP_CAP_EXCEEDED: AvailabilityOutcome.EXCLUDED,
-    AvailabilityReason.BLOCKED: AvailabilityOutcome.EXCLUDED,
-    AvailabilityReason.PROVISIONING_FAILURE: AvailabilityOutcome.FAILURE,
-    AvailabilityReason.AUTH_SYSTEM_FAILURE: AvailabilityOutcome.FAILURE,
 }
 
 
