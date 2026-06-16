@@ -24,7 +24,6 @@ async def readiness_probe():
     # todo add check to PG and LiteLLM status here
     pg_status = litellm_pg.check_status()
     app_attest_pg_status = app_attest_pg.check_status()
-    litellm_status = {}
     client = get_http_client()
     response = await client.get(
         LITELLM_READINESS_URL, headers=LITELLM_MASTER_AUTH_HEADERS, timeout=3
@@ -41,7 +40,7 @@ async def readiness_probe():
             "app_attest": "connected" if app_attest_pg_status else "offline",
         },
         "litellm": {
-            "litellm_version": litellm_info["litellm_version"],
+            "litellm_version": litellm_info.get("litellm_version", "N/A"),
             **litellm_status,
         },
     }
