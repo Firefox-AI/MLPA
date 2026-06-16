@@ -295,6 +295,19 @@ class Env(BaseSettings):
     PG_POOL_MAX_SIZE: int = 10
     PG_PREPARED_STMT_CACHE_MAX_SIZE: int = 100
     READINESS_CHECK_TIMEOUT_S: float = 2.0
+    # Postgres query timeouts. Server-enforced (statement_timeout) so a runaway
+    # query is killed even if the client/event loop hangs, preventing connection
+    # pile-up. Values are milliseconds; 0 = unlimited (Postgres semantics).
+    PG_STATEMENT_TIMEOUT_MS: int = 3000
+    # Reaps transactions left idle between statements (releases held locks).
+    # Should be >= statement_timeout since a tx legitimately spans round-trips.
+    PG_IDLE_IN_TX_TIMEOUT_MS: int = 10000
+    # Override for known-heavy startup maintenance (capacity reconciliation),
+    # applied per-transaction via SET LOCAL. 0 = unlimited.
+    PG_MAINTENANCE_STATEMENT_TIMEOUT_MS: int = 30000
+    # Optional asyncpg client-side backstop (seconds). None = disabled; set
+    # slightly above PG_STATEMENT_TIMEOUT_MS if you want belt-and-suspenders.
+    PG_COMMAND_TIMEOUT_S: float | None = None
 
     # LLM request default values
     TEMPERATURE: float = 0.1

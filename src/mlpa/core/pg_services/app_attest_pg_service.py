@@ -110,60 +110,68 @@ class AppAttestPGService(PGService):
         """
         managed_service_types = list(env.MLPA_CAPPED_SERVICE_TYPES)
 
-        async with self.pool.acquire() as conn:
-            async with conn.transaction():
-                await conn.execute(
+        # Read cap-managed identities from the *litellm* pool before opening the
+        # app_attest transaction. Doing this inside the transaction would leave
+        # the app_attest session idle-in-transaction across a cross-pool await,
+        # where idle_in_transaction_session_timeout could reap it mid-rebuild.
+        base_identities = await self.litellm_pg.list_managed_base_identities(
+            managed_service_types
+        )
+
+        # Reconciliation rebuilds the entire claim table (bulk delete + insert of
+        # all base identities), which can exceed the tight pool-wide
+        # statement_timeout as the user base grows; maintenance_transaction
+        # raises both timeouts for this work.
+        async with self.maintenance_transaction() as conn:
+            await conn.execute(
+                """
+                INSERT INTO mlpa_user_capacity (id, max_identities, current_identities)
+                VALUES (1, $1, 0)
+                ON CONFLICT (id) DO NOTHING
+                """,
+                env.MLPA_MAX_SIGNED_IN_USERS,
+            )
+
+            # Serialize seeding and reconciliation so concurrent app startups
+            # do not race on the claim table.
+            await conn.fetchrow(
+                "SELECT 1 FROM mlpa_user_capacity WHERE id = 1 FOR UPDATE"
+            )
+            await conn.execute(
+                """
+                UPDATE mlpa_user_capacity
+                SET max_identities = $1,
+                    updated_at = NOW()
+                WHERE id = 1
+                """,
+                env.MLPA_MAX_SIGNED_IN_USERS,
+            )
+
+            # Rebuild claims from LiteLLM so the counter matches reality after deletes
+            # or manual DB edits. Blocked rows still count toward capacity.
+            await conn.execute("DELETE FROM mlpa_user_capacity_identities")
+
+            if base_identities:
+                await conn.executemany(
                     """
-                    INSERT INTO mlpa_user_capacity (id, max_identities, current_identities)
-                    VALUES (1, $1, 0)
-                    ON CONFLICT (id) DO NOTHING
+                    INSERT INTO mlpa_user_capacity_identities (base_identity)
+                    VALUES ($1)
                     """,
-                    env.MLPA_MAX_SIGNED_IN_USERS,
+                    [(base_identity,) for base_identity in base_identities],
                 )
 
-                # Serialize seeding and reconciliation so concurrent app startups
-                # do not race on the claim table.
-                await conn.fetchrow(
-                    "SELECT 1 FROM mlpa_user_capacity WHERE id = 1 FOR UPDATE"
-                )
-                await conn.execute(
-                    """
-                    UPDATE mlpa_user_capacity
-                    SET max_identities = $1,
-                        updated_at = NOW()
-                    WHERE id = 1
-                    """,
-                    env.MLPA_MAX_SIGNED_IN_USERS,
-                )
-
-                # Rebuild claims from LiteLLM so the counter matches reality after deletes
-                # or manual DB edits. Blocked rows still count toward capacity.
-                await conn.execute("DELETE FROM mlpa_user_capacity_identities")
-
-                base_identities = await self.litellm_pg.list_managed_base_identities(
-                    managed_service_types
-                )
-                if base_identities:
-                    await conn.executemany(
-                        """
-                        INSERT INTO mlpa_user_capacity_identities (base_identity)
-                        VALUES ($1)
-                        """,
-                        [(base_identity,) for base_identity in base_identities],
-                    )
-
-                seeded_claims = await conn.fetchval(
-                    "SELECT COUNT(*) FROM mlpa_user_capacity_identities"
-                )
-                await conn.execute(
-                    """
-                    UPDATE mlpa_user_capacity
-                    SET current_identities = $1,
-                        updated_at = NOW()
-                    WHERE id = 1
-                    """,
-                    seeded_claims,
-                )
+            seeded_claims = await conn.fetchval(
+                "SELECT COUNT(*) FROM mlpa_user_capacity_identities"
+            )
+            await conn.execute(
+                """
+                UPDATE mlpa_user_capacity
+                SET current_identities = $1,
+                    updated_at = NOW()
+                WHERE id = 1
+                """,
+                seeded_claims,
+            )
 
     async def admit_managed_base_identity(
         self, base_identity: str
