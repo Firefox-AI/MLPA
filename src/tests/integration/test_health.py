@@ -25,6 +25,7 @@ def test_health_readiness(mocked_client_integration, httpx_mock):
         url=f"{env.LITELLM_API_BASE}/public/model_hub/info",
         status_code=200,
         json={"litellm_version": "1.84.4"},
+        is_optional=True,
     )
 
     readiness_response = mocked_client_integration.get("/health/readiness")
