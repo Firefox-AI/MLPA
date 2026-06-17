@@ -119,6 +119,7 @@ async def test_wrapper_invalid_service_type_records_excluded(metrics_spy):
             AvailabilityReason.INVALID_SERVICE_TYPE_FOR_MODEL,
             model="exa",
             service_type="ai",
+            purpose="chat",
         )
         == 1
     )

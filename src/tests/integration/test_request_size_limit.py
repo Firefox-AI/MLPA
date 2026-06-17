@@ -67,8 +67,8 @@ def test_request_size_over_limit(mocked_client_integration, metrics_spy):
             outcome="excluded",
             reason="payload_too_large",
             model="",
-            service_type="",
-            purpose="",
+            service_type="ai",
+            purpose="chat",
         )
         == 1
     )

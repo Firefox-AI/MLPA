@@ -21,14 +21,15 @@ async def check_request_size_middleware(request: Request, call_next):
                     logger.warning(
                         f"Request size {size} bytes exceeds maximum {env.MAX_REQUEST_SIZE_BYTES} bytes"
                     )
-                    # Placeholders for `model`, `service_type`, and `purpose`
-                    # are used since values are not set until the body is parsed
-                    # and auth has run.
+                    # `model` is in the request body, which we don't read here.
+                    # We reject on the Content-Length header without parsing it.
                     record_chat_availability_for(
                         AvailabilityReason.PAYLOAD_TOO_LARGE,
                         model="",
-                        service_type="",
-                        purpose="",
+                        service_type=(
+                            request.headers.get("service-type") or ""
+                        ).strip(),
+                        purpose=(request.headers.get("purpose") or "").strip(),
                     )
                     return JSONResponse(
                         status_code=413,
