@@ -57,6 +57,7 @@ def test_security_headers_on_all_endpoints(mocked_client_integration, httpx_mock
         url=f"{env.LITELLM_API_BASE}/public/model_hub/info",
         status_code=200,
         json={"litellm_version": "1.84.4"},
+        is_optional=True,
     )
 
     endpoints = [
