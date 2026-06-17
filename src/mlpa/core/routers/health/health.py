@@ -11,7 +11,24 @@ from mlpa.core.http_client import get_http_client
 from mlpa.core.pg_services.services import app_attest_pg, litellm_pg
 
 mlpa_version = importlib.metadata.version("mlpa")
+litellm_version = "N/A"
 router = APIRouter()
+
+
+async def get_litellm_version(client):
+    global litellm_version
+
+    if litellm_version != "N/A":
+        return litellm_version
+
+    try:
+        response = await client.get(LITELLM_INFO_URL, timeout=3)
+        litellm_info = response.json()
+    except Exception:
+        return litellm_version
+
+    litellm_version = litellm_info.get("litellm_version", "N/A")
+    return litellm_version
 
 
 @router.get("/liveness", tags=["Health"])
@@ -29,9 +46,8 @@ async def readiness_probe():
         LITELLM_READINESS_URL, headers=LITELLM_MASTER_AUTH_HEADERS, timeout=3
     )
     litellm_status = response.json()
+    current_litellm_version = await get_litellm_version(client)
 
-    response = await client.get(LITELLM_INFO_URL, timeout=3)
-    litellm_info = response.json()
     return {
         "status": "connected",
         "mlpa_version": mlpa_version,
@@ -40,7 +56,7 @@ async def readiness_probe():
             "app_attest": "connected" if app_attest_pg_status else "offline",
         },
         "litellm": {
-            "litellm_version": litellm_info.get("litellm_version", "N/A"),
+            "litellm_version": current_litellm_version,
             **litellm_status,
         },
     }
