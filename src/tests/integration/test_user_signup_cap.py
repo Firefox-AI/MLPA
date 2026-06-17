@@ -12,6 +12,11 @@ def use_real_get_or_create_user():
     return True
 
 
+@pytest.fixture(autouse=True)
+def single_fxa_scope(mocker):
+    mocker.patch("mlpa.core.auth.fxa.FXA_SCOPES", ("profile:uid",))
+
+
 class _FakeResponse:
     def __init__(self, payload: dict):
         self._payload = payload
@@ -101,7 +106,7 @@ def test_managed_cap_rejects_new_identities_and_s2s_bypasses(
                 "authorization": f"Bearer {TEST_FXA_TOKEN}",
                 "service-type": "ai",
             },
-            json=SAMPLE_REQUEST.dict(),
+            json=SAMPLE_REQUEST.model_dump(),
         )
         assert resp1.status_code == 200
         assert resp1.json() == SUCCESSFUL_CHAT_RESPONSE
@@ -112,7 +117,7 @@ def test_managed_cap_rejects_new_identities_and_s2s_bypasses(
                 "authorization": f"Bearer {TEST_FXA_TOKEN}",
                 "service-type": "s2s",
             },
-            json=SAMPLE_REQUEST.dict(),
+            json=SAMPLE_REQUEST.model_dump(),
         )
         assert resp2.status_code == 200
         assert resp2.json() == SUCCESSFUL_CHAT_RESPONSE
@@ -123,7 +128,7 @@ def test_managed_cap_rejects_new_identities_and_s2s_bypasses(
                 "authorization": f"Bearer {TEST_FXA_TOKEN}",
                 "service-type": "ai",
             },
-            json=SAMPLE_REQUEST.dict(),
+            json=SAMPLE_REQUEST.model_dump(),
         )
         assert resp3.status_code == 403
         assert resp3.json()["detail"]["error"] == 4
@@ -139,7 +144,7 @@ def test_managed_cap_rejects_new_identities_and_s2s_bypasses(
                 "authorization": f"Bearer {TEST_FXA_TOKEN}",
                 "service-type": "memories",
             },
-            json=SAMPLE_REQUEST.dict(),
+            json=SAMPLE_REQUEST.model_dump(),
         )
         assert resp4.status_code == 200
         assert resp4.json() == SUCCESSFUL_CHAT_RESPONSE
@@ -189,7 +194,7 @@ def test_release_reserved_slot_when_litellm_user_creation_fails(
                 "authorization": f"Bearer {TEST_FXA_TOKEN}",
                 "service-type": "ai",
             },
-            json=SAMPLE_REQUEST.dict(),
+            json=SAMPLE_REQUEST.model_dump(),
         )
         assert resp1.status_code == 500
 
@@ -199,7 +204,7 @@ def test_release_reserved_slot_when_litellm_user_creation_fails(
                 "authorization": f"Bearer {TEST_FXA_TOKEN}",
                 "service-type": "ai",
             },
-            json=SAMPLE_REQUEST.dict(),
+            json=SAMPLE_REQUEST.model_dump(),
         )
         assert resp2.status_code == 200
         assert resp2.json() == SUCCESSFUL_CHAT_RESPONSE

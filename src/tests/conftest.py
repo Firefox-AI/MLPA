@@ -17,6 +17,12 @@ def mock_request():
 def _force_mlpa_debug_false():
     monkeypatch = pytest.MonkeyPatch()
     monkeypatch.setenv("MLPA_DEBUG", "false")
+    monkeypatch.setenv("ADDITIONAL_FXA_SCOPE_1", None)
+    monkeypatch.setenv("ADDITIONAL_FXA_SCOPE_2", None)
+    monkeypatch.setenv("ADDITIONAL_FXA_SCOPE_3", None)
     env.MLPA_DEBUG = False
+    env.ADDITIONAL_FXA_SCOPE_1 = None
+    env.ADDITIONAL_FXA_SCOPE_2 = None
+    env.ADDITIONAL_FXA_SCOPE_3 = None
     yield
     monkeypatch.undo()

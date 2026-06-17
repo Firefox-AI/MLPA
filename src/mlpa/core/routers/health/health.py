@@ -2,12 +2,33 @@ import importlib.metadata
 
 from fastapi import APIRouter
 
-from mlpa.core.config import LITELLM_MASTER_AUTH_HEADERS, LITELLM_READINESS_URL
+from mlpa.core.config import (
+    LITELLM_INFO_URL,
+    LITELLM_MASTER_AUTH_HEADERS,
+    LITELLM_READINESS_URL,
+)
 from mlpa.core.http_client import get_http_client
 from mlpa.core.pg_services.services import app_attest_pg, litellm_pg
 
 mlpa_version = importlib.metadata.version("mlpa")
+litellm_version = "N/A"
 router = APIRouter()
+
+
+async def get_litellm_version(client):
+    global litellm_version
+
+    if litellm_version != "N/A":
+        return litellm_version
+
+    try:
+        response = await client.get(LITELLM_INFO_URL, timeout=3)
+        litellm_info = response.json()
+    except Exception:
+        return litellm_version
+
+    litellm_version = litellm_info.get("litellm_version", "N/A")
+    return litellm_version
 
 
 @router.get("/liveness", tags=["Health"])
@@ -20,13 +41,13 @@ async def readiness_probe():
     # todo add check to PG and LiteLLM status here
     pg_status = litellm_pg.check_status()
     app_attest_pg_status = app_attest_pg.check_status()
-    litellm_status = {}
     client = get_http_client()
     response = await client.get(
         LITELLM_READINESS_URL, headers=LITELLM_MASTER_AUTH_HEADERS, timeout=3
     )
-    data = response.json()
-    litellm_status = data
+    litellm_status = response.json()
+    current_litellm_version = await get_litellm_version(client)
+
     return {
         "status": "connected",
         "mlpa_version": mlpa_version,
@@ -34,5 +55,8 @@ async def readiness_probe():
             "postgres": "connected" if pg_status else "offline",
             "app_attest": "connected" if app_attest_pg_status else "offline",
         },
-        "litellm": litellm_status,
+        "litellm": {
+            "litellm_version": current_litellm_version,
+            **litellm_status,
+        },
     }

@@ -50,7 +50,13 @@ def test_security_headers_on_all_endpoints(mocked_client_integration, httpx_mock
         method="GET",
         url=f"{env.LITELLM_API_BASE}/health/readiness",
         status_code=200,
-        json={"status": "connected"},
+        json={"status": "healthy", "db": "connected"},
+    )
+    httpx_mock.add_response(
+        method="GET",
+        url=f"{env.LITELLM_API_BASE}/public/model_hub/info",
+        status_code=200,
+        json={"litellm_version": "1.84.4"},
     )
 
     endpoints = [
