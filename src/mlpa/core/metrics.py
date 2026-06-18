@@ -6,9 +6,11 @@ from mlpa.core.classes import (
     LitellmRoutingSnapshot,
 )
 from mlpa.core.prometheus_metrics import (
+    AvailabilityReason,
     PrometheusRejectionReason,
     PrometheusResult,
     TokenType,
+    availability_outcome_for,
     metrics,
 )
 
@@ -39,6 +41,33 @@ def record_search_request_rejection(
     req: AuthorizedSearchRequest, reason: PrometheusRejectionReason
 ) -> None:
     metrics.search_request_rejections.labels(reason=reason, **_search_labels(req)).inc()
+
+
+def record_chat_availability_for(
+    reason: AvailabilityReason,
+    *,
+    model: str,
+    service_type: str,
+    purpose: str,
+) -> None:
+    metrics.chat_availability.labels(
+        outcome=availability_outcome_for(reason),
+        reason=reason,
+        model=model,
+        service_type=service_type,
+        purpose=purpose,
+    ).inc()
+
+
+def record_chat_availability(
+    req: AuthorizedChatRequest, reason: AvailabilityReason
+) -> None:
+    record_chat_availability_for(
+        reason,
+        model=req.model,
+        service_type=req.service_type,
+        purpose=req.purpose,
+    )
 
 
 def record_completion_latency(

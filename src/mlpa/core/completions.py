@@ -20,6 +20,7 @@ from mlpa.core.litellm_routing import parse_litellm_routing_headers
 from mlpa.core.logger import logger
 from mlpa.core.metrics import (
     extract_tool_names,
+    record_chat_availability,
     record_chat_request_rejection,
     record_completion_latency,
     record_completion_success,
@@ -27,6 +28,7 @@ from mlpa.core.metrics import (
     record_ttft,
 )
 from mlpa.core.prometheus_metrics import (
+    AvailabilityReason,
     PrometheusRejectionReason,
     PrometheusResult,
 )
@@ -52,20 +54,31 @@ def _build_litellm_body(req: AuthorizedChatRequest, *, stream: bool) -> dict:
 async def get_or_create_user_for_completion(
     user_id: str, req: AuthorizedChatRequest | AuthorizedSearchRequest
 ):
-    """Wraps get_or_create_user and records a signup-cap rejection metric if applicable."""
+    """
+    Wraps get_or_create_user and records availability for chat requests:
+    - signup cap (403 + MAX_USERS_REACHED): excluded, alongside the existing rejection metric
+    - user-resolution server or system failure (status >= 500): failure
+    - search requests and non-signup-cap, non-5xx failures: not recorded
+    """
     try:
         return await get_or_create_user(user_id)
     except HTTPException as exc:
-        if (
-            exc.status_code == 403
-            and isinstance(exc.detail, dict)
-            and exc.detail.get("error") == ERROR_CODE_MAX_USERS_REACHED
-            and isinstance(req, AuthorizedChatRequest)
-        ):
-            record_chat_request_rejection(
-                req,
-                PrometheusRejectionReason.SIGNUP_CAP_EXCEEDED,
-            )
+        if isinstance(req, AuthorizedChatRequest):
+            if (
+                exc.status_code == 403
+                and isinstance(exc.detail, dict)
+                and exc.detail.get("error") == ERROR_CODE_MAX_USERS_REACHED
+            ):
+                record_chat_request_rejection(
+                    req,
+                    PrometheusRejectionReason.SIGNUP_CAP_EXCEEDED,
+                )
+                record_chat_availability(req, AvailabilityReason.SIGNUP_CAP_EXCEEDED)
+            elif exc.status_code >= 500:
+                # User-resolution server or system failure. Non-signup-cap 4xx errors
+                # are not recorded; a client-side 4xx should get its own classification
+                # rather than counting as an availability failure.
+                record_chat_availability(req, AvailabilityReason.PROVISIONING_FAILURE)
         raise
 
 
@@ -80,6 +93,7 @@ async def stream_completion(
     record_request_with_tools(authorized_chat_request)
     body = _build_litellm_body(authorized_chat_request, stream=True)
     result = PrometheusResult.ERROR
+    availability_reason = AvailabilityReason.UPSTREAM_ERROR
     is_first_token = True
     prompt_tokens = 0
     completion_tokens = 0
@@ -139,6 +153,7 @@ async def stream_completion(
                     if match.log_message:
                         logger.warning(match.log_message)
                     record_chat_request_rejection(authorized_chat_request, match.reason)
+                    availability_reason = match.availability_reason()
                     yield f'data: {{"error": {match.error_code}}}\n\n'.encode()
                     return
 
@@ -237,6 +252,7 @@ async def stream_completion(
                 return
 
             if not streaming_started:
+                availability_reason = AvailabilityReason.EMPTY_RESPONSE
                 yield raise_and_log(
                     RuntimeError("LiteLLM returned an empty response"),
                     True,
@@ -256,6 +272,7 @@ async def stream_completion(
                 snapshot=litellm_routing_snapshot,
             )
             result = PrometheusResult.SUCCESS
+            availability_reason = AvailabilityReason.VALID_RESPONSE
     except (GeneratorExit, asyncio.CancelledError):
         # Client went away mid-stream: Starlette tears the generator down by
         # throwing GeneratorExit (or cancelling the task) at the paused
@@ -291,9 +308,12 @@ async def stream_completion(
         if result == PrometheusResult.ERROR and disconnect_event.is_set():
             result = PrometheusResult.ABORT
             logger.info(_client_disconnected_msg)
+        if result == PrometheusResult.ABORT:
+            availability_reason = AvailabilityReason.CLIENT_DISCONNECT
         record_completion_latency(
             authorized_chat_request, result, time.perf_counter() - start_time
         )
+        record_chat_availability(authorized_chat_request, availability_reason)
 
 
 async def get_completion(authorized_chat_request: AuthorizedChatRequest):
@@ -304,6 +324,7 @@ async def get_completion(authorized_chat_request: AuthorizedChatRequest):
     record_request_with_tools(authorized_chat_request)
     body = _build_litellm_body(authorized_chat_request, stream=False)
     result = PrometheusResult.ERROR
+    availability_reason = AvailabilityReason.UPSTREAM_ERROR
     logger.debug(
         f"Starting a non-stream completion using {authorized_chat_request.model}, for user {authorized_chat_request.user}",
     )
@@ -326,6 +347,7 @@ async def get_completion(authorized_chat_request: AuthorizedChatRequest):
                 if match.log_message:
                     logger.warning(match.log_message)
                 record_chat_request_rejection(authorized_chat_request, match.reason)
+                availability_reason = match.availability_reason()
                 headers = (
                     {"Retry-After": match.retry_after} if match.retry_after else None
                 )
@@ -362,6 +384,7 @@ async def get_completion(authorized_chat_request: AuthorizedChatRequest):
             snapshot=litellm_routing_snapshot,
         )
         result = PrometheusResult.SUCCESS
+        availability_reason = AvailabilityReason.VALID_RESPONSE
         return data
     except HTTPException:
         raise
@@ -371,3 +394,4 @@ async def get_completion(authorized_chat_request: AuthorizedChatRequest):
         record_completion_latency(
             authorized_chat_request, result, time.perf_counter() - start_time
         )
+        record_chat_availability(authorized_chat_request, availability_reason)

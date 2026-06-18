@@ -26,9 +26,11 @@ from mlpa.core.config import (
 )
 from mlpa.core.http_client import close_http_client, get_http_client
 from mlpa.core.logger import logger, setup_logger
+from mlpa.core.metrics import record_chat_availability
 from mlpa.core.middleware import register_middleware
 from mlpa.core.openapi import customize_openapi
 from mlpa.core.pg_services.services import app_attest_pg, litellm_pg
+from mlpa.core.prometheus_metrics import AvailabilityReason
 from mlpa.core.routers.appattest import appattest_router
 from mlpa.core.routers.health import health_router
 from mlpa.core.routers.mock import mock_router
@@ -207,6 +209,7 @@ async def chat_completion(
         )
     user, _ = await get_or_create_user_for_completion(user_id, authorized_chat_request)
     if user.get("blocked"):
+        record_chat_availability(authorized_chat_request, AvailabilityReason.BLOCKED)
         raise HTTPException(status_code=403, detail={"error": "User is blocked."})
 
     if authorized_chat_request.stream:

@@ -28,7 +28,12 @@ from mlpa.core.config import (
     LITELLM_HEADER_RESPONSE_DURATION_MS,
     env,
 )
-from mlpa.core.prometheus_metrics import PrometheusRejectionReason, PrometheusResult
+from mlpa.core.prometheus_metrics import (
+    AvailabilityOutcome,
+    AvailabilityReason,
+    PrometheusRejectionReason,
+    PrometheusResult,
+)
 from tests.consts import SAMPLE_REQUEST, SUCCESSFUL_CHAT_RESPONSE
 
 
@@ -51,6 +56,39 @@ def _rejection_count(
         model=req.model,
         service_type=req.service_type,
         purpose=req.purpose,
+    )
+
+
+def _availability_count(
+    spy,
+    outcome: AvailabilityOutcome,
+    reason: AvailabilityReason,
+    req=SAMPLE_REQUEST,
+) -> float:
+    return spy.value(
+        "chat_availability",
+        outcome=outcome,
+        reason=reason,
+        model=req.model,
+        service_type=req.service_type,
+        purpose=req.purpose,
+    )
+
+
+def _availability_total(spy, req=SAMPLE_REQUEST) -> float:
+    """Sum of all chat_availability samples for the request labels.
+
+    Proves exactly one availability disposition was recorded, regardless of
+    which (outcome, reason) pair it landed on. Guards the policy-rejection path
+    against re-introducing a second emission alongside the correct one.
+    """
+    return sum(
+        s.value
+        for s in spy.samples("chat_availability")
+        if s.name.endswith("_total")
+        and s.labels.get("model") == req.model
+        and s.labels.get("service_type") == req.service_type
+        and s.labels.get("purpose") == req.purpose
     )
 
 
@@ -105,6 +143,7 @@ async def test_get_completion_success(mocker, metrics_spy):
 
     metrics_spy.assert_only(
         {
+            "chat_availability",
             "chat_tokens",
             "chat_tokens_per_request",
             "chat_completion_latency",
@@ -131,6 +170,14 @@ async def test_get_completion_success(mocker, metrics_spy):
         == SUCCESSFUL_CHAT_RESPONSE["usage"]["completion_tokens"]
     )
     assert _latency_count(metrics_spy, PrometheusResult.SUCCESS) == 1
+    assert (
+        _availability_count(
+            metrics_spy,
+            AvailabilityOutcome.SUCCESS,
+            AvailabilityReason.VALID_RESPONSE,
+        )
+        == 1
+    )
 
     routing = _litellm_routing_label_base()
     assert (
@@ -256,8 +303,17 @@ async def test_get_completion_http_error(mocker, metrics_spy):
 
     assert exc_info.value.status_code == 500
     assert exc_info.value.detail["error"] == "Upstream service returned an error"
+    assert (
+        _availability_count(
+            metrics_spy,
+            AvailabilityOutcome.FAILURE,
+            AvailabilityReason.UPSTREAM_ERROR,
+        )
+        == 1
+    )
+    assert _availability_total(metrics_spy) == 1
 
-    metrics_spy.assert_only({"chat_completion_latency"})
+    metrics_spy.assert_only({"chat_completion_latency", "chat_availability"})
     assert _latency_count(metrics_spy, PrometheusResult.ERROR) == 1
 
 
@@ -273,7 +329,7 @@ async def test_get_completion_network_error(mocker, metrics_spy):
     assert exc_info.value.status_code == 502
     assert exc_info.value.detail["error"] == "Connection timed out"
 
-    metrics_spy.assert_only({"chat_completion_latency"})
+    metrics_spy.assert_only({"chat_completion_latency", "chat_availability"})
     assert _latency_count(metrics_spy, PrometheusResult.ERROR) == 1
 
 
@@ -308,6 +364,7 @@ async def test_stream_completion_success(
 
     metrics_spy.assert_only(
         {
+            "chat_availability",
             "chat_completion_ttft",
             "chat_tokens",
             "chat_tokens_per_request",
@@ -329,6 +386,14 @@ async def test_stream_completion_success(
     assert metrics_spy.value("chat_tokens", type="prompt", **chat_label_base) == 10
     assert metrics_spy.value("chat_tokens", type="completion", **chat_label_base) == 25
     assert _latency_count(metrics_spy, PrometheusResult.SUCCESS) == 1
+    assert (
+        _availability_count(
+            metrics_spy,
+            AvailabilityOutcome.SUCCESS,
+            AvailabilityReason.VALID_RESPONSE,
+        )
+        == 1
+    )
     assert (
         metrics_spy.histogram_count("chat_completion_ttft", model=SAMPLE_REQUEST.model)
         == 1
@@ -419,9 +484,22 @@ async def test_get_completion_budget_limit_exceeded_429(mocker, metrics_spy):
     assert exc_info.value.detail == {"error": 1}
     assert exc_info.value.headers == {"Retry-After": "86400"}
 
-    metrics_spy.assert_only({"chat_request_rejections", "chat_completion_latency"})
+    metrics_spy.assert_only(
+        {"chat_request_rejections", "chat_completion_latency", "chat_availability"}
+    )
     assert _rejection_count(metrics_spy, PrometheusRejectionReason.BUDGET_EXCEEDED) == 1
     assert _latency_count(metrics_spy, PrometheusResult.ERROR) == 1
+    # gap 1: same request, recorded as excluded (not failure) on availability
+    # even though the latency histogram above still counts it as result=error.
+    assert (
+        _availability_count(
+            metrics_spy,
+            AvailabilityOutcome.EXCLUDED,
+            AvailabilityReason.BUDGET_EXCEEDED,
+        )
+        == 1
+    )
+    assert _availability_total(metrics_spy) == 1
 
 
 async def test_get_completion_budget_limit_exceeded_400(mocker, metrics_spy):
@@ -453,7 +531,9 @@ async def test_get_completion_budget_limit_exceeded_400(mocker, metrics_spy):
     assert exc_info.value.detail == {"error": 1}
     assert exc_info.value.headers == {"Retry-After": "86400"}
 
-    metrics_spy.assert_only({"chat_request_rejections", "chat_completion_latency"})
+    metrics_spy.assert_only(
+        {"chat_request_rejections", "chat_completion_latency", "chat_availability"}
+    )
     assert _rejection_count(metrics_spy, PrometheusRejectionReason.BUDGET_EXCEEDED) == 1
 
 
@@ -485,8 +565,18 @@ async def test_get_completion_rate_limit_exceeded(mocker, metrics_spy):
     assert exc_info.value.status_code == 429
     assert exc_info.value.detail == {"error": 2}
     assert exc_info.value.headers == {"Retry-After": "60"}
+    assert (
+        _availability_count(
+            metrics_spy,
+            AvailabilityOutcome.EXCLUDED,
+            AvailabilityReason.RATE_LIMITED_PLATFORM,
+        )
+        == 1
+    )
 
-    metrics_spy.assert_only({"chat_request_rejections", "chat_completion_latency"})
+    metrics_spy.assert_only(
+        {"chat_request_rejections", "chat_completion_latency", "chat_availability"}
+    )
     assert _rejection_count(metrics_spy, PrometheusRejectionReason.RATE_LIMITED) == 1
 
 
@@ -518,7 +608,7 @@ async def test_get_completion_400_non_rate_limit_error(mocker, metrics_spy):
 
     assert exc_info.value.status_code == 400
     assert exc_info.value.detail == {"error": "Upstream service returned an error"}
-    metrics_spy.assert_only({"chat_completion_latency"})
+    metrics_spy.assert_only({"chat_completion_latency", "chat_availability"})
 
 
 async def test_get_completion_429_non_rate_limit_error(mocker, metrics_spy):
@@ -543,7 +633,7 @@ async def test_get_completion_429_non_rate_limit_error(mocker, metrics_spy):
 
     assert exc_info.value.status_code == 429
     assert exc_info.value.detail == {"error": "Upstream service returned an error"}
-    metrics_spy.assert_only({"chat_completion_latency"})
+    metrics_spy.assert_only({"chat_completion_latency", "chat_availability"})
 
 
 async def test_get_completion_upstream_rate_limit_error(mocker, metrics_spy):
@@ -568,7 +658,17 @@ async def test_get_completion_upstream_rate_limit_error(mocker, metrics_spy):
 
     assert exc_info.value.status_code == 429
     assert exc_info.value.detail == {"error": ERROR_CODE_UPSTREAM_RATE_LIMIT_EXCEEDED}
-    metrics_spy.assert_only({"chat_request_rejections", "chat_completion_latency"})
+    assert (
+        _availability_count(
+            metrics_spy,
+            AvailabilityOutcome.EXCLUDED,
+            AvailabilityReason.RATE_LIMITED_UPSTREAM,
+        )
+        == 1
+    )
+    metrics_spy.assert_only(
+        {"chat_request_rejections", "chat_completion_latency", "chat_availability"}
+    )
     assert _rejection_count(metrics_spy, PrometheusRejectionReason.RATE_LIMITED) == 1
     assert _latency_count(metrics_spy, PrometheusResult.ERROR) == 1
 
@@ -599,7 +699,9 @@ async def test_get_completion_context_window_exceeded(mocker, metrics_spy):
     assert exc_info.value.detail == {"error": ERROR_CODE_REQUEST_TOO_LARGE}
     mock_logger.warning.assert_called_once()
     assert "Context window exceeded" in str(mock_logger.warning.call_args)
-    metrics_spy.assert_only({"chat_request_rejections", "chat_completion_latency"})
+    metrics_spy.assert_only(
+        {"chat_request_rejections", "chat_completion_latency", "chat_availability"}
+    )
     assert (
         _rejection_count(metrics_spy, PrometheusRejectionReason.PAYLOAD_TOO_LARGE) == 1
     )
@@ -634,7 +736,9 @@ async def test_get_completion_invalid_model_name(mocker, metrics_spy):
     assert exc_info.value.detail == {"error": ERROR_CODE_INVALID_MODEL_NAME}
     mock_logger.warning.assert_called_once()
     assert "Invalid model name" in str(mock_logger.warning.call_args)
-    metrics_spy.assert_only({"chat_request_rejections", "chat_completion_latency"})
+    metrics_spy.assert_only(
+        {"chat_request_rejections", "chat_completion_latency", "chat_availability"}
+    )
     assert (
         _rejection_count(metrics_spy, PrometheusRejectionReason.INVALID_MODEL_NAME) == 1
     )
@@ -668,7 +772,9 @@ async def test_get_completion_invalid_request_vertex(mocker, metrics_spy):
     assert exc_info.value.detail == {"error": ERROR_CODE_INVALID_REQUEST}
     mock_logger.warning.assert_called_once()
     assert "Invalid request" in str(mock_logger.warning.call_args)
-    metrics_spy.assert_only({"chat_request_rejections", "chat_completion_latency"})
+    metrics_spy.assert_only(
+        {"chat_request_rejections", "chat_completion_latency", "chat_availability"}
+    )
     assert _rejection_count(metrics_spy, PrometheusRejectionReason.INVALID_REQUEST) == 1
     assert _latency_count(metrics_spy, PrometheusResult.ERROR) == 1
 
@@ -693,7 +799,7 @@ async def test_get_completion_429_invalid_json(mocker, metrics_spy):
 
     assert exc_info.value.status_code == 429
     assert exc_info.value.detail == {"error": "Upstream service returned an error"}
-    metrics_spy.assert_only({"chat_completion_latency"})
+    metrics_spy.assert_only({"chat_completion_latency", "chat_availability"})
 
 
 async def test_stream_completion_budget_limit_exceeded_429(
@@ -727,9 +833,20 @@ async def test_stream_completion_budget_limit_exceeded_429(
     )
     mock_logger.warning.assert_called_once()
     assert "Budget limit exceeded" in str(mock_logger.warning.call_args)
-    metrics_spy.assert_only({"chat_request_rejections", "chat_completion_latency"})
+    metrics_spy.assert_only(
+        {"chat_request_rejections", "chat_completion_latency", "chat_availability"}
+    )
     assert _rejection_count(metrics_spy, PrometheusRejectionReason.BUDGET_EXCEEDED) == 1
     assert _latency_count(metrics_spy, PrometheusResult.ERROR) == 1
+    assert (
+        _availability_count(
+            metrics_spy,
+            AvailabilityOutcome.EXCLUDED,
+            AvailabilityReason.BUDGET_EXCEEDED,
+        )
+        == 1
+    )
+    assert _availability_total(metrics_spy) == 1
 
 
 async def test_stream_completion_budget_limit_exceeded_400(
@@ -764,7 +881,9 @@ async def test_stream_completion_budget_limit_exceeded_400(
     )
     mock_logger.warning.assert_called_once()
     assert "Budget limit exceeded" in str(mock_logger.warning.call_args)
-    metrics_spy.assert_only({"chat_request_rejections", "chat_completion_latency"})
+    metrics_spy.assert_only(
+        {"chat_request_rejections", "chat_completion_latency", "chat_availability"}
+    )
     assert _rejection_count(metrics_spy, PrometheusRejectionReason.BUDGET_EXCEEDED) == 1
     assert _latency_count(metrics_spy, PrometheusResult.ERROR) == 1
 
@@ -801,7 +920,9 @@ async def test_stream_completion_rate_limit_exceeded(
     )
     mock_logger.warning.assert_called_once()
     assert "Rate limit exceeded" in str(mock_logger.warning.call_args)
-    metrics_spy.assert_only({"chat_request_rejections", "chat_completion_latency"})
+    metrics_spy.assert_only(
+        {"chat_request_rejections", "chat_completion_latency", "chat_availability"}
+    )
     assert _rejection_count(metrics_spy, PrometheusRejectionReason.RATE_LIMITED) == 1
     assert _latency_count(metrics_spy, PrometheusResult.ERROR) == 1
 
@@ -833,7 +954,9 @@ async def test_stream_completion_context_window_exceeded(
     )
     mock_logger.warning.assert_called_once()
     assert "Context window exceeded" in str(mock_logger.warning.call_args)
-    metrics_spy.assert_only({"chat_request_rejections", "chat_completion_latency"})
+    metrics_spy.assert_only(
+        {"chat_request_rejections", "chat_completion_latency", "chat_availability"}
+    )
     assert (
         _rejection_count(metrics_spy, PrometheusRejectionReason.PAYLOAD_TOO_LARGE) == 1
     )
@@ -869,7 +992,9 @@ async def test_stream_completion_invalid_model_name(
     )
     mock_logger.warning.assert_called_once()
     assert "Invalid model name" in str(mock_logger.warning.call_args)
-    metrics_spy.assert_only({"chat_request_rejections", "chat_completion_latency"})
+    metrics_spy.assert_only(
+        {"chat_request_rejections", "chat_completion_latency", "chat_availability"}
+    )
     assert (
         _rejection_count(metrics_spy, PrometheusRejectionReason.INVALID_MODEL_NAME) == 1
     )
@@ -904,7 +1029,9 @@ async def test_stream_completion_invalid_request_vertex(
     )
     mock_logger.warning.assert_called_once()
     assert "Invalid request" in str(mock_logger.warning.call_args)
-    metrics_spy.assert_only({"chat_request_rejections", "chat_completion_latency"})
+    metrics_spy.assert_only(
+        {"chat_request_rejections", "chat_completion_latency", "chat_availability"}
+    )
     assert _rejection_count(metrics_spy, PrometheusRejectionReason.INVALID_REQUEST) == 1
     assert _latency_count(metrics_spy, PrometheusResult.ERROR) == 1
 
@@ -941,7 +1068,7 @@ async def test_stream_completion_400_non_rate_limit_error(
         == b'data: {"code": 400, "error": "Upstream service returned an error"}\n\n'
     )
     mock_logger.error.assert_called_once()
-    metrics_spy.assert_only({"chat_completion_latency"})
+    metrics_spy.assert_only({"chat_completion_latency", "chat_availability"})
     assert _latency_count(metrics_spy, PrometheusResult.ERROR) == 1
 
 
@@ -971,7 +1098,7 @@ async def test_stream_completion_429_non_rate_limit_error(
         == b'data: {"code": 429, "error": "Upstream service returned an error"}\n\n'
     )
     mock_logger.error.assert_called_once()
-    metrics_spy.assert_only({"chat_completion_latency"})
+    metrics_spy.assert_only({"chat_completion_latency", "chat_availability"})
     assert _latency_count(metrics_spy, PrometheusResult.ERROR) == 1
 
 
@@ -995,7 +1122,9 @@ async def test_stream_completion_upstream_rate_limit_error(
     assert received_chunks == [
         f'data: {{"error": {ERROR_CODE_UPSTREAM_RATE_LIMIT_EXCEEDED}}}\n\n'.encode()
     ]
-    metrics_spy.assert_only({"chat_request_rejections", "chat_completion_latency"})
+    metrics_spy.assert_only(
+        {"chat_request_rejections", "chat_completion_latency", "chat_availability"}
+    )
     assert _rejection_count(metrics_spy, PrometheusRejectionReason.RATE_LIMITED) == 1
     assert _latency_count(metrics_spy, PrometheusResult.ERROR) == 1
 
@@ -1023,7 +1152,7 @@ async def test_stream_completion_429_invalid_json(
         == b'data: {"code": 429, "error": "Upstream service returned an error"}\n\n'
     )
     mock_logger.error.assert_called_once()
-    metrics_spy.assert_only({"chat_completion_latency"})
+    metrics_spy.assert_only({"chat_completion_latency", "chat_availability"})
     assert _latency_count(metrics_spy, PrometheusResult.ERROR) == 1
 
 
@@ -1043,7 +1172,7 @@ async def test_stream_completion_exception_after_streaming_started(
 
     assert len(received_chunks) == 1
     assert b"error" in received_chunks[0]
-    metrics_spy.assert_only({"chat_completion_latency"})
+    metrics_spy.assert_only({"chat_completion_latency", "chat_availability"})
     assert _latency_count(metrics_spy, PrometheusResult.ERROR) == 1
 
 
@@ -1248,6 +1377,15 @@ async def test_stream_sends_error_sse_on_empty_200_response(
     )
     assert b'"error"' in received[0], "Chunk must be an error SSE frame"
     _assert_error_latency(metrics_spy)
+    assert (
+        _availability_count(
+            metrics_spy,
+            AvailabilityOutcome.FAILURE,
+            AvailabilityReason.EMPTY_RESPONSE,
+        )
+        == 1
+    )
+    assert _availability_total(metrics_spy) == 1
 
 
 async def test_stream_completion_client_disconnect_records_abort(
@@ -1280,6 +1418,15 @@ async def test_stream_completion_client_disconnect_records_abort(
 
     assert _latency_count(metrics_spy, PrometheusResult.ABORT) == 1
     assert _latency_count(metrics_spy, PrometheusResult.ERROR) == 0
+    assert (
+        _availability_count(
+            metrics_spy,
+            AvailabilityOutcome.ABORT,
+            AvailabilityReason.CLIENT_DISCONNECT,
+        )
+        == 1
+    )
+    assert _availability_total(metrics_spy) == 1
 
 
 async def test_stream_uses_httpx_timeout_object_preserving_pool_timeout(
