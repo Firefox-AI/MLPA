@@ -26,10 +26,8 @@ async def check_request_size_middleware(request: Request, call_next):
                     record_chat_availability_for(
                         AvailabilityReason.PAYLOAD_TOO_LARGE,
                         model="",
-                        service_type=(
-                            request.headers.get("service-type") or ""
-                        ).strip(),
-                        purpose=(request.headers.get("purpose") or "").strip(),
+                        service_type=request.headers.get("service-type") or "",
+                        purpose=request.headers.get("purpose") or "",
                     )
                     return JSONResponse(
                         status_code=413,

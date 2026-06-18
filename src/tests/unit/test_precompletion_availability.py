@@ -145,6 +145,7 @@ async def test_wrapper_invalid_purpose_records_invalid_auth_request(metrics_spy)
             AvailabilityReason.INVALID_AUTH_REQUEST,
             model=_VALID_MODEL,
             service_type="ai",
+            purpose="definitely-not-a-valid-purpose",
         )
         == 1
     )
@@ -176,6 +177,7 @@ async def test_wrapper_shared_call_401_records_auth_rejected(mocker, metrics_spy
             AvailabilityReason.AUTH_REJECTED,
             model=_VALID_MODEL,
             service_type="ai",
+            purpose="chat",
         )
         == 1
     )
@@ -213,6 +215,7 @@ async def test_wrapper_shared_call_400_records_invalid_auth_request(
             AvailabilityReason.INVALID_AUTH_REQUEST,
             model=_VALID_MODEL,
             service_type="ai",
+            purpose="chat",
         )
         == 1
     )

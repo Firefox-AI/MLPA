@@ -27,7 +27,7 @@ def _resolve_purpose(service_type_value: str, purpose_header: str | None) -> str
     """Validate purpose header and return value; raise HTTPException if invalid."""
     valid = env.valid_purposes_for_service_type(service_type_value)
     requires = env.service_type_requires_purpose(service_type_value)
-    purpose = (purpose_header or "").strip()
+    purpose = purpose_header or ""
 
     if purpose:
         if purpose not in valid:
@@ -129,7 +129,7 @@ async def authorize_chat_request(
             AvailabilityReason.INVALID_SERVICE_TYPE_FOR_MODEL,
             model=chat_request.model,
             service_type=service_type.value,
-            purpose=(purpose or "").strip(),
+            purpose=purpose or "",
         )
         raise HTTPException(
             status_code=400,
@@ -161,7 +161,6 @@ async def authorize_chat_request(
         # - anything else (e.g. App Attest's explicit 500): re-raised unrecorded;
         #   auth-system-failure capture is left to a follow-on auth backend change
         # Non-HTTPException errors are not caught here and propagate unrecorded.
-        # Purpose is unknown at this point, so "" is always used as a placeholder.
         if exc.status_code == 401:
             reason = AvailabilityReason.AUTH_REJECTED
         elif exc.status_code == 400:
@@ -172,7 +171,7 @@ async def authorize_chat_request(
             reason,
             model=chat_request.model,
             service_type=service_type.value,
-            purpose="",
+            purpose=purpose or "",
         )
         raise
 
