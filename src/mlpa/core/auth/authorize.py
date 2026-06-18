@@ -27,7 +27,7 @@ def _resolve_purpose(service_type_value: str, purpose_header: str | None) -> str
     """Validate purpose header and return value; raise HTTPException if invalid."""
     valid = env.valid_purposes_for_service_type(service_type_value)
     requires = env.service_type_requires_purpose(service_type_value)
-    purpose = purpose_header or ""
+    purpose = (purpose_header or "").strip()
 
     if purpose:
         if purpose not in valid:
