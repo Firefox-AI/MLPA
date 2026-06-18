@@ -28,6 +28,7 @@ from mlpa.core.config import (
     LITELLM_HEADER_RESPONSE_DURATION_MS,
     env,
 )
+from mlpa.core.logger import logger as loguru_logger
 from mlpa.core.prometheus_metrics import (
     AvailabilityOutcome,
     AvailabilityReason,
@@ -35,6 +36,31 @@ from mlpa.core.prometheus_metrics import (
     PrometheusResult,
 )
 from tests.consts import SAMPLE_REQUEST, SUCCESSFUL_CHAT_RESPONSE
+
+
+@contextlib.contextmanager
+def _capture_logs():
+    """Capture raw loguru records emitted within the block.
+
+    Each captured item is a loguru ``Message`` whose ``.record`` dict exposes
+    ``message`` / ``level`` / ``exception`` / ``extra`` — lets tests assert on
+    log content, attached tracebacks, and contextvar-bound fields.
+    """
+    records = []
+    sink_id = loguru_logger.add(records.append, level="DEBUG", format="{message}")
+    try:
+        yield records
+    finally:
+        loguru_logger.remove(sink_id)
+
+
+def _proxy_error_records(records):
+    return [
+        item.record
+        for item in records
+        if item.record["level"].name == "ERROR"
+        and "Failed to proxy request" in item.record["message"]
+    ]
 
 
 def _latency_count(spy, result: PrometheusResult, req=SAMPLE_REQUEST) -> float:
@@ -1067,7 +1093,7 @@ async def test_stream_completion_400_non_rate_limit_error(
         received_chunks[0]
         == b'data: {"code": 400, "error": "Upstream service returned an error"}\n\n'
     )
-    mock_logger.error.assert_called_once()
+    mock_logger.opt.return_value.error.assert_called_once()
     metrics_spy.assert_only({"chat_completion_latency", "chat_availability"})
     assert _latency_count(metrics_spy, PrometheusResult.ERROR) == 1
 
@@ -1097,7 +1123,7 @@ async def test_stream_completion_429_non_rate_limit_error(
         received_chunks[0]
         == b'data: {"code": 429, "error": "Upstream service returned an error"}\n\n'
     )
-    mock_logger.error.assert_called_once()
+    mock_logger.opt.return_value.error.assert_called_once()
     metrics_spy.assert_only({"chat_completion_latency", "chat_availability"})
     assert _latency_count(metrics_spy, PrometheusResult.ERROR) == 1
 
@@ -1151,7 +1177,7 @@ async def test_stream_completion_429_invalid_json(
         received_chunks[0]
         == b'data: {"code": 429, "error": "Upstream service returned an error"}\n\n'
     )
-    mock_logger.error.assert_called_once()
+    mock_logger.opt.return_value.error.assert_called_once()
     metrics_spy.assert_only({"chat_completion_latency", "chat_availability"})
     assert _latency_count(metrics_spy, PrometheusResult.ERROR) == 1
 
@@ -1520,3 +1546,73 @@ async def test_get_completion_sanitizes_response_surrogates(mocker):
     assert "\ud83e" not in data["choices"][0]["message"]["content"]
     assert data["choices"][0]["message"]["content"].startswith("done ")
     _httpx_encode_json(data)  # must not raise
+
+
+async def test_get_completion_empty_message_transport_error_is_diagnosable(mocker):
+    """Regression for the prod 502s that logged a bare ``Failed to proxy request:``.
+
+    A transport error with no ``.response`` and an empty ``str()`` (e.g.
+    ``RemoteProtocolError("")``) must still produce a diagnosable ERROR line:
+    the exception type + repr in the message, the traceback attached, and the
+    request-identifying fields bound via ``contextualize(**log_fields)``.
+    """
+    mock_client = AsyncMock()
+    mock_client.post.side_effect = httpx.RemoteProtocolError("")
+    mocker.patch("mlpa.core.completions.get_http_client", return_value=mock_client)
+    mocker.patch.object(env, "MLPA_DEBUG", False)
+
+    with _capture_logs() as records:
+        with pytest.raises(HTTPException) as exc_info:
+            await get_completion(SAMPLE_REQUEST)
+
+    assert exc_info.value.status_code == 502
+
+    proxy_errors = _proxy_error_records(records)
+    assert len(proxy_errors) == 1
+    rec = proxy_errors[0]
+    # Exception type is named, and the message is NOT the old blank form.
+    assert "RemoteProtocolError" in rec["message"]
+    assert not rec["message"].rstrip().endswith("Failed to proxy request:")
+    # Traceback attached via logger.opt(exception=e).
+    assert rec["exception"] is not None
+    assert rec["exception"].type is httpx.RemoteProtocolError
+    # Request fields bound on the record (queryable as record.extra.*).
+    assert rec["extra"]["user"] == SAMPLE_REQUEST.user
+    assert rec["extra"]["model"] == SAMPLE_REQUEST.model
+    assert rec["extra"]["service_type"] == SAMPLE_REQUEST.service_type
+
+
+async def test_stream_mid_stream_error_binds_request_fields(
+    mocker, mock_request, metrics_spy
+):
+    """Streaming blind-spot regression.
+
+    An error raised mid-SSE-stream (after MLPA already returned 200) must still
+    log with the request fields bound — proving the ``contextualize`` scope set
+    inside ``stream_completion`` survives generator iteration, unlike the
+    middleware scope which has already exited by the time the body iterates.
+    """
+    role_chunk = (
+        b'data: {"choices":[{"delta":{"role":"assistant","content":null}}]}\n\n'
+    )
+
+    async def _failing_aiter_bytes():
+        yield role_chunk
+        raise httpx.RemoteProtocolError("")
+
+    _patch_mock_stream_client(mocker, _failing_aiter_bytes)
+    mocker.patch.object(env, "MLPA_DEBUG", False)
+
+    with _capture_logs() as records:
+        received = [c async for c in stream_completion(SAMPLE_REQUEST, mock_request)]
+
+    assert any(b'"error"' in chunk for chunk in received)
+
+    proxy_errors = _proxy_error_records(records)
+    assert len(proxy_errors) == 1
+    rec = proxy_errors[0]
+    assert "RemoteProtocolError" in rec["message"]
+    assert rec["exception"] is not None
+    assert rec["extra"]["user"] == SAMPLE_REQUEST.user
+    assert rec["extra"]["model"] == SAMPLE_REQUEST.model
+    assert rec["extra"]["service_type"] == SAMPLE_REQUEST.service_type

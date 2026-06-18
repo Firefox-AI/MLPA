@@ -18,6 +18,12 @@ from mlpa.core.utils import raise_and_log
 
 
 async def get_search(authorized_search_request: AuthorizedSearchRequest):
+    """Bind request log fields onto the loguru contextvar, then proxy."""
+    with logger.contextualize(**authorized_search_request.log_fields):
+        return await _get_search(authorized_search_request)
+
+
+async def _get_search(authorized_search_request: AuthorizedSearchRequest):
     start_time = time.perf_counter()
     body = sanitize_request_body(
         authorized_search_request.model_dump(exclude_none=True)

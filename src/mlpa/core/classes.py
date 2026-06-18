@@ -88,7 +88,34 @@ class PlayIntegrityTokenResponse(BaseModel):
     expires_in: int
 
 
-class AuthorizedChatRequest(ChatRequest):
+class AuthorizedRequestLogMixin:
+    """Shared structured log fields for authorized requests.
+
+    Bound into the loguru contextvar via ``logger.contextualize(**log_fields)``
+    in the proxy handlers so every log line emitted while serving the request
+    (including mid-stream errors) carries them as queryable ``record.extra.*``
+    fields, rather than concatenated into the message string.
+    """
+
+    user: str
+    service_type: str
+    purpose: str
+
+    @property
+    def log_fields(self) -> dict[str, str]:
+        # `model` only exists on chat requests, not search requests.
+        fields = {
+            "user": self.user,
+            "service_type": self.service_type,
+            "purpose": self.purpose or "-",
+        }
+        model = getattr(self, "model", None)
+        if model:
+            fields["model"] = model
+        return fields
+
+
+class AuthorizedChatRequest(ChatRequest, AuthorizedRequestLogMixin):
     user: str
     service_type: str
     purpose: str = (
@@ -101,7 +128,7 @@ class SearchRequest(BaseModel):
     max_results: int = Field(ge=1, le=10)
 
 
-class AuthorizedSearchRequest(SearchRequest):
+class AuthorizedSearchRequest(SearchRequest, AuthorizedRequestLogMixin):
     user: str
     service_type: str
     purpose: str = (

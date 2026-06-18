@@ -85,6 +85,26 @@ async def get_or_create_user_for_completion(
 async def stream_completion(
     authorized_chat_request: AuthorizedChatRequest, request: Request
 ):
+    """Bind request log fields onto the loguru contextvar, then stream.
+
+    The contextvar must be held *inside* the generator (not the route handler)
+    so it stays active while Starlette iterates the SSE body — otherwise
+    mid-stream errors would lose the fields (the streaming blind spot).
+    """
+    with logger.contextualize(**authorized_chat_request.log_fields):
+        gen = _stream_completion(authorized_chat_request, request)
+        try:
+            async for chunk in gen:
+                yield chunk
+        finally:
+            # Forward close/GeneratorExit into the inner generator so its
+            # client-disconnect handling runs while the fields are still bound.
+            await gen.aclose()
+
+
+async def _stream_completion(
+    authorized_chat_request: AuthorizedChatRequest, request: Request
+):
     """
     Proxies a streaming request to LiteLLM.
     Yields response chunks as they are received and logs metrics.
@@ -317,6 +337,12 @@ async def stream_completion(
 
 
 async def get_completion(authorized_chat_request: AuthorizedChatRequest):
+    """Bind request log fields onto the loguru contextvar, then proxy."""
+    with logger.contextualize(**authorized_chat_request.log_fields):
+        return await _get_completion(authorized_chat_request)
+
+
+async def _get_completion(authorized_chat_request: AuthorizedChatRequest):
     """
     Proxies a non-streaming request to LiteLLM.
     """
