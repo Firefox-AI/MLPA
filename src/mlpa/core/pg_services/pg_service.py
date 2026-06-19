@@ -29,12 +29,10 @@ class PGService:
 
     async def connect(self):
         try:
-            # asyncpg re-applies server_settings on every reconnect, so these
-            # are durable for the pool's lifetime. Values are ms-integer strings.
             server_settings = {
-                "statement_timeout": str(self.statement_timeout_ms),
-                "idle_in_transaction_session_timeout": str(
-                    env.PG_IDLE_IN_TX_TIMEOUT_MS
+                "statement_timeout": f"{self.statement_timeout_ms}ms",
+                "idle_in_transaction_session_timeout": (
+                    f"{env.PG_IDLE_IN_TX_TIMEOUT_MS}ms"
                 ),
                 "application_name": f"mlpa:{self.db_name}",
             }
@@ -69,16 +67,16 @@ class PGService:
         Yield a connection in a transaction with statement_timeout (and
         optionally idle_in_transaction_session_timeout / lock_timeout) set via
         SET LOCAL, scoped to the transaction so the connection reverts to the
-        pool-wide defaults on release. Timeout values are config ints, not input.
+        pool-wide defaults on release.
         """
         async with self.pool.acquire() as conn:
             async with conn.transaction():
                 await conn.execute(
-                    f"SET LOCAL statement_timeout = '{statement_timeout_ms}'"
+                    f"SET LOCAL statement_timeout = '{statement_timeout_ms}ms'"
                 )
                 if idle_in_tx_timeout_ms is not None:
                     await conn.execute(
-                        f"SET LOCAL idle_in_transaction_session_timeout = '{idle_in_tx_timeout_ms}'"
+                        f"SET LOCAL idle_in_transaction_session_timeout = '{idle_in_tx_timeout_ms}ms'"
                     )
                 if lock_timeout_ms is not None:
                     await conn.execute(
@@ -91,8 +89,14 @@ class PGService:
         """
         Raise statement_timeout for statements that legitimately exceed the
         tight pool-wide default (e.g. unindexable full-table scans).
+
+        idle_in_transaction_session_timeout is lifted to the same budget so the
+        pool-wide reaper (10s) cannot abort a transaction we deliberately granted
+        a longer statement budget if an await ever lands between its statements.
         """
-        async with self._timed_transaction(timeout_ms) as conn:
+        async with self._timed_transaction(
+            timeout_ms, idle_in_tx_timeout_ms=timeout_ms
+        ) as conn:
             yield conn
 
     @asynccontextmanager
@@ -105,7 +109,9 @@ class PGService:
         """
         lock_ms = env.MLPA_ADMISSION_LOCK_TIMEOUT_MS
         stmt_ms = lock_ms + env.PG_STATEMENT_TIMEOUT_MS
-        async with self._timed_transaction(stmt_ms, lock_timeout_ms=lock_ms) as conn:
+        async with self._timed_transaction(
+            stmt_ms, idle_in_tx_timeout_ms=stmt_ms, lock_timeout_ms=lock_ms
+        ) as conn:
             yield conn
 
     async def ping(self, timeout_s: float | None = None) -> bool:

@@ -47,9 +47,9 @@ async def test_connect_passes_timeout_server_settings(mocker):
 
     _, kwargs = create_pool.call_args
     server_settings = kwargs["server_settings"]
-    assert server_settings["statement_timeout"] == str(env.PG_STATEMENT_TIMEOUT_MS)
-    assert server_settings["idle_in_transaction_session_timeout"] == str(
-        env.PG_IDLE_IN_TX_TIMEOUT_MS
+    assert server_settings["statement_timeout"] == f"{env.PG_STATEMENT_TIMEOUT_MS}ms"
+    assert server_settings["idle_in_transaction_session_timeout"] == (
+        f"{env.PG_IDLE_IN_TX_TIMEOUT_MS}ms"
     )
     assert server_settings["application_name"] == "mlpa:some_db"
     assert kwargs["command_timeout"] == env.PG_COMMAND_TIMEOUT_S
@@ -66,7 +66,7 @@ async def test_connect_respects_per_pool_statement_timeout_override(mocker):
     await service.connect()
 
     _, kwargs = create_pool.call_args
-    assert kwargs["server_settings"]["statement_timeout"] == "1234"
+    assert kwargs["server_settings"]["statement_timeout"] == "1234ms"
 
 
 def _mock_maintenance_conn():
@@ -113,11 +113,20 @@ async def test_admission_transaction_sets_lock_and_statement_timeout(mocker):
     # statement_timeout must exceed lock_timeout so the lock wait is governed by
     # lock_timeout, not silently capped by the tight pool-wide statement_timeout.
     expected = env.MLPA_ADMISSION_LOCK_TIMEOUT_MS + env.PG_STATEMENT_TIMEOUT_MS
-    assert str(expected) in stmt_calls[0]
+    assert f"{expected}ms" in stmt_calls[0]
+    # idle-in-tx is lifted to the same budget so the pool-wide reaper cannot
+    # abort the admission transaction mid-flight.
+    idle_calls = _set_local_calls(conn, "idle_in_transaction_session_timeout")
+    assert idle_calls
+    assert f"{expected}ms" in idle_calls[0]
 
 
-async def test_statement_timeout_sets_only_statement_timeout(mocker):
-    """statement_timeout() lifts statement_timeout but not idle-in-tx (read-only helper)."""
+async def test_statement_timeout_lifts_statement_and_idle_in_tx(mocker):
+    """statement_timeout() lifts statement_timeout AND idle-in-tx to the same budget.
+
+    idle-in-tx must match so the pool-wide 10s reaper cannot abort a transaction
+    we deliberately granted a longer statement budget.
+    """
     conn = _mock_maintenance_conn()
     mocker.patch.object(PGService, "pool", new=_mock_pool(conn))
 
@@ -127,8 +136,10 @@ async def test_statement_timeout_sets_only_statement_timeout(mocker):
 
     stmt_calls = _set_local_calls(conn, "statement_timeout")
     assert stmt_calls
-    assert "15000" in stmt_calls[0]
-    assert not _set_local_calls(conn, "idle_in_transaction_session_timeout")
+    assert "15000ms" in stmt_calls[0]
+    idle_calls = _set_local_calls(conn, "idle_in_transaction_session_timeout")
+    assert idle_calls
+    assert "15000ms" in idle_calls[0]
 
 
 async def test_count_users_by_service_type_uses_admin_read_timeout(mocker):
@@ -259,3 +270,38 @@ async def test_ensure_capacity_state_raises_maintenance_timeout(mocker):
     ]
     assert set_local_calls, "expected a SET LOCAL statement_timeout in reconciliation"
     assert str(env.PG_MAINTENANCE_STATEMENT_TIMEOUT_MS) in set_local_calls[0]
+
+
+async def test_ensure_capacity_state_reconcile_failure_is_best_effort(mocker):
+    """A reconciliation failure is logged and swallowed, not raised.
+
+    The seed (singleton row) is fatal, but reconciliation is best-effort: if it
+    fails the row still exists with a stale count and admissions keep working, so
+    ensure_capacity_state must return normally rather than crash startup.
+    """
+    litellm_pg = MagicMock()
+    # The cross-pool read inside _reconcile_capacity_claims blows up.
+    litellm_pg.list_managed_base_identities = AsyncMock(
+        side_effect=RuntimeError("litellm pool unavailable")
+    )
+
+    service = AppAttestPGService(litellm_pg)
+
+    conn = _mock_maintenance_conn()
+    mocker.patch.object(PGService, "pool", new=_mock_pool(conn))
+    log_error = mocker.patch("mlpa.core.pg_services.app_attest_pg_service.logger.error")
+
+    # Must not raise despite reconciliation failing.
+    await service.ensure_capacity_state()
+
+    # The seed transaction still ran (singleton row upserted)...
+    seed_calls = [
+        call.args[0]
+        for call in conn.execute.call_args_list
+        if call.args and "INSERT INTO mlpa_user_capacity " in call.args[0]
+    ]
+    assert seed_calls, "seed must run before best-effort reconciliation"
+
+    # ...and the failure was logged rather than propagated.
+    log_error.assert_called_once()
+    assert "reconciliation failed" in log_error.call_args.args[0].lower()
