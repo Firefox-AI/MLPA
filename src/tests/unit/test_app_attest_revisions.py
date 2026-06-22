@@ -42,6 +42,15 @@ async def test_current_revisions_raise_on_connection_error():
         await svc.current_revisions()
 
 
+async def test_current_revisions_raise_when_pool_not_connected():
+    svc = _make_service(MagicMock())
+    svc.pg = None
+    svc.connected = False
+
+    with pytest.raises(ConnectionError):
+        await svc.current_revisions()
+
+
 async def test_current_revisions_raise_on_timeout():
     async def _slow(*args, **kwargs):
         await asyncio.sleep(1)

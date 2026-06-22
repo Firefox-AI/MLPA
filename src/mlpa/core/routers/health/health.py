@@ -30,7 +30,9 @@ async def get_litellm_version(client):
         return litellm_version
 
     try:
-        response = await client.get(LITELLM_INFO_URL, timeout=3)
+        response = await client.get(
+            LITELLM_INFO_URL, timeout=env.READINESS_CHECK_TIMEOUT_S
+        )
         litellm_info = response.json()
     except Exception:
         return litellm_version
@@ -79,11 +81,13 @@ async def readiness_probe():
     client = get_http_client()
 
     # Independent checks run concurrently; a failure in one must not cancel the
-    # others, so each result (including a raised exception) is reported.
-    litellm_ok, revisions, litellm_http = await asyncio.gather(
+    # others, so each result (including a raised exception) is reported. The
+    # version fetch joins the gather so it never adds a serial round-trip.
+    litellm_ok, revisions, litellm_http, version = await asyncio.gather(
         litellm_pg.ping(),
         app_attest_pg.current_revisions(),
         _fetch_litellm_readiness(client),
+        get_litellm_version(client),
         return_exceptions=True,
     )
 
@@ -108,7 +112,9 @@ async def readiness_probe():
 
     migration_ok = heads_resolved and app_attest_connected and current == expected
 
-    version = await get_litellm_version(client)
+    # get_litellm_version() swallows its own errors, but guard the gather contract.
+    if isinstance(version, Exception):
+        version = "N/A"
     litellm_ready, litellm_body = _eval_litellm(litellm_http, version)
 
     ready = (

@@ -32,9 +32,17 @@ def test_health_liveness(mocked_client_integration, httpx_mock):
     assert liveness_response.json() == {"status": "alive"}
 
 
-def test_readiness_200_when_all_healthy(mocked_client_integration, httpx_mock):
+def test_readiness_200_when_all_healthy(mocked_client_integration, httpx_mock, mocker):
     mlpa_version = importlib.metadata.version("mlpa")
     _mock_litellm_ready(httpx_mock)
+    # Pin both sides to a fixed sentinel so the match is the handler's doing, not
+    # an artifact of the mock deriving `current` from expected_heads() itself.
+    fixed = frozenset({"sentinel_head_abc123"})
+    mocker.patch("mlpa.core.routers.health.health.expected_heads", return_value=fixed)
+    mocker.patch(
+        "mlpa.core.routers.health.health.app_attest_pg.current_revisions",
+        AsyncMock(return_value=set(fixed)),
+    )
 
     response = mocked_client_integration.get("/health/readiness")
     body = response.json()
@@ -43,8 +51,10 @@ def test_readiness_200_when_all_healthy(mocked_client_integration, httpx_mock):
     assert body["status"] == "connected"
     assert body["mlpa_version"] == mlpa_version
     assert body["pg_server_dbs"] == {"postgres": "connected", "app_attest": "connected"}
-    expected = sorted(migrations.expected_heads())
-    assert body["migration"] == {"expected": expected, "current": expected}
+    assert body["migration"] == {
+        "expected": ["sentinel_head_abc123"],
+        "current": ["sentinel_head_abc123"],
+    }
     assert body["litellm"]["db"] == "connected"
     assert body["litellm"]["litellm_version"] == "1.84.4"
 

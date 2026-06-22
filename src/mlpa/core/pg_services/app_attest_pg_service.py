@@ -22,8 +22,14 @@ class AppAttestPGService(PGService):
         A connection/timeout error propagates so the caller can mark the pool
         offline — distinct from the table-absent (`set()`) case.
         """
+        # Pool not up yet (e.g. a probe racing startup): signal offline by raising,
+        # not by returning an empty set (which the caller reads as "connected").
+        if self.pg is None or not self.connected:
+            raise ConnectionError(f"/{self.db_name} pool not connected")
+        if timeout_s is None:
+            timeout_s = env.READINESS_CHECK_TIMEOUT_S
         try:
-            async with asyncio.timeout(timeout_s or env.READINESS_CHECK_TIMEOUT_S):
+            async with asyncio.timeout(timeout_s):
                 rows = await self.pool.fetch("SELECT version_num FROM alembic_version")
                 return {row["version_num"] for row in rows}
         except asyncpg.UndefinedTableError:

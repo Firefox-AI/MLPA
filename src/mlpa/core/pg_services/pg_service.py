@@ -45,8 +45,10 @@ class PGService:
         """Run a bounded live query to prove the pool can serve a request."""
         if self.pg is None or not self.connected:
             return False
+        if timeout_s is None:
+            timeout_s = env.READINESS_CHECK_TIMEOUT_S
         try:
-            async with asyncio.timeout(timeout_s or env.READINESS_CHECK_TIMEOUT_S):
+            async with asyncio.timeout(timeout_s):
                 await self.pool.fetchval("SELECT 1")
             return True
         except Exception:
