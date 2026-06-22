@@ -41,11 +41,6 @@ class PGService:
             await self.pg.close()
             self.connected = False
 
-    def check_status(self):
-        if self.pg is None or not self.connected:
-            return False
-        return not getattr(self.pg, "_closed", True)
-
     async def ping(self, timeout_s: float | None = None) -> bool:
         """Run a bounded live query to prove the pool can serve a request."""
         if self.pg is None or not self.connected:

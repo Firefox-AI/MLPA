@@ -121,9 +121,6 @@ class MockAppAttestPGService:
     async def disconnect(self):
         pass
 
-    def check_status(self):
-        return self.connected
-
     async def ping(self, timeout_s=None) -> bool:
         return self.connected
 
@@ -232,9 +229,6 @@ class MockLiteLLMPGService:
 
     async def disconnect(self):
         pass
-
-    def check_status(self):
-        return self.connected
 
     async def ping(self, timeout_s=None) -> bool:
         return self.connected
