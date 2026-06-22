@@ -124,6 +124,15 @@ class MockAppAttestPGService:
     def check_status(self):
         return self.connected
 
+    async def ping(self, timeout_s=None) -> bool:
+        return self.connected
+
+    async def current_revisions(self, timeout_s=None) -> set[str]:
+        # Default to the heads the code ships so the readiness happy path matches.
+        from mlpa.core.migrations import expected_heads
+
+        return set(expected_heads())
+
     async def store_challenge(self, key_id_b64: str, challenge: str):
         self.challenges[key_id_b64] = {
             "created_at": datetime.now(),
@@ -225,6 +234,9 @@ class MockLiteLLMPGService:
         pass
 
     def check_status(self):
+        return self.connected
+
+    async def ping(self, timeout_s=None) -> bool:
         return self.connected
 
     async def get_user(self, user_id: str):
