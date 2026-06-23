@@ -182,7 +182,6 @@ class LiteLLMPGService(PGService):
         If a budget already exists, it will be overwritten with the new values.
         Returns a list of created/updated budget records.
         """
-        budgets_created = []
         user_feature_budgets = env.user_feature_budget
 
         for service_type, budget_config in user_feature_budgets.items():

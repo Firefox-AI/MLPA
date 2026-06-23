@@ -233,7 +233,7 @@ async def search(
         AuthorizedSearchRequest, Depends(authorize_search_request)
     ],
 ):
-    if authorized_search_request.service_type != "search":
+    if authorized_search_request.service_type not in {"search", "search-dev"}:
         raise HTTPException(
             status_code=400, detail="service-type header must be of type 'search'"
         )
