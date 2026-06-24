@@ -172,21 +172,28 @@ class LiteLLMPGService(PGService):
         """
         Return True if the base identity has any cap-managed LiteLLM end-user rows.
         """
-        return bool(
-            await self.pool.fetchval(
-                """
-                SELECT EXISTS(
-                    SELECT 1
-                    FROM "LiteLLM_EndUserTable"
-                    WHERE position(':' in user_id) > 0
-                      AND split_part(user_id, ':', 1) = $1
-                      AND split_part(user_id, ':', 2) = ANY($2::text[])
+        # The split_part/position predicate is unindexable, so a no-match EXISTS
+        # scans the full end-user table and can exceed the tight pool-wide
+        # statement_timeout on a large user base (same pattern as
+        # count_users_by_service_type / list_managed_base_identities). Run under
+        # the admin-read budget so a legitimate slow scan on the LiteLLM table is
+        # not killed at 3s, which would leak a capacity claim on the release path.
+        async with self.statement_timeout(env.PG_ADMIN_READ_TIMEOUT_MS) as conn:
+            return bool(
+                await conn.fetchval(
+                    """
+                    SELECT EXISTS(
+                        SELECT 1
+                        FROM "LiteLLM_EndUserTable"
+                        WHERE position(':' in user_id) > 0
+                          AND split_part(user_id, ':', 1) = $1
+                          AND split_part(user_id, ':', 2) = ANY($2::text[])
+                    )
+                    """,
+                    base_identity,
+                    managed_service_types,
                 )
-                """,
-                base_identity,
-                managed_service_types,
             )
-        )
 
     async def create_budget(self):
         """
