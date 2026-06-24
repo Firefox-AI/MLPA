@@ -66,8 +66,7 @@ class PGService:
         """
         Yield a connection in a transaction with statement_timeout (and
         optionally idle_in_transaction_session_timeout / lock_timeout) set via
-        SET LOCAL, scoped to the transaction so the connection reverts to the
-        pool-wide defaults on release.
+        SET LOCAL, so the connection reverts to the pool defaults on release.
         """
         async with self.pool.acquire() as conn:
             async with conn.transaction():
@@ -87,12 +86,10 @@ class PGService:
     @asynccontextmanager
     async def statement_timeout(self, timeout_ms: int):
         """
-        Raise statement_timeout for statements that legitimately exceed the
-        tight pool-wide default (e.g. unindexable full-table scans).
-
-        idle_in_transaction_session_timeout is lifted to the same budget so the
-        pool-wide reaper (10s) cannot abort a transaction we deliberately granted
-        a longer statement budget if an await ever lands between its statements.
+        Raise statement_timeout for a transaction that legitimately exceeds the
+        tight pool default (e.g. unindexable full-table scans). idle-in-tx is
+        lifted to match, so the pool reaper can't abort it if an await lands
+        between statements.
         """
         async with self._timed_transaction(
             timeout_ms, idle_in_tx_timeout_ms=timeout_ms
@@ -102,10 +99,10 @@ class PGService:
     @asynccontextmanager
     async def admission_transaction(self):
         """
-        Signup-capacity admission path: a bounded lock_timeout for the FOR UPDATE
-        on the singleton capacity row, plus a statement_timeout set above it so
-        the lock wait is governed by lock_timeout rather than silently capped by
-        the pool-wide statement_timeout (Postgres counts lock-wait toward it).
+        Signup-capacity admission path. Bounds the FOR UPDATE wait on the
+        capacity row with lock_timeout, and sets statement_timeout above it so
+        the wait is governed by lock_timeout rather than the tight pool default
+        (Postgres counts lock-wait toward statement_timeout).
         """
         lock_ms = env.MLPA_ADMISSION_LOCK_TIMEOUT_MS
         stmt_ms = lock_ms + env.PG_STATEMENT_TIMEOUT_MS

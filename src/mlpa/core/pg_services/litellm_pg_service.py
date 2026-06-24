@@ -77,8 +77,7 @@ class LiteLLMPGService(PGService):
 
     async def list_users(self, limit: int = 50, offset: int = 0) -> dict:
         try:
-            # COUNT(*) + deep OFFSET scan the full table; admin-read budget
-            # rather than the tight pool-wide default.
+            # COUNT(*) + deep OFFSET full-scan the table, so use the admin-read budget.
             async with self.statement_timeout(env.PG_ADMIN_READ_TIMEOUT_MS) as conn:
                 total = await conn.fetchval(
                     'SELECT COUNT(*) FROM "LiteLLM_EndUserTable"'
@@ -109,8 +108,8 @@ class LiteLLMPGService(PGService):
         `{base_user_id}:{service_type}`.
         """
         try:
-            # GROUP BY split_part(...) is unindexable, so always a full-table
-            # scan; admin-read budget rather than the tight pool-wide default.
+            # GROUP BY split_part(...) is unindexable, so always a full scan: use
+            # the admin-read budget.
             async with self.statement_timeout(env.PG_ADMIN_READ_TIMEOUT_MS) as conn:
                 rows = await conn.fetch(
                     """
@@ -148,9 +147,8 @@ class LiteLLMPGService(PGService):
         """
         Return distinct base identities for cap-managed service types.
 
-        The DISTINCT scan over the full end-user table can exceed the tight
-        pool-wide statement_timeout on a large user base, so it runs under the
-        maintenance budget (startup reconciliation work).
+        The DISTINCT full-scan is startup reconciliation work, so it runs under
+        the maintenance budget.
         """
         async with self.statement_timeout(
             env.PG_MAINTENANCE_STATEMENT_TIMEOUT_MS
@@ -172,12 +170,9 @@ class LiteLLMPGService(PGService):
         """
         Return True if the base identity has any cap-managed LiteLLM end-user rows.
         """
-        # The split_part/position predicate is unindexable, so a no-match EXISTS
-        # scans the full end-user table and can exceed the tight pool-wide
-        # statement_timeout on a large user base (same pattern as
-        # count_users_by_service_type / list_managed_base_identities). Run under
-        # the admin-read budget so a legitimate slow scan on the LiteLLM table is
-        # not killed at 3s, which would leak a capacity claim on the release path.
+        # Unindexable predicate, so a no-match EXISTS full-scans the table. Use
+        # the admin-read budget: killing a slow scan at 3s would leak a capacity
+        # claim on the release path.
         async with self.statement_timeout(env.PG_ADMIN_READ_TIMEOUT_MS) as conn:
             return bool(
                 await conn.fetchval(
@@ -206,8 +201,8 @@ class LiteLLMPGService(PGService):
 
         for service_type, budget_config in user_feature_budgets.items():
             try:
-                # Fast single-row PK upsert: stays a plain autocommit call (it
-                # cannot realistically hit the pool-wide statement_timeout).
+                # Fast single-row PK upsert: a plain autocommit call won't hit
+                # the pool statement_timeout.
                 await self.pool.fetchrow(
                     """
                     INSERT INTO "LiteLLM_BudgetTable"

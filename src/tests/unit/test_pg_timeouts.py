@@ -110,23 +110,19 @@ async def test_admission_transaction_sets_lock_and_statement_timeout(mocker):
     assert _set_local_calls(conn, "lock_timeout")
     stmt_calls = _set_local_calls(conn, "statement_timeout")
     assert stmt_calls
-    # statement_timeout must exceed lock_timeout so the lock wait is governed by
-    # lock_timeout, not silently capped by the tight pool-wide statement_timeout.
+    # statement_timeout must exceed lock_timeout, so the lock wait is governed
+    # by lock_timeout and not capped by the tight pool default.
     expected = env.MLPA_ADMISSION_LOCK_TIMEOUT_MS + env.PG_STATEMENT_TIMEOUT_MS
     assert f"{expected}ms" in stmt_calls[0]
-    # idle-in-tx is lifted to the same budget so the pool-wide reaper cannot
-    # abort the admission transaction mid-flight.
+    # idle-in-tx is lifted to match so the reaper can't abort the transaction.
     idle_calls = _set_local_calls(conn, "idle_in_transaction_session_timeout")
     assert idle_calls
     assert f"{expected}ms" in idle_calls[0]
 
 
 async def test_statement_timeout_lifts_statement_and_idle_in_tx(mocker):
-    """statement_timeout() lifts statement_timeout AND idle-in-tx to the same budget.
-
-    idle-in-tx must match so the pool-wide 10s reaper cannot abort a transaction
-    we deliberately granted a longer statement budget.
-    """
+    """statement_timeout() lifts statement_timeout and idle-in-tx to the same
+    budget, so the pool reaper can't abort a transaction we gave a longer budget."""
     conn = _mock_maintenance_conn()
     mocker.patch.object(PGService, "pool", new=_mock_pool(conn))
 
@@ -192,12 +188,9 @@ async def test_list_managed_base_identities_uses_maintenance_timeout(mocker):
 async def test_ensure_capacity_state_reads_identities_before_reconcile_transaction(
     mocker,
 ):
-    """The cross-pool read must not be issued inside the reconcile transaction.
-
-    The session must never sit idle-in-transaction across the cross-pool await,
-    so the litellm read has to land AFTER the (self-contained) seed transaction
-    and BEFORE the destructive claim rebuild (DELETE ...).
-    """
+    """The cross-pool litellm read must land after the self-contained seed
+    transaction and before the claim rebuild (DELETE), so no session ever sits
+    idle-in-transaction across the cross-pool await."""
     order: list[str] = []
 
     litellm_pg = MagicMock()
@@ -222,15 +215,13 @@ async def test_ensure_capacity_state_reads_identities_before_reconcile_transacti
     assert order.count("read") == 1
     read_idx = order.index("read")
 
-    # The claim rebuild (DELETE) — the first statement of the reconcile
-    # transaction — must come strictly after the cross-pool read.
+    # The claim rebuild (DELETE) must come strictly after the cross-pool read.
     delete_idx = next(
         i for i, step in enumerate(order) if step.startswith("exec:DELETE")
     )
     assert read_idx < delete_idx
 
-    # The seed (INSERT/UPDATE on mlpa_user_capacity) runs in its own transaction
-    # and commits before the read, so no cross-pool await spans an open tx.
+    # The seed commits in its own transaction before the read.
     assert any(
         step.startswith("exec:INSERT INTO mlpa_user_capacity ") for step in order
     )
@@ -273,12 +264,9 @@ async def test_ensure_capacity_state_raises_maintenance_timeout(mocker):
 
 
 async def test_ensure_capacity_state_reconcile_failure_is_best_effort(mocker):
-    """A reconciliation failure is logged and swallowed, not raised.
-
-    The seed (singleton row) is fatal, but reconciliation is best-effort: if it
-    fails the row still exists with a stale count and admissions keep working, so
-    ensure_capacity_state must return normally rather than crash startup.
-    """
+    """A reconciliation failure is logged and swallowed, not raised: the seed is
+    fatal, but reconciliation is best-effort, so ensure_capacity_state must
+    return normally rather than crash startup."""
     litellm_pg = MagicMock()
     # The cross-pool read inside _reconcile_capacity_claims blows up.
     litellm_pg.list_managed_base_identities = AsyncMock(

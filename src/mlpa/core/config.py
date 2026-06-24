@@ -295,24 +295,19 @@ class Env(BaseSettings):
     PG_POOL_MAX_SIZE: int = 10
     PG_PREPARED_STMT_CACHE_MAX_SIZE: int = 100
     READINESS_CHECK_TIMEOUT_S: float = 2.0
-    # Postgres query timeouts. Server-enforced (statement_timeout) so a runaway
-    # query is killed even if the client/event loop hangs, preventing connection
-    # pile-up. Values are milliseconds; 0 = unlimited (Postgres semantics).
+    # Server-enforced query timeout (ms, 0 = unlimited): kills a runaway query
+    # even if the client or event loop hangs, so connections don't pile up.
     PG_STATEMENT_TIMEOUT_MS: int = 3000
-    # Reaps transactions left idle between statements (releases held locks).
-    # Should be >= statement_timeout since a tx legitimately spans round-trips.
+    # Reaps sessions left idle mid-transaction (releasing their locks). Keep this
+    # >= statement_timeout, since a transaction can legitimately span round-trips.
     PG_IDLE_IN_TX_TIMEOUT_MS: int = 10000
-    # Raised budget for heavy startup work (capacity reconciliation), applied
-    # per-transaction via SET LOCAL. 0 = unlimited.
+    # Raised budget for heavy startup reconciliation, applied per-transaction via SET LOCAL.
     PG_MAINTENANCE_STATEMENT_TIMEOUT_MS: int = 30000
-    # Raised budget for client-facing admin reads that do unindexable full-table
-    # scans (user listing, counts-by-service-type). 0 = unlimited.
+    # Raised budget for admin reads that full-scan the user table (listing, counts).
     PG_ADMIN_READ_TIMEOUT_MS: int = 15000
-    # Optional asyncpg client-side backstop (seconds). None = disabled.
-    # WARNING: this is a pool-level client-side cancel that is NOT relaxed by the
-    # per-transaction SET LOCAL statement_timeout. If enabled, set it above the
-    # largest per-statement budget (PG_MAINTENANCE_STATEMENT_TIMEOUT_MS), or it
-    # will silently cancel the maintenance/admin-read queries.
+    # Optional asyncpg client-side timeout (seconds, None = off). Unlike the SET
+    # LOCAL budgets above, this one isn't relaxed by them, so keep it above
+    # PG_MAINTENANCE_STATEMENT_TIMEOUT_MS or it'll cancel those queries.
     PG_COMMAND_TIMEOUT_S: float | None = None
 
     # LLM request default values

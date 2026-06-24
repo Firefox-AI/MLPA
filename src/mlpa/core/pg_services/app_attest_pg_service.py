@@ -104,12 +104,10 @@ class AppAttestPGService(PGService):
         """
         Seed the singleton capacity row, then reconcile the claim table.
 
-        The seed is critical and fatal on failure: without the row every
-        admission 500s, so a failure should crash startup rather than serve
-        broken. Reconciliation is best-effort (see _reconcile_capacity_claims):
-        if it fails the row still exists with a stale count and admissions work.
+        The seed is fatal on failure: without the row every admission 500s, so we
+        let it crash startup. Reconciliation is best-effort — if it fails the row
+        still holds a stale count and admissions keep working.
         """
-        # Seed the singleton row (fatal on failure).
         async with self.pool.acquire() as conn:
             async with conn.transaction():
                 await conn.execute(
@@ -130,7 +128,6 @@ class AppAttestPGService(PGService):
                     env.MLPA_MAX_SIGNED_IN_USERS,
                 )
 
-        # Reconcile the claim table (best-effort).
         try:
             await self._reconcile_capacity_claims()
         except Exception as e:
@@ -143,16 +140,15 @@ class AppAttestPGService(PGService):
         """Rebuild the claim table from LiteLLM and refresh current_identities."""
         managed_service_types = list(env.MLPA_CAPPED_SERVICE_TYPES)
 
-        # Read from the litellm pool before opening the app_attest transaction:
-        # doing it inside would leave the session idle-in-transaction across a
+        # Read the litellm pool before opening the app_attest transaction: doing
+        # it inside would leave the session idle-in-transaction across the
         # cross-pool await, where idle_in_transaction_session_timeout could reap it.
         base_identities = await self.litellm_pg.list_managed_base_identities(
             managed_service_types
         )
 
-        # Bulk delete + insert scales with the user base and can exceed the tight
-        # pool-wide statement_timeout. Statements run back-to-back (no inter-
-        # statement await), so the raised statement_timeout alone suffices.
+        # The bulk delete + insert grows with the user base, so run it under the
+        # raised maintenance budget rather than the tight pool default.
         async with self.statement_timeout(
             env.PG_MAINTENANCE_STATEMENT_TIMEOUT_MS
         ) as conn:
@@ -258,10 +254,9 @@ class AppAttestPGService(PGService):
 
         managed_service_types = list(env.MLPA_CAPPED_SERVICE_TYPES)
 
-        # Read the litellm state before opening the app_attest transaction: doing
-        # it inside would hold the FOR UPDATE lock idle-in-transaction across a
-        # cross-pool await, where idle_in_transaction_session_timeout could reap
-        # it and abort the release, leaking the claim (mirrors ensure_capacity_state).
+        # Read the litellm state before opening the app_attest transaction (same
+        # cross-pool idle-in-transaction risk as ensure_capacity_state); reaping
+        # the session here would abort the release and leak the claim.
         has_managed_user_rows = await self.litellm_pg.has_managed_user_rows(
             base_identity,
             managed_service_types,
