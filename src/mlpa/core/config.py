@@ -36,6 +36,9 @@ class Env(BaseSettings):
     LITELLM_API_BASE: str = "http://localhost:4000"
     CHALLENGE_EXPIRY_SECONDS: int = 300  # 5 minutes
 
+    # Search allowed service types
+    SEARCH_ALLOWED_SERVICE_TYPES: set[str] = {"search", "search-dev"}
+
     # User Feature Budget - AI service type
     USER_FEATURE_BUDGET_AI_BUDGET_ID: str = "end-user-budget-ai"
     USER_FEATURE_BUDGET_AI_MAX_BUDGET: float = 0.1
@@ -64,6 +67,18 @@ class Env(BaseSettings):
     USER_FEATURE_BUDGET_MEMORIES_TPM_LIMIT: int = 2000
     USER_FEATURE_BUDGET_MEMORIES_BUDGET_DURATION: str = "1d"
 
+    USER_FEATURE_BUDGET_SEARCH_BUDGET_ID: str = "end-user-budget-search"
+    USER_FEATURE_BUDGET_SEARCH_MAX_BUDGET: float = 0.1
+    USER_FEATURE_BUDGET_SEARCH_RPM_LIMIT: int = 10
+    USER_FEATURE_BUDGET_SEARCH_TPM_LIMIT: int = 2000
+    USER_FEATURE_BUDGET_SEARCH_BUDGET_DURATION: str = "1d"
+
+    USER_FEATURE_BUDGET_TELEMETRY_BUDGET_ID: str = "end-user-budget-telemetry"
+    USER_FEATURE_BUDGET_TELEMETRY_MAX_BUDGET: float = 0.1
+    USER_FEATURE_BUDGET_TELEMETRY_RPM_LIMIT: int = 10
+    USER_FEATURE_BUDGET_TELEMETRY_TPM_LIMIT: int = 2000
+    USER_FEATURE_BUDGET_TELEMETRY_BUDGET_DURATION: str = "1d"
+
     # User Feature Budget - ai-dev service type (experimentation, batch predictions)
     USER_FEATURE_BUDGET_AI_DEV_BUDGET_ID: str = "end-user-budget-ai-dev"
     USER_FEATURE_BUDGET_AI_DEV_MAX_BUDGET: float = 1.0
@@ -84,17 +99,11 @@ class Env(BaseSettings):
     USER_FEATURE_BUDGET_MOCHI_DEV_TPM_LIMIT: int = 10000
     USER_FEATURE_BUDGET_MOCHI_DEV_BUDGET_DURATION: str = "1d"
 
-    USER_FEATURE_BUDGET_SEARCH_BUDGET_ID: str = "end-user-budget-search"
-    USER_FEATURE_BUDGET_SEARCH_MAX_BUDGET: float = 0.1
-    USER_FEATURE_BUDGET_SEARCH_RPM_LIMIT: int = 10
-    USER_FEATURE_BUDGET_SEARCH_TPM_LIMIT: int = 2000
-    USER_FEATURE_BUDGET_SEARCH_BUDGET_DURATION: str = "1d"
-
-    USER_FEATURE_BUDGET_TELEMETRY_BUDGET_ID: str = "end-user-budget-telemetry"
-    USER_FEATURE_BUDGET_TELEMETRY_MAX_BUDGET: float = 0.1
-    USER_FEATURE_BUDGET_TELEMETRY_RPM_LIMIT: int = 10
-    USER_FEATURE_BUDGET_TELEMETRY_TPM_LIMIT: int = 2000
-    USER_FEATURE_BUDGET_TELEMETRY_BUDGET_DURATION: str = "1d"
+    USER_FEATURE_BUDGET_SEARCH_DEV_BUDGET_ID: str = "end-user-budget-search-dev"
+    USER_FEATURE_BUDGET_SEARCH_DEV_MAX_BUDGET: float = 1.0
+    USER_FEATURE_BUDGET_SEARCH_DEV_RPM_LIMIT: int = 200
+    USER_FEATURE_BUDGET_SEARCH_DEV_TPM_LIMIT: int = 10000
+    USER_FEATURE_BUDGET_SEARCH_DEV_BUDGET_DURATION: str = "1d"
 
     @cached_property
     def user_feature_budget(self) -> dict[str, dict]:
@@ -132,6 +141,20 @@ class Env(BaseSettings):
                 "tpm_limit": self.USER_FEATURE_BUDGET_MEMORIES_TPM_LIMIT,
                 "budget_duration": self.USER_FEATURE_BUDGET_MEMORIES_BUDGET_DURATION,
             },
+            "search": {
+                "budget_id": self.USER_FEATURE_BUDGET_SEARCH_BUDGET_ID,
+                "max_budget": self.USER_FEATURE_BUDGET_SEARCH_MAX_BUDGET,
+                "rpm_limit": self.USER_FEATURE_BUDGET_SEARCH_RPM_LIMIT,
+                "tpm_limit": self.USER_FEATURE_BUDGET_SEARCH_TPM_LIMIT,
+                "budget_duration": self.USER_FEATURE_BUDGET_SEARCH_BUDGET_DURATION,
+            },
+            "telemetry": {
+                "budget_id": self.USER_FEATURE_BUDGET_TELEMETRY_BUDGET_ID,
+                "max_budget": self.USER_FEATURE_BUDGET_TELEMETRY_MAX_BUDGET,
+                "rpm_limit": self.USER_FEATURE_BUDGET_TELEMETRY_RPM_LIMIT,
+                "tpm_limit": self.USER_FEATURE_BUDGET_TELEMETRY_TPM_LIMIT,
+                "budget_duration": self.USER_FEATURE_BUDGET_TELEMETRY_BUDGET_DURATION,
+            },
             "ai-dev": {
                 "budget_id": self.USER_FEATURE_BUDGET_AI_DEV_BUDGET_ID,
                 "max_budget": self.USER_FEATURE_BUDGET_AI_DEV_MAX_BUDGET,
@@ -153,19 +176,12 @@ class Env(BaseSettings):
                 "tpm_limit": self.USER_FEATURE_BUDGET_MOCHI_DEV_TPM_LIMIT,
                 "budget_duration": self.USER_FEATURE_BUDGET_MOCHI_DEV_BUDGET_DURATION,
             },
-            "search": {
-                "budget_id": self.USER_FEATURE_BUDGET_SEARCH_BUDGET_ID,
-                "max_budget": self.USER_FEATURE_BUDGET_SEARCH_MAX_BUDGET,
-                "rpm_limit": self.USER_FEATURE_BUDGET_SEARCH_RPM_LIMIT,
-                "tpm_limit": self.USER_FEATURE_BUDGET_SEARCH_TPM_LIMIT,
-                "budget_duration": self.USER_FEATURE_BUDGET_SEARCH_BUDGET_DURATION,
-            },
-            "telemetry": {
-                "budget_id": self.USER_FEATURE_BUDGET_TELEMETRY_BUDGET_ID,
-                "max_budget": self.USER_FEATURE_BUDGET_TELEMETRY_MAX_BUDGET,
-                "rpm_limit": self.USER_FEATURE_BUDGET_TELEMETRY_RPM_LIMIT,
-                "tpm_limit": self.USER_FEATURE_BUDGET_TELEMETRY_TPM_LIMIT,
-                "budget_duration": self.USER_FEATURE_BUDGET_TELEMETRY_BUDGET_DURATION,
+            "search-dev": {
+                "budget_id": self.USER_FEATURE_BUDGET_SEARCH_DEV_BUDGET_ID,
+                "max_budget": self.USER_FEATURE_BUDGET_SEARCH_DEV_MAX_BUDGET,
+                "rpm_limit": self.USER_FEATURE_BUDGET_SEARCH_DEV_RPM_LIMIT,
+                "tpm_limit": self.USER_FEATURE_BUDGET_SEARCH_DEV_TPM_LIMIT,
+                "budget_duration": self.USER_FEATURE_BUDGET_SEARCH_DEV_BUDGET_DURATION,
             },
         }
 
@@ -197,6 +213,7 @@ class Env(BaseSettings):
             "s2s": [],
             "s2s-android": [],
             "search": [],
+            "search-dev": [],
             "telemetry": telemetry_purposes,
         }
 
@@ -214,7 +231,7 @@ class Env(BaseSettings):
         Returns a dictionary mapping model names to their valid service types.
         """
         # Force certain models to use certain service types
-        return {"exa": ["search"]}
+        return {"exa": ["search", "search-dev"]}
 
     def valid_service_type_for_model(self, service_type: str, model: str) -> bool:
         """Check if a service type is valid for a specific model."""

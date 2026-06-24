@@ -98,12 +98,13 @@ def test_valid_service_types_all_service_types():
     assert "s2s" in service_types
     assert "s2s-android" in service_types
     assert "memories" in service_types
+    assert "search" in service_types
+    assert "telemetry" in service_types
     assert "ai-dev" in service_types
     assert "memories-dev" in service_types
     assert "mochi-dev" in service_types
-    assert "search" in service_types
-    assert "telemetry" in service_types
-    assert len(service_types) == 9
+    assert "search-dev" in service_types
+    assert len(service_types) == 10
 
 
 def test_service_type_purposes():
@@ -112,11 +113,11 @@ def test_service_type_purposes():
     purposes = env.service_type_purposes
     ai_purposes = ["chat", "title-generation", "convo-starters-sidebar"]
     assert purposes["ai"] == ai_purposes
+    assert purposes["memories"] == ["memory-generation"]
+    assert purposes["telemetry"] == ["chat"]
     assert purposes["ai-dev"] == ai_purposes
     assert purposes["mochi-dev"] == ai_purposes
-    assert purposes["memories"] == ["memory-generation"]
     assert purposes["memories-dev"] == ["memory-generation"]
-    assert purposes["telemetry"] == ["chat"]
 
 
 def test_service_type_purposes_s2s_empty():
@@ -126,20 +127,22 @@ def test_service_type_purposes_s2s_empty():
     assert purposes["s2s"] == []
     assert purposes["s2s-android"] == []
     assert purposes["search"] == []
+    assert purposes["search-dev"] == []
 
 
 def test_service_type_requires_purpose():
     """Test that purpose is required only for service types with configured allowlists."""
     env = Env()
     assert env.service_type_requires_purpose("ai") is True
-    assert env.service_type_requires_purpose("ai-dev") is True
-    assert env.service_type_requires_purpose("mochi-dev") is True
     assert env.service_type_requires_purpose("memories") is True
-    assert env.service_type_requires_purpose("memories-dev") is True
     assert env.service_type_requires_purpose("s2s") is False
     assert env.service_type_requires_purpose("s2s-android") is False
     assert env.service_type_requires_purpose("search") is False
     assert env.service_type_requires_purpose("telemetry") is True
+    assert env.service_type_requires_purpose("ai-dev") is True
+    assert env.service_type_requires_purpose("mochi-dev") is True
+    assert env.service_type_requires_purpose("memories-dev") is True
+    assert env.service_type_requires_purpose("search-dev") is False
 
 
 def test_valid_purposes_for_service_type():
@@ -170,11 +173,12 @@ def test_user_feature_budget_structure_consistency():
         "s2s",
         "s2s-android",
         "memories",
+        "search",
+        "telemetry",
         "ai-dev",
         "memories-dev",
         "mochi-dev",
-        "search",
-        "telemetry",
+        "search-dev",
     ]:
         assert service_type in budgets
         service_keys = set(budgets[service_type].keys())
@@ -199,7 +203,7 @@ def test_forced_model_service_type_pairs_defaults():
     """Test that forced model/service-type mappings include search-only models."""
     env = Env()
 
-    assert env.forced_model_service_type_pairs == {"exa": ["search"]}
+    assert env.forced_model_service_type_pairs == {"exa": ["search", "search-dev"]}
 
 
 def test_valid_service_type_for_model_forced_pair():
@@ -207,6 +211,7 @@ def test_valid_service_type_for_model_forced_pair():
     env = Env()
 
     assert env.valid_service_type_for_model("search", "exa") is True
+    assert env.valid_service_type_for_model("search-dev", "exa") is True
     assert env.valid_service_type_for_model("ai", "exa") is False
 
 
