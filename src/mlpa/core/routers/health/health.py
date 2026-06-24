@@ -57,9 +57,8 @@ async def _fetch_litellm_readiness(client):
 def _eval_litellm(litellm_http, version) -> tuple[bool, dict]:
     """Map the LiteLLM readiness result to (ready, sub-body).
 
-    Ready only when the HTTP status is 200, db is connected, and the top-level
-    status is a known-healthy string. A live-but-not-ready LiteLLM is not enough
-    to serve MLPA traffic.
+    Only ready on a 200 with db connected and a healthy top-level status. A
+    LiteLLM that is up but not ready can't serve MLPA traffic.
     """
     unreachable = {"litellm_version": version, "status": "unreachable"}
     if isinstance(litellm_http, Exception) or litellm_http.status_code != 200:
@@ -80,9 +79,9 @@ def _eval_litellm(litellm_http, version) -> tuple[bool, dict]:
 async def readiness_probe():
     client = get_http_client()
 
-    # Independent checks run concurrently; a failure in one must not cancel the
-    # others, so each result (including a raised exception) is reported. The
-    # version fetch joins the gather so it never adds a serial round-trip.
+    # Run the checks concurrently. return_exceptions keeps one failure from
+    # cancelling the rest, and folding the version fetch in here avoids a
+    # separate serial round-trip.
     litellm_ok, revisions, litellm_http, version = await asyncio.gather(
         litellm_pg.ping(),
         app_attest_pg.current_revisions(),
@@ -91,15 +90,14 @@ async def readiness_probe():
         return_exceptions=True,
     )
 
-    # litellm pool — ping() never raises, but guard the gather contract anyway.
+    # ping() never raises, but gather could still hand back an exception.
     postgres_connected = litellm_ok is True
 
-    # app_attest pool liveness is the revision read: a returned set ⇒ connected,
-    # a raised connection/timeout ⇒ offline.
+    # The revision read doubles as the app_attest liveness check: a set means
+    # connected, an exception means offline.
     app_attest_connected = isinstance(revisions, (set, frozenset))
     current = set(revisions) if app_attest_connected else set()
 
-    # Expected heads from the files the code ships; resolution failure ⇒ not ready.
     try:
         expected = set(expected_heads())
         heads_resolved = True
@@ -112,7 +110,7 @@ async def readiness_probe():
 
     migration_ok = heads_resolved and app_attest_connected and current == expected
 
-    # get_litellm_version() swallows its own errors, but guard the gather contract.
+    # get_litellm_version() handles its own errors, but gather could still return one.
     if isinstance(version, Exception):
         version = "N/A"
     litellm_ready, litellm_body = _eval_litellm(litellm_http, version)

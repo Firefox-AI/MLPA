@@ -17,13 +17,14 @@ class AppAttestPGService(PGService):
     async def current_revisions(self, timeout_s: float | None = None) -> set[str]:
         """Alembic revisions currently applied on the app_attest database.
 
-        Doubles as the app_attest pool liveness check: a returned set (including
-        an empty set for a never-migrated DB) proves the pool answered a query.
-        A connection/timeout error propagates so the caller can mark the pool
-        offline — distinct from the table-absent (`set()`) case.
+        This also serves as the pool liveness check. Any returned set means the
+        pool answered a query, including an empty set when the DB was never
+        migrated. A connection or timeout error propagates instead, so the caller
+        can tell that case apart from the missing-table case and mark the pool
+        offline.
         """
-        # Pool not up yet (e.g. a probe racing startup): signal offline by raising,
-        # not by returning an empty set (which the caller reads as "connected").
+        # Pool not up yet (e.g. a probe firing during startup). Raise so the caller
+        # marks it offline; an empty set would read as "connected".
         if self.pg is None or not self.connected:
             raise ConnectionError(f"/{self.db_name} pool not connected")
         if timeout_s is None:
