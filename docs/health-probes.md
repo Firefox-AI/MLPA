@@ -34,8 +34,7 @@ Readiness runs the real checks. The pod is ready only when all of them pass:
 | Check | What it does | How "not ready" looks |
 |-------|--------------|-----------------------|
 | litellm PG pool | `SELECT 1` against the litellm DB | `pg_server_dbs.postgres: offline` |
-| app_attest PG pool | reads the applied Alembic revision | `pg_server_dbs.app_attest: offline` |
-| migrations | applied revisions match the heads the code ships | `migration.current` != `migration.expected` |
+| app_attest PG pool | `SELECT 1` against the app_attest DB | `pg_server_dbs.app_attest: offline` |
 | LiteLLM | calls LiteLLM `/health/readiness`, expects db connected + healthy status | `litellm.status: unreachable` (or not healthy) |
 
 The checks run concurrently, so a slow one doesn't add to the others. A failed
@@ -60,10 +59,6 @@ and traffic comes back on its own.
     "postgres": "connected",
     "app_attest": "connected"
   },
-  "migration": {
-    "expected": ["a1b2c3d4e5f6"],
-    "current": ["a1b2c3d4e5f6"]
-  },
   "litellm": {
     "litellm_version": "1.40.0",
     "status": "connected",
@@ -72,11 +67,10 @@ and traffic comes back on its own.
 }
 ```
 
-### Degraded response (migrations behind)
+### Degraded response (LiteLLM down)
 
-The DB is up, but the pod runs code that expects a newer migration than what's
-applied. The pod could try to write rows the schema doesn't support yet, so it's
-not ready.
+The databases are reachable, but LiteLLM isn't answering, so MLPA can't proxy
+completions. The checks are independent, so the body shows exactly which one failed.
 
 ```json
 {
@@ -86,34 +80,12 @@ not ready.
     "postgres": "connected",
     "app_attest": "connected"
   },
-  "migration": {
-    "expected": ["b2c3d4e5f6a7"],
-    "current": ["a1b2c3d4e5f6"]
-  },
   "litellm": {
     "litellm_version": "1.40.0",
-    "status": "connected",
-    "db": "connected"
+    "status": "unreachable"
   }
 }
 ```
-
-## The migration check
-
-`migration.expected` is the Alembic head(s) baked into the running image, read from
-the `alembic/` files. `migration.current` is what's applied on the app_attest DB.
-If they don't match, the pod isn't ready.
-
-Two cases:
-
-- new code deployed before the migration ran -> `current` is behind `expected`
-- old pod still running after a migration -> `current` is ahead of `expected`
-
-Either way the pod and the schema disagree, so it stays out of rotation until they
-match.
-
-A fresh DB that was never migrated reads as `current: []`, which matches no real
-head, so it also shows as not ready until you run the migrations.
 
 ## Timeouts
 

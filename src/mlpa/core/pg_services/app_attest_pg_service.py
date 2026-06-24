@@ -1,6 +1,3 @@
-import asyncio
-
-import asyncpg
 from fastapi import HTTPException
 
 from mlpa.core.config import env
@@ -13,28 +10,6 @@ class AppAttestPGService(PGService):
     def __init__(self, litellm_pg: LiteLLMPGService):
         super().__init__(env.APP_ATTEST_DB_NAME)
         self.litellm_pg = litellm_pg
-
-    async def current_revisions(self, timeout_s: float | None = None) -> set[str]:
-        """Alembic revisions currently applied on the app_attest database.
-
-        This also serves as the pool liveness check. Any returned set means the
-        pool answered a query, including an empty set when the DB was never
-        migrated. A connection or timeout error propagates instead, so the caller
-        can tell that case apart from the missing-table case and mark the pool
-        offline.
-        """
-        # Pool not up yet (e.g. a probe firing during startup). Raise so the caller
-        # marks it offline; an empty set would read as "connected".
-        if self.pg is None or not self.connected:
-            raise ConnectionError(f"/{self.db_name} pool not connected")
-        if timeout_s is None:
-            timeout_s = env.READINESS_CHECK_TIMEOUT_S
-        try:
-            async with asyncio.timeout(timeout_s):
-                rows = await self.pool.fetch("SELECT version_num FROM alembic_version")
-                return {row["version_num"] for row in rows}
-        except asyncpg.UndefinedTableError:
-            return set()  # never migrated
 
     # Challenges #
     async def store_challenge(self, key_id_b64: str, challenge: str):

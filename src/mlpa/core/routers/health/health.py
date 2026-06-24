@@ -11,8 +11,6 @@ from mlpa.core.config import (
     env,
 )
 from mlpa.core.http_client import get_http_client
-from mlpa.core.logger import logger
-from mlpa.core.migrations import expected_heads
 from mlpa.core.pg_services.services import app_attest_pg, litellm_pg
 
 mlpa_version = importlib.metadata.version("mlpa")
@@ -82,9 +80,9 @@ async def readiness_probe():
     # Run the checks concurrently. return_exceptions keeps one failure from
     # cancelling the rest, and folding the version fetch in here avoids a
     # separate serial round-trip.
-    litellm_ok, revisions, litellm_http, version = await asyncio.gather(
+    litellm_ok, app_attest_ok, litellm_http, version = await asyncio.gather(
         litellm_pg.ping(),
-        app_attest_pg.current_revisions(),
+        app_attest_pg.ping(),
         _fetch_litellm_readiness(client),
         get_litellm_version(client),
         return_exceptions=True,
@@ -92,32 +90,14 @@ async def readiness_probe():
 
     # ping() never raises, but gather could still hand back an exception.
     postgres_connected = litellm_ok is True
-
-    # The revision read doubles as the app_attest liveness check: a set means
-    # connected, an exception means offline.
-    app_attest_connected = isinstance(revisions, (set, frozenset))
-    current = set(revisions) if app_attest_connected else set()
-
-    try:
-        expected = set(expected_heads())
-        heads_resolved = True
-    except Exception:
-        logger.error(
-            "readiness: could not resolve expected Alembic heads", exc_info=True
-        )
-        expected = set()
-        heads_resolved = False
-
-    migration_ok = heads_resolved and app_attest_connected and current == expected
+    app_attest_connected = app_attest_ok is True
 
     # get_litellm_version() handles its own errors, but gather could still return one.
     if isinstance(version, Exception):
         version = "N/A"
     litellm_ready, litellm_body = _eval_litellm(litellm_http, version)
 
-    ready = (
-        postgres_connected and app_attest_connected and migration_ok and litellm_ready
-    )
+    ready = postgres_connected and app_attest_connected and litellm_ready
 
     body = {
         "status": "connected" if ready else "degraded",
@@ -125,10 +105,6 @@ async def readiness_probe():
         "pg_server_dbs": {
             "postgres": "connected" if postgres_connected else "offline",
             "app_attest": "connected" if app_attest_connected else "offline",
-        },
-        "migration": {
-            "expected": sorted(expected),
-            "current": sorted(current),
         },
         "litellm": litellm_body,
     }
