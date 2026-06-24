@@ -294,6 +294,7 @@ class Env(BaseSettings):
     PG_POOL_MIN_SIZE: int = 1
     PG_POOL_MAX_SIZE: int = 10
     PG_PREPARED_STMT_CACHE_MAX_SIZE: int = 100
+    READINESS_CHECK_TIMEOUT_S: float = 2.0
 
     # LLM request default values
     TEMPERATURE: float = 0.1

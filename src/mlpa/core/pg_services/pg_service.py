@@ -1,3 +1,4 @@
+import asyncio
 import sys
 from typing import cast
 
@@ -40,7 +41,19 @@ class PGService:
             await self.pg.close()
             self.connected = False
 
-    def check_status(self):
+    async def ping(self, timeout_s: float | None = None) -> bool:
+        """Run a bounded live query to prove the pool can serve a request."""
         if self.pg is None or not self.connected:
             return False
-        return not getattr(self.pg, "_closed", True)
+        if timeout_s is None:
+            timeout_s = env.READINESS_CHECK_TIMEOUT_S
+        try:
+            async with asyncio.timeout(timeout_s):
+                await self.pool.fetchval("SELECT 1")
+            return True
+        except Exception:
+            logger.warning(f"readiness ping failed for /{self.db_name}")
+            logger.debug(
+                f"readiness ping failure details for /{self.db_name}", exc_info=True
+            )
+            return False

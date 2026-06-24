@@ -121,7 +121,7 @@ class MockAppAttestPGService:
     async def disconnect(self):
         pass
 
-    def check_status(self):
+    async def ping(self, timeout_s=None) -> bool:
         return self.connected
 
     async def store_challenge(self, key_id_b64: str, challenge: str):
@@ -224,7 +224,7 @@ class MockLiteLLMPGService:
     async def disconnect(self):
         pass
 
-    def check_status(self):
+    async def ping(self, timeout_s=None) -> bool:
         return self.connected
 
     async def get_user(self, user_id: str):
