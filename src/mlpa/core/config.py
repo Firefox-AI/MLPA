@@ -36,6 +36,9 @@ class Env(BaseSettings):
     LITELLM_API_BASE: str = "http://localhost:4000"
     CHALLENGE_EXPIRY_SECONDS: int = 300  # 5 minutes
 
+    # Search allowed service types
+    SEARCH_ALLOWED_SERVICE_TYPES: set[str] = {"search", "search-dev"}
+
     # User Feature Budget - AI service type
     USER_FEATURE_BUDGET_AI_BUDGET_ID: str = "end-user-budget-ai"
     USER_FEATURE_BUDGET_AI_MAX_BUDGET: float = 0.1
