@@ -245,6 +245,11 @@ def raise_and_log(
     HTTPException with the chosen status code and a sanitized error message.
     If the upstream error body contains a nested error message, it is extracted
     so clients receive the actual upstream detail in debug mode. (dev environment only)
+
+    Request-identifying fields (user / service_type / model / purpose) are not
+    passed here; they are bound on the loguru contextvar by the proxy handler
+    (``logger.contextualize(**req.log_fields)``) so they ride along in
+    ``record.extra`` automatically.
     """
     response = getattr(e, "response", None)
     error_text = response.text if response is not None else ""
@@ -264,7 +269,16 @@ def raise_and_log(
         except (json.JSONDecodeError, AttributeError, TypeError):
             pass
     status_code = response_code or getattr(response, "status_code", None) or 500
-    logger.error(f"{response_text_prefix or GENERIC_UPSTREAM_ERROR}: {detail_text}")
+    # Transport errors (httpx ConnectError / RemoteProtocolError / ReadError /
+    # timeouts) carry no `.response` and frequently stringify to "", which is
+    # why these logs used to read "Failed to proxy request: " with no detail.
+    # Fall back to the exception class name + repr, and attach the traceback
+    # (logger.opt(exception=...)) so jsonPayload.record.exception is populated.
+    exc_type = type(e).__name__
+    logged_detail = detail_text or repr(e)
+    logger.opt(exception=e).error(
+        f"{response_text_prefix or GENERIC_UPSTREAM_ERROR}: {exc_type}: {logged_detail}"
+    )
     if stream:
         error_msg = detail_text if env.MLPA_DEBUG else GENERIC_UPSTREAM_ERROR
         payload = {"code": status_code, "error": error_msg}

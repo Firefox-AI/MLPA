@@ -129,8 +129,13 @@ def _enable_httpx_logging():
             )
             try:
                 response = await original(self, *args, **kwargs)
-            except Exception:
-                logger.error(f"HTTPX {method_name.upper()=} request failed for {url=}")
+            except Exception as exc:
+                # Include the exception type + repr: transport failures often
+                # have an empty str(), so the bare URL alone was undiagnosable.
+                logger.error(
+                    f"HTTPX {method_name.upper()=} request failed for {url=}: "
+                    f"{type(exc).__name__}: {exc!r}"
+                )
                 raise
             logger.debug(
                 f"HTTPX {method_name.upper()} response <- {url=} {response.status_code=}",
