@@ -77,14 +77,16 @@ class LiteLLMPGService(PGService):
 
     async def list_users(self, limit: int = 50, offset: int = 0) -> dict:
         try:
-            total = await self.pool.fetchval(
-                'SELECT COUNT(*) FROM "LiteLLM_EndUserTable"'
-            )
-            users = await self.pool.fetch(
-                'SELECT * FROM "LiteLLM_EndUserTable" ORDER BY user_id LIMIT $1 OFFSET $2',
-                limit,
-                offset,
-            )
+            # COUNT(*) + deep OFFSET full-scan the table, so use the admin-read budget.
+            async with self.statement_timeout(env.PG_ADMIN_READ_TIMEOUT_MS) as conn:
+                total = await conn.fetchval(
+                    'SELECT COUNT(*) FROM "LiteLLM_EndUserTable"'
+                )
+                users = await conn.fetch(
+                    'SELECT * FROM "LiteLLM_EndUserTable" ORDER BY user_id LIMIT $1 OFFSET $2',
+                    limit,
+                    offset,
+                )
 
             return {
                 "users": [dict(user) for user in users],
@@ -106,16 +108,19 @@ class LiteLLMPGService(PGService):
         `{base_user_id}:{service_type}`.
         """
         try:
-            rows = await self.pool.fetch(
-                """
-                SELECT
-                    split_part(user_id, ':', 2) AS service_type,
-                    COUNT(*)::int AS total_users
-                FROM "LiteLLM_EndUserTable"
-                WHERE position(':' in user_id) > 0
-                GROUP BY service_type
-                """
-            )
+            # GROUP BY split_part(...) is unindexable, so always a full scan: use
+            # the admin-read budget.
+            async with self.statement_timeout(env.PG_ADMIN_READ_TIMEOUT_MS) as conn:
+                rows = await conn.fetch(
+                    """
+                    SELECT
+                        split_part(user_id, ':', 2) AS service_type,
+                        COUNT(*)::int AS total_users
+                    FROM "LiteLLM_EndUserTable"
+                    WHERE position(':' in user_id) > 0
+                    GROUP BY service_type
+                    """
+                )
 
             service_type_counts: dict[str, int] = {}
             for row in rows:
@@ -141,16 +146,22 @@ class LiteLLMPGService(PGService):
     ) -> list[str]:
         """
         Return distinct base identities for cap-managed service types.
+
+        The DISTINCT full-scan is startup reconciliation work, so it runs under
+        the maintenance budget.
         """
-        rows = await self.pool.fetch(
-            """
-            SELECT DISTINCT split_part(user_id, ':', 1) AS base_identity
-            FROM "LiteLLM_EndUserTable"
-            WHERE position(':' in user_id) > 0
-              AND split_part(user_id, ':', 2) = ANY($1::text[])
-            """,
-            managed_service_types,
-        )
+        async with self.statement_timeout(
+            env.PG_MAINTENANCE_STATEMENT_TIMEOUT_MS
+        ) as conn:
+            rows = await conn.fetch(
+                """
+                SELECT DISTINCT split_part(user_id, ':', 1) AS base_identity
+                FROM "LiteLLM_EndUserTable"
+                WHERE position(':' in user_id) > 0
+                  AND split_part(user_id, ':', 2) = ANY($1::text[])
+                """,
+                managed_service_types,
+            )
         return [row["base_identity"] for row in rows if row.get("base_identity")]
 
     async def has_managed_user_rows(
@@ -159,21 +170,25 @@ class LiteLLMPGService(PGService):
         """
         Return True if the base identity has any cap-managed LiteLLM end-user rows.
         """
-        return bool(
-            await self.pool.fetchval(
-                """
-                SELECT EXISTS(
-                    SELECT 1
-                    FROM "LiteLLM_EndUserTable"
-                    WHERE position(':' in user_id) > 0
-                      AND split_part(user_id, ':', 1) = $1
-                      AND split_part(user_id, ':', 2) = ANY($2::text[])
+        # Unindexable predicate, so a no-match EXISTS full-scans the table. Use
+        # the admin-read budget: killing a slow scan at 3s would leak a capacity
+        # claim on the release path.
+        async with self.statement_timeout(env.PG_ADMIN_READ_TIMEOUT_MS) as conn:
+            return bool(
+                await conn.fetchval(
+                    """
+                    SELECT EXISTS(
+                        SELECT 1
+                        FROM "LiteLLM_EndUserTable"
+                        WHERE position(':' in user_id) > 0
+                          AND split_part(user_id, ':', 1) = $1
+                          AND split_part(user_id, ':', 2) = ANY($2::text[])
+                    )
+                    """,
+                    base_identity,
+                    managed_service_types,
                 )
-                """,
-                base_identity,
-                managed_service_types,
             )
-        )
 
     async def create_budget(self):
         """
@@ -186,6 +201,8 @@ class LiteLLMPGService(PGService):
 
         for service_type, budget_config in user_feature_budgets.items():
             try:
+                # Fast single-row PK upsert: a plain autocommit call won't hit
+                # the pool statement_timeout.
                 await self.pool.fetchrow(
                     """
                     INSERT INTO "LiteLLM_BudgetTable"

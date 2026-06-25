@@ -295,6 +295,20 @@ class Env(BaseSettings):
     PG_POOL_MAX_SIZE: int = 10
     PG_PREPARED_STMT_CACHE_MAX_SIZE: int = 100
     READINESS_CHECK_TIMEOUT_S: float = 2.0
+    # Server-enforced query timeout (ms, 0 = unlimited): kills a runaway query
+    # even if the client or event loop hangs, so connections don't pile up.
+    PG_STATEMENT_TIMEOUT_MS: int = 3000
+    # Reaps sessions left idle mid-transaction (releasing their locks). Keep this
+    # >= statement_timeout, since a transaction can legitimately span round-trips.
+    PG_IDLE_IN_TX_TIMEOUT_MS: int = 10000
+    # Raised budget for heavy startup reconciliation, applied per-transaction via SET LOCAL.
+    PG_MAINTENANCE_STATEMENT_TIMEOUT_MS: int = 30000
+    # Raised budget for admin reads that full-scan the user table (listing, counts).
+    PG_ADMIN_READ_TIMEOUT_MS: int = 15000
+    # Optional asyncpg client-side timeout (seconds, None = off). Unlike the SET
+    # LOCAL budgets above, this one isn't relaxed by them, so keep it above
+    # PG_MAINTENANCE_STATEMENT_TIMEOUT_MS or it'll cancel those queries.
+    PG_COMMAND_TIMEOUT_S: float | None = None
 
     # LLM request default values
     TEMPERATURE: float = 0.1
