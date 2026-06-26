@@ -85,30 +85,16 @@ async def get_or_create_user_for_completion(
 async def stream_completion(
     authorized_chat_request: AuthorizedChatRequest, request: Request
 ):
-    """Bind request log fields onto the loguru contextvar, then stream.
-
-    The contextvar must be held *inside* the generator (not the route handler)
-    so it stays active while Starlette iterates the SSE body — otherwise
-    mid-stream errors would lose the fields (the streaming blind spot).
-    """
-    with logger.contextualize(**authorized_chat_request.log_fields):
-        gen = _stream_completion(authorized_chat_request, request)
-        try:
-            async for chunk in gen:
-                yield chunk
-        finally:
-            # Forward close/GeneratorExit into the inner generator so its
-            # client-disconnect handling runs while the fields are still bound.
-            await gen.aclose()
-
-
-async def _stream_completion(
-    authorized_chat_request: AuthorizedChatRequest, request: Request
-):
     """
     Proxies a streaming request to LiteLLM.
     Yields response chunks as they are received and logs metrics.
+
+    Bind log fields with ``logger.bind``, not ``logger.contextualize``: Starlette
+    tears this generator down from a different asyncio Task on client disconnect,
+    and a contextvar token reset in that foreign Context raises ValueError.
+    ``bind`` has no token to reset.
     """
+    log = logger.bind(**authorized_chat_request.log_fields)
     start_time = time.perf_counter()
     record_request_with_tools(authorized_chat_request)
     body = _build_litellm_body(authorized_chat_request, stream=True)
@@ -119,7 +105,7 @@ async def _stream_completion(
     completion_tokens = 0
     streaming_started = False
     tool_calls_accum: dict[int, dict] = {}
-    logger.debug(
+    log.debug(
         f"Starting a stream completion using {authorized_chat_request.model}, for user {authorized_chat_request.user}",
     )
 
@@ -171,13 +157,13 @@ async def _stream_completion(
                 )
                 if match is not None:
                     if match.log_message:
-                        logger.warning(match.log_message)
+                        log.warning(match.log_message)
                     record_chat_request_rejection(authorized_chat_request, match.reason)
                     availability_reason = match.availability_reason()
                     yield f'data: {{"error": {match.error_code}}}\n\n'.encode()
                     return
 
-                yield raise_and_log(e, True)
+                yield raise_and_log(e, True, log=log)
                 return
 
             litellm_routing_snapshot = parse_litellm_routing_headers(response.headers)
@@ -197,7 +183,7 @@ async def _stream_completion(
                 if watch_task in done:
                     watch_task.result()
                     result = PrometheusResult.ABORT
-                    logger.info(_client_disconnected_msg)
+                    log.info(_client_disconnected_msg)
                     if not next_chunk_task.done():
                         next_chunk_task.cancel()
                     with contextlib.suppress(
@@ -218,7 +204,7 @@ async def _stream_completion(
                     if disconnect_event.is_set() or await request.is_disconnected():
                         disconnect_event.set()
                         result = PrometheusResult.ABORT
-                        logger.info(_client_disconnected_msg)
+                        log.info(_client_disconnected_msg)
                         break
                     raise
                 finally:
@@ -242,11 +228,11 @@ async def _stream_completion(
                                 prompt_tokens = usage.get("prompt_tokens", 0)
                                 completion_tokens = usage.get("completion_tokens", 0)
                                 if "prompt_tokens" not in usage:
-                                    logger.warning(
+                                    log.warning(
                                         f"Missing 'prompt_tokens' in usage for model {authorized_chat_request.model}"
                                     )
                                 if "completion_tokens" not in usage:
-                                    logger.warning(
+                                    log.warning(
                                         f"Missing 'completion_tokens' in usage for model {authorized_chat_request.model}"
                                     )
                             for tc in (
@@ -278,6 +264,7 @@ async def _stream_completion(
                     True,
                     502,
                     "Empty response from upstream",
+                    log=log,
                 )
                 return
 
@@ -299,17 +286,17 @@ async def _stream_completion(
         # `yield chunk`. This often beats the disconnect poller, so classify it
         # as an abort here rather than letting the initial ERROR stand.
         result = PrometheusResult.ABORT
-        logger.info(_client_disconnected_msg)
+        log.info(_client_disconnected_msg)
         raise
     except httpx.ReadError as e:
         if disconnect_event.is_set() or await request.is_disconnected():
             disconnect_event.set()
             result = PrometheusResult.ABORT
-            logger.info(_client_disconnected_msg)
+            log.info(_client_disconnected_msg)
         else:
-            yield raise_and_log(e, True, 502, "Failed to proxy request")
+            yield raise_and_log(e, True, 502, "Failed to proxy request", log=log)
     except Exception as e:
-        yield raise_and_log(e, True, 502, "Failed to proxy request")
+        yield raise_and_log(e, True, 502, "Failed to proxy request", log=log)
     finally:
         if next_chunk_task is not None:
             if not next_chunk_task.done():
@@ -327,7 +314,7 @@ async def _stream_completion(
             await watch_task
         if result == PrometheusResult.ERROR and disconnect_event.is_set():
             result = PrometheusResult.ABORT
-            logger.info(_client_disconnected_msg)
+            log.info(_client_disconnected_msg)
         if result == PrometheusResult.ABORT:
             availability_reason = AvailabilityReason.CLIENT_DISCONNECT
         record_completion_latency(

@@ -220,6 +220,8 @@ def raise_and_log(
     stream: Literal[True],
     response_code: int | None = None,
     response_text_prefix: str | None = None,
+    *,
+    log=logger,
 ) -> bytes: ...
 
 
@@ -229,6 +231,8 @@ def raise_and_log(
     stream: Literal[False] = False,
     response_code: int | None = None,
     response_text_prefix: str | None = None,
+    *,
+    log=logger,
 ) -> NoReturn: ...
 
 
@@ -237,6 +241,8 @@ def raise_and_log(
     stream: bool = False,
     response_code: int | None = None,
     response_text_prefix: str | None = None,
+    *,
+    log=logger,
 ) -> bytes | NoReturn:
     """
     Log an upstream exception and return or raise a standardized FastAPI response.
@@ -246,10 +252,9 @@ def raise_and_log(
     If the upstream error body contains a nested error message, it is extracted
     so clients receive the actual upstream detail in debug mode. (dev environment only)
 
-    Request-identifying fields (user / service_type / model / purpose) are not
-    passed here; they are bound on the loguru contextvar by the proxy handler
-    (``logger.contextualize(**req.log_fields)``) so they ride along in
-    ``record.extra`` automatically.
+    Pass ``log`` to log via a pre-bound child logger (the streaming proxy does
+    this); it defaults to the module logger, which carries contextvar-bound
+    request fields for the non-streaming proxy.
     """
     response = getattr(e, "response", None)
     error_text = response.text if response is not None else ""
@@ -276,7 +281,7 @@ def raise_and_log(
     # (logger.opt(exception=...)) so jsonPayload.record.exception is populated.
     exc_type = type(e).__name__
     logged_detail = detail_text or repr(e)
-    logger.opt(exception=e).error(
+    log.opt(exception=e).error(
         f"{response_text_prefix or GENERIC_UPSTREAM_ERROR}: {exc_type}: {logged_detail}"
     )
     if stream:
