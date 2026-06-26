@@ -221,7 +221,7 @@ def raise_and_log(
     response_code: int | None = None,
     response_text_prefix: str | None = None,
     *,
-    log=...,
+    log=logger,
 ) -> bytes: ...
 
 
@@ -232,7 +232,7 @@ def raise_and_log(
     response_code: int | None = None,
     response_text_prefix: str | None = None,
     *,
-    log=...,
+    log=logger,
 ) -> NoReturn: ...
 
 
