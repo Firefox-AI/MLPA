@@ -1,3 +1,4 @@
+import asyncio
 import contextlib
 import json
 from unittest.mock import AsyncMock, MagicMock
@@ -848,6 +849,8 @@ async def test_stream_completion_budget_limit_exceeded_429(
     )
 
     mock_logger = mocker.patch("mlpa.core.completions.logger")
+    # stream_completion logs via logger.bind(...); route it back to the mock.
+    mock_logger.bind.return_value = mock_logger
 
     received_chunks = [
         chunk async for chunk in stream_completion(SAMPLE_REQUEST, mock_request)
@@ -895,6 +898,8 @@ async def test_stream_completion_budget_limit_exceeded_400(
     )
 
     mock_logger = mocker.patch("mlpa.core.completions.logger")
+    # stream_completion logs via logger.bind(...); route it back to the mock.
+    mock_logger.bind.return_value = mock_logger
 
     received_chunks = [
         chunk async for chunk in stream_completion(SAMPLE_REQUEST, mock_request)
@@ -934,6 +939,8 @@ async def test_stream_completion_rate_limit_exceeded(
     )
 
     mock_logger = mocker.patch("mlpa.core.completions.logger")
+    # stream_completion logs via logger.bind(...); route it back to the mock.
+    mock_logger.bind.return_value = mock_logger
 
     received_chunks = [
         chunk async for chunk in stream_completion(SAMPLE_REQUEST, mock_request)
@@ -968,6 +975,8 @@ async def test_stream_completion_context_window_exceeded(
     )
 
     mock_logger = mocker.patch("mlpa.core.completions.logger")
+    # stream_completion logs via logger.bind(...); route it back to the mock.
+    mock_logger.bind.return_value = mock_logger
 
     received_chunks = [
         chunk async for chunk in stream_completion(SAMPLE_REQUEST, mock_request)
@@ -1006,6 +1015,8 @@ async def test_stream_completion_invalid_model_name(
     )
 
     mock_logger = mocker.patch("mlpa.core.completions.logger")
+    # stream_completion logs via logger.bind(...); route it back to the mock.
+    mock_logger.bind.return_value = mock_logger
 
     received_chunks = [
         chunk async for chunk in stream_completion(SAMPLE_REQUEST, mock_request)
@@ -1043,6 +1054,8 @@ async def test_stream_completion_invalid_request_vertex(
     )
 
     mock_logger = mocker.patch("mlpa.core.completions.logger")
+    # stream_completion logs via logger.bind(...); route it back to the mock.
+    mock_logger.bind.return_value = mock_logger
 
     received_chunks = [
         chunk async for chunk in stream_completion(SAMPLE_REQUEST, mock_request)
@@ -1081,7 +1094,9 @@ async def test_stream_completion_400_non_rate_limit_error(
         status_code=400,
     )
 
-    mock_logger = mocker.patch("mlpa.core.utils.logger")
+    # raise_and_log uses the bound logger passed from stream_completion.
+    mock_logger = mocker.patch("mlpa.core.completions.logger")
+    mock_logger.bind.return_value = mock_logger
     mocker.patch.object(env, "MLPA_DEBUG", False)
 
     received_chunks = [
@@ -1111,7 +1126,9 @@ async def test_stream_completion_429_non_rate_limit_error(
         status_code=429,
     )
 
-    mock_logger = mocker.patch("mlpa.core.utils.logger")
+    # raise_and_log uses the bound logger passed from stream_completion.
+    mock_logger = mocker.patch("mlpa.core.completions.logger")
+    mock_logger.bind.return_value = mock_logger
     mocker.patch.object(env, "MLPA_DEBUG", False)
 
     received_chunks = [
@@ -1165,7 +1182,9 @@ async def test_stream_completion_429_invalid_json(
         status_code=429,
     )
 
-    mock_logger = mocker.patch("mlpa.core.utils.logger")
+    # raise_and_log uses the bound logger passed from stream_completion.
+    mock_logger = mocker.patch("mlpa.core.completions.logger")
+    mock_logger.bind.return_value = mock_logger
     mocker.patch.object(env, "MLPA_DEBUG", False)
 
     received_chunks = [
@@ -1616,3 +1635,31 @@ async def test_stream_mid_stream_error_binds_request_fields(
     assert rec["extra"]["user"] == SAMPLE_REQUEST.user
     assert rec["extra"]["model"] == SAMPLE_REQUEST.model
     assert rec["extra"]["service_type"] == SAMPLE_REQUEST.service_type
+
+
+async def test_stream_completion_aclose_from_separate_task_does_not_crash(
+    mocker, mock_request, metrics_spy
+):
+    """Closing the SSE generator from a different asyncio Task (what Starlette
+    does on client disconnect) must not raise ValueError from a contextvar token
+    reset in a foreign Context.
+    """
+    role_chunk = (
+        b'data: {"choices":[{"delta":{"role":"assistant","content":null}}]}\n\n'
+    )
+
+    async def _aiter_bytes():
+        yield role_chunk
+        yield b'data: {"choices":[{"delta":{"content":"hi"}}]}\n\n'
+
+    _patch_mock_stream_client(mocker, _aiter_bytes)
+
+    gen = stream_completion(SAMPLE_REQUEST, mock_request)
+    first = await gen.__anext__()
+    assert first == role_chunk
+
+    # Close from a separate task -> separate contextvars.Context.
+    await asyncio.create_task(gen.aclose())
+
+    assert _latency_count(metrics_spy, PrometheusResult.ABORT) == 1
+    assert _latency_count(metrics_spy, PrometheusResult.ERROR) == 0
