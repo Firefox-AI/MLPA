@@ -152,6 +152,7 @@ class PrometheusMetrics:
     # global request metrics
     in_progress_requests: Gauge
     requests_total: Counter
+    requests_by_country_total: Counter
     response_status_codes: Counter
     request_latency: Histogram
 
@@ -207,6 +208,13 @@ def build_metrics(registry: CollectorRegistry = REGISTRY) -> PrometheusMetrics:
             "mlpa_requests_total",
             "Total number of requests handled by the proxy.",
             ["method", "endpoint", "service_type", "purpose"],
+            registry=registry,
+        ),
+        requests_by_country_total=Counter(
+            "mlpa_requests_by_country_total",
+            "Chat and search requests by client country (edge-derived), service_type, and model. "
+            "Plain counter by design; country is kept off histograms to bound cardinality.",
+            ["service_type", "model", "client_country"],
             registry=registry,
         ),
         response_status_codes=Counter(

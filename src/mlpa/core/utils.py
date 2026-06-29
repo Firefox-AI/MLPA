@@ -21,6 +21,18 @@ from mlpa.core.logger import logger
 from mlpa.core.pg_services.services import app_attest_pg, litellm_pg
 from mlpa.core.prometheus_metrics import PrometheusResult, metrics
 
+_COUNTRY_RE = re.compile(r"[A-Z]{2}")
+
+
+def clamp_country(raw: str | None) -> str:
+    """Bound an edge-stamped client country to a 2-letter A-Z code, else "unknown".
+
+    Country is coarse, edge-derived geo (MLPA never sees the client IP) used only
+    for aggregate metrics, never per-user data or logs. The clamp also caps label
+    cardinality and blocks injection from a spoofed ``X-Geo-Country`` header.
+    """
+    return raw if raw and _COUNTRY_RE.fullmatch(raw) else "unknown"
+
 
 async def get_or_create_user(user_id: str):
     """Returns user info from LiteLLM, creating the user if they don't exist.

@@ -26,7 +26,11 @@ from mlpa.core.config import (
 )
 from mlpa.core.http_client import close_http_client, get_http_client
 from mlpa.core.logger import logger, setup_logger
-from mlpa.core.metrics import record_chat_availability
+from mlpa.core.metrics import (
+    SEARCH_MODEL,
+    record_chat_availability,
+    record_request_country,
+)
 from mlpa.core.middleware import register_middleware
 from mlpa.core.openapi import customize_openapi
 from mlpa.core.pg_services.services import app_attest_pg, litellm_pg
@@ -201,6 +205,11 @@ async def chat_completion(
         AuthorizedChatRequest, Depends(authorize_chat_request)
     ],
 ):
+    record_request_country(
+        request.headers.get("X-Geo-Country"),
+        service_type=authorized_chat_request.service_type,
+        model=authorized_chat_request.model,
+    )
     user_id = authorized_chat_request.user
     if not user_id:
         raise HTTPException(
@@ -233,6 +242,11 @@ async def search(
         AuthorizedSearchRequest, Depends(authorize_search_request)
     ],
 ):
+    record_request_country(
+        request.headers.get("X-Geo-Country"),
+        service_type=authorized_search_request.service_type,
+        model=SEARCH_MODEL,
+    )
     if authorized_search_request.service_type not in env.SEARCH_ALLOWED_SERVICE_TYPES:
         raise HTTPException(
             status_code=400, detail="service-type header must be of type 'search'"
