@@ -152,7 +152,7 @@ Authorize first using App Attest, Play Integrity, FxA, or dev tier.
 **Headers:**
 
 - **Authorization** (required): Bearer token — FxA OAuth token, Play Integrity MLPA token, or App Attest JWT.
-- **service-type** (required): One of `ai`, `s2s`, `s2s-android`, `memories`, `ai-dev`, `memories-dev`, `mochi-dev`, 'search', 'telemetry' — for tracking and budget.
+- **service-type** (required): One of `ai`, `s2s`, `s2s-android`, `memories`, `ai-dev`, `memories-dev`, `mochi-dev`, `answer`, `telemetry` — for tracking and budget.
 - **purpose** (required for ai/ai-dev/mochi-dev/memories/memories-dev): One of `chat`, `title-generation`, `convo-starters-sidebar` for AI; `memory-generation` for memories; omit for s2s.
 - **x-dev-authorization** (required for ai-dev/memories-dev/mochi-dev): Experimentation token; also requires FxA in Authorization. Dev service types return 401 without it.
 - **use-app-attest**: Set to `true` for iOS App Attest.
@@ -166,7 +166,8 @@ Web search proxied to Exa via LiteLLM. Authorize the same way as /v1/chat/comple
 **Headers:**
 
 - **Authorization** (required): Bearer token — FxA OAuth token, Play Integrity MLPA token, or App Attest JWT.
-- **service-type** (required): Must be `search`; any other value returns 400. Has its own budget pool and no `purpose` header.
+- **service-type**: `search` by default; use `search-dev` for experiments. Search has its own budget pool and no `purpose` header.
+- **x-dev-authorization** (required for search-dev): Experimentation token; also requires FxA in Authorization.
 
 **Body:** `{"query": str, "max_results": int (1-10)}`.
 """
@@ -258,7 +259,8 @@ async def search(
             purpose=authorized_search_request.purpose or "",
         )
         raise HTTPException(
-            status_code=400, detail="service-type header must be of type 'search'"
+            status_code=400,
+            detail="service-type header must be one of ['search', 'search-dev']",
         )
     user_id = authorized_search_request.user
     if not user_id:

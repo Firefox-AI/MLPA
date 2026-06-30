@@ -32,20 +32,25 @@ def customize_openapi(app: FastAPI, tags_metadata: list[dict]) -> None:
 
         paths = openapi_schema.setdefault("paths", {})
         post_chat = paths.get("/v1/chat/completions", {}).get("post", {})
+        post_search = paths.get("/v1/search", {}).get("post", {})
         if post_chat:
             params = post_chat.setdefault("parameters", [])
+            chat_service_types = [
+                st
+                for st in env.valid_service_types
+                if st not in {"search", "search-dev"}
+            ]
             purpose_required = (
                 [
                     st
                     for st in env.valid_service_types
-                    if env.service_type_requires_purpose(st)
+                    if env.service_type_requires_purpose(st) and "search" not in st
                 ]
                 if env.MLPA_REQUIRE_PURPOSE_HEADER
                 else []
             )
             param_descriptions = {
-                "service-type": "Service type for tracking and budget. Values: "
-                f"{', '.join(env.valid_service_types)}. Use ai-dev, memories-dev, or mochi-dev for experiments (higher limits).",
+                "service-type": "Service type for tracking and budget. Use ai-dev, memories-dev, or mochi-dev for experiments (higher limits).",
                 "purpose": (
                     "Purpose for Prometheus and product tracking. "
                     + (
@@ -66,6 +71,32 @@ def customize_openapi(app: FastAPI, tags_metadata: list[dict]) -> None:
                 name = p.get("name")
                 if name in param_descriptions:
                     p["description"] = param_descriptions[name]
+                if name == "service-type":
+                    p["schema"] = {
+                        "type": "string",
+                        "enum": chat_service_types,
+                        "title": "Service-Type",
+                    }
+
+        if post_search:
+            params = post_search.setdefault("parameters", [])
+            for p in params:
+                if p.get("name") == "service-type":
+                    p["description"] = (
+                        "Service type for search requests. Use search-dev for "
+                        "experiments; it requires x-dev-authorization."
+                    )
+                    p["schema"] = {
+                        "type": "string",
+                        "enum": ["search", "search-dev"],
+                        "default": "search",
+                        "title": "Service-Type",
+                    }
+                elif p.get("name") == "x-dev-authorization":
+                    p["description"] = (
+                        "Required when service-type is search-dev. Experimentation "
+                        "token; also requires Authorization (FxA)."
+                    )
 
         app.openapi_schema = openapi_schema
         return app.openapi_schema
