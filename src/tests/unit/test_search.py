@@ -10,6 +10,7 @@ from mlpa.core.config import (
     ERROR_CODE_BUDGET_LIMIT_EXCEEDED,
     ERROR_CODE_REQUEST_TOO_LARGE,
 )
+from mlpa.core.metrics import SEARCH_MODEL
 from mlpa.core.prometheus_metrics import PrometheusRejectionReason, PrometheusResult
 from mlpa.core.search import get_search
 
@@ -86,7 +87,7 @@ def _search_rejection_count(
     return spy.value(
         "search_request_rejections",
         reason=reason,
-        model="exa",
+        model=SEARCH_MODEL,
         service_type=req.service_type,
         purpose=req.purpose,
     )

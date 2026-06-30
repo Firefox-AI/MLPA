@@ -86,5 +86,5 @@ async def test_authorize_chat_request_rejects_invalid_service_type_for_model():
     assert exc_info.value.status_code == 400
     assert (
         exc_info.value.detail
-        == "Invalid service-type value for model exa. Should be one of ['search', 'search-dev']"
+        == "Invalid service-type value for model exa. Should be one of ['answer']"
     )
