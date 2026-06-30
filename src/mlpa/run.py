@@ -29,6 +29,7 @@ from mlpa.core.logger import logger, setup_logger
 from mlpa.core.metrics import (
     SEARCH_MODEL,
     record_chat_availability,
+    record_chat_availability_for,
     record_request_country,
 )
 from mlpa.core.middleware import register_middleware
@@ -248,6 +249,12 @@ async def search(
         model=SEARCH_MODEL,
     )
     if authorized_search_request.service_type not in env.SEARCH_ALLOWED_SERVICE_TYPES:
+        record_chat_availability_for(
+            AvailabilityReason.INVALID_SERVICE_TYPE_FOR_MODEL,
+            model=SEARCH_MODEL,
+            service_type=authorized_search_request.service_type,
+            purpose=authorized_search_request.purpose or "",
+        )
         raise HTTPException(
             status_code=400, detail="service-type header must be of type 'search'"
         )

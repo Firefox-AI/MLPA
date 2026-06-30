@@ -15,7 +15,7 @@ from mlpa.core.prometheus_metrics import (
 )
 from mlpa.core.utils import clamp_country
 
-SEARCH_MODEL = "exa"
+SEARCH_MODEL = "exa-search"
 
 
 def _chat_labels(req: AuthorizedChatRequest) -> dict[str, str]:
