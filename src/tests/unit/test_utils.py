@@ -5,6 +5,7 @@ from fastapi import HTTPException
 
 from mlpa.core.utils import (
     b64decode_safe,
+    clamp_country,
     is_context_window_error,
     is_invalid_model_name_error,
     is_invalid_request_error,
@@ -200,3 +201,23 @@ def test_is_invalid_request_error_no_match():
     assert is_invalid_request_error("Invalid request parameters") is False
     assert is_invalid_request_error("rate limit exceeded") is False
     assert is_invalid_request_error("") is False
+
+
+@pytest.mark.parametrize(
+    "raw,expected",
+    [
+        ("DE", "DE"),
+        ("US", "US"),
+        ("de", "unknown"),
+        ("**", "unknown"),
+        ("--", "unknown"),
+        ("USA", "unknown"),
+        ("D", "unknown"),
+        ("D1", "unknown"),
+        ("", "unknown"),
+        (None, "unknown"),
+        ("DE; rm -rf", "unknown"),
+    ],
+)
+def test_clamp_country(raw, expected):
+    assert clamp_country(raw) == expected

@@ -13,6 +13,9 @@ from mlpa.core.prometheus_metrics import (
     availability_outcome_for,
     metrics,
 )
+from mlpa.core.utils import clamp_country
+
+SEARCH_MODEL = "exa"
 
 
 def _chat_labels(req: AuthorizedChatRequest) -> dict[str, str]:
@@ -25,10 +28,20 @@ def _chat_labels(req: AuthorizedChatRequest) -> dict[str, str]:
 
 def _search_labels(req: AuthorizedSearchRequest) -> dict[str, str]:
     return {
-        "model": "exa",
+        "model": SEARCH_MODEL,
         "service_type": req.service_type,
         "purpose": req.purpose,
     }
+
+
+def record_request_country(
+    raw_country: str | None, *, service_type: str, model: str
+) -> None:
+    metrics.requests_by_country_total.labels(
+        service_type=service_type,
+        model=model,
+        client_country=clamp_country(raw_country),
+    ).inc()
 
 
 def record_chat_request_rejection(
