@@ -252,12 +252,6 @@ async def search(
     if not env.valid_service_type_for_model(
         authorized_search_request.service_type, SEARCH_MODEL
     ):
-        record_chat_availability_for(
-            AvailabilityReason.INVALID_SERVICE_TYPE_FOR_MODEL,
-            model=SEARCH_MODEL,
-            service_type=authorized_search_request.service_type,
-            purpose=authorized_search_request.purpose or "",
-        )
         raise HTTPException(
             status_code=400,
             detail="service-type header must be one of ['search', 'search-dev']",
