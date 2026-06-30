@@ -36,9 +36,6 @@ class Env(BaseSettings):
     LITELLM_API_BASE: str = "http://localhost:4000"
     CHALLENGE_EXPIRY_SECONDS: int = 300  # 5 minutes
 
-    # Search allowed service types
-    SEARCH_ALLOWED_SERVICE_TYPES: set[str] = {"search", "search-dev"}
-
     # User Feature Budget - AI service type
     USER_FEATURE_BUDGET_AI_BUDGET_ID: str = "end-user-budget-ai"
     USER_FEATURE_BUDGET_AI_MAX_BUDGET: float = 0.1
@@ -245,7 +242,7 @@ class Env(BaseSettings):
         Returns a dictionary mapping model names to their valid service types.
         """
         # Force certain models to use certain service types
-        return {"exa": ["answer"]}
+        return {"exa-search": ["search", "search-dev"], "exa": ["answer"]}
 
     def valid_service_type_for_model(self, service_type: str, model: str) -> bool:
         """Check if a service type is valid for a specific model."""
