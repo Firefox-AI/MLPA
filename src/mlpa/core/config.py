@@ -36,9 +36,6 @@ class Env(BaseSettings):
     LITELLM_API_BASE: str = "http://localhost:4000"
     CHALLENGE_EXPIRY_SECONDS: int = 300  # 5 minutes
 
-    # Search allowed service types
-    SEARCH_ALLOWED_SERVICE_TYPES: set[str] = {"search", "search-dev"}
-
     # User Feature Budget - AI service type
     USER_FEATURE_BUDGET_AI_BUDGET_ID: str = "end-user-budget-ai"
     USER_FEATURE_BUDGET_AI_MAX_BUDGET: float = 0.1
@@ -68,10 +65,16 @@ class Env(BaseSettings):
     USER_FEATURE_BUDGET_MEMORIES_BUDGET_DURATION: str = "1d"
 
     USER_FEATURE_BUDGET_SEARCH_BUDGET_ID: str = "end-user-budget-search"
-    USER_FEATURE_BUDGET_SEARCH_MAX_BUDGET: float = 0.1
+    USER_FEATURE_BUDGET_SEARCH_MAX_BUDGET: float = 0.01
     USER_FEATURE_BUDGET_SEARCH_RPM_LIMIT: int = 10
     USER_FEATURE_BUDGET_SEARCH_TPM_LIMIT: int = 2000
     USER_FEATURE_BUDGET_SEARCH_BUDGET_DURATION: str = "1d"
+
+    USER_FEATURE_BUDGET_ANSWER_BUDGET_ID: str = "end-user-budget-answer"
+    USER_FEATURE_BUDGET_ANSWER_MAX_BUDGET: float = 0.1
+    USER_FEATURE_BUDGET_ANSWER_RPM_LIMIT: int = 10
+    USER_FEATURE_BUDGET_ANSWER_TPM_LIMIT: int = 2000
+    USER_FEATURE_BUDGET_ANSWER_BUDGET_DURATION: str = "1d"
 
     USER_FEATURE_BUDGET_TELEMETRY_BUDGET_ID: str = "end-user-budget-telemetry"
     USER_FEATURE_BUDGET_TELEMETRY_MAX_BUDGET: float = 0.1
@@ -148,6 +151,13 @@ class Env(BaseSettings):
                 "tpm_limit": self.USER_FEATURE_BUDGET_SEARCH_TPM_LIMIT,
                 "budget_duration": self.USER_FEATURE_BUDGET_SEARCH_BUDGET_DURATION,
             },
+            "answer": {
+                "budget_id": self.USER_FEATURE_BUDGET_ANSWER_BUDGET_ID,
+                "max_budget": self.USER_FEATURE_BUDGET_ANSWER_MAX_BUDGET,
+                "rpm_limit": self.USER_FEATURE_BUDGET_ANSWER_RPM_LIMIT,
+                "tpm_limit": self.USER_FEATURE_BUDGET_ANSWER_TPM_LIMIT,
+                "budget_duration": self.USER_FEATURE_BUDGET_ANSWER_BUDGET_DURATION,
+            },
             "telemetry": {
                 "budget_id": self.USER_FEATURE_BUDGET_TELEMETRY_BUDGET_ID,
                 "max_budget": self.USER_FEATURE_BUDGET_TELEMETRY_MAX_BUDGET,
@@ -213,6 +223,7 @@ class Env(BaseSettings):
             "s2s": [],
             "s2s-android": [],
             "search": [],
+            "answer": [],
             "search-dev": [],
             "telemetry": telemetry_purposes,
         }
@@ -231,7 +242,7 @@ class Env(BaseSettings):
         Returns a dictionary mapping model names to their valid service types.
         """
         # Force certain models to use certain service types
-        return {"exa": ["search", "search-dev"]}
+        return {"exa-search": ["search", "search-dev"], "exa": ["answer"]}
 
     def valid_service_type_for_model(self, service_type: str, model: str) -> bool:
         """Check if a service type is valid for a specific model."""
