@@ -21,6 +21,7 @@ from mlpa.core.config import (
     ERROR_CODE_RATE_LIMIT_EXCEEDED,
     ERROR_CODE_REQUEST_TOO_LARGE,
     ERROR_CODE_UPSTREAM_RATE_LIMIT_EXCEEDED,
+    ERROR_CODE_UPSTREAM_TIMEOUT,
     LITELLM_COMPLETIONS_URL,
     LITELLM_HEADER_ATTEMPTED_FALLBACKS,
     LITELLM_HEADER_ATTEMPTED_RETRIES,
@@ -346,7 +347,7 @@ async def test_get_completion_http_error(mocker, metrics_spy):
 
 async def test_get_completion_network_error(mocker, metrics_spy):
     mock_client = AsyncMock()
-    mock_client.post.side_effect = httpx.TimeoutException("Connection timed out")
+    mock_client.post.side_effect = httpx.TimeoutException("")
     mocker.patch("mlpa.core.completions.get_http_client", return_value=mock_client)
     mocker.patch.object(env, "MLPA_DEBUG", True)
 
@@ -354,8 +355,28 @@ async def test_get_completion_network_error(mocker, metrics_spy):
         await get_completion(SAMPLE_REQUEST)
 
     assert exc_info.value.status_code == 502
-    assert exc_info.value.detail["error"] == "Connection timed out"
+    assert exc_info.value.detail == {"error": ERROR_CODE_UPSTREAM_TIMEOUT}
 
+    metrics_spy.assert_only({"chat_completion_latency", "chat_availability"})
+    assert _latency_count(metrics_spy, PrometheusResult.ERROR) == 1
+
+
+async def test_stream_completion_timeout_uses_standard_proxy_error(
+    mocker, mock_request, metrics_spy
+):
+    class TimeoutClient:
+        def stream(self, *args, **kwargs):
+            raise httpx.ReadTimeout("")
+
+    mocker.patch("mlpa.core.completions.get_http_client", return_value=TimeoutClient())
+
+    received_chunks = [
+        chunk async for chunk in stream_completion(SAMPLE_REQUEST, mock_request)
+    ]
+
+    assert received_chunks == [
+        b'data: {"code": 502, "error": "Upstream service returned an error"}\n\n'
+    ]
     metrics_spy.assert_only({"chat_completion_latency", "chat_availability"})
     assert _latency_count(metrics_spy, PrometheusResult.ERROR) == 1
 

@@ -5,6 +5,7 @@ from fastapi import HTTPException
 
 from mlpa.core.classes import AuthorizedSearchRequest
 from mlpa.core.config import (
+    ERROR_CODE_UPSTREAM_TIMEOUT,
     LITELLM_SEARCH_URL,
     LITELLM_VIRTUAL_AUTH_HEADERS,
 )
@@ -67,6 +68,14 @@ async def _get_search(authorized_search_request: AuthorizedSearchRequest):
         return data
     except HTTPException:
         raise
+    except httpx.TimeoutException as e:
+        try:
+            raise_and_log(e, False, 502, "Upstream request timed out")
+        except HTTPException as exc:
+            raise HTTPException(
+                status_code=exc.status_code,
+                detail={"error": ERROR_CODE_UPSTREAM_TIMEOUT},
+            ) from e
     except Exception as e:
         raise_and_log(e, False, 502, "Failed to proxy request")
     finally:
