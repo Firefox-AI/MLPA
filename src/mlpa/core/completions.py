@@ -10,6 +10,7 @@ from fastapi import HTTPException, Request
 from mlpa.core.classes import AuthorizedChatRequest, AuthorizedSearchRequest
 from mlpa.core.config import (
     ERROR_CODE_MAX_USERS_REACHED,
+    ERROR_CODE_UPSTREAM_TIMEOUT,
     LITELLM_COMPLETIONS_URL,
     LITELLM_VIRTUAL_AUTH_HEADERS,
     env,
@@ -288,6 +289,8 @@ async def stream_completion(
         result = PrometheusResult.ABORT
         log.info(_client_disconnected_msg)
         raise
+    except httpx.TimeoutException as e:
+        yield raise_and_log(e, True, 502, "Upstream request timed out", log=log)
     except httpx.ReadError as e:
         if disconnect_event.is_set() or await request.is_disconnected():
             disconnect_event.set()
@@ -401,6 +404,14 @@ async def _get_completion(authorized_chat_request: AuthorizedChatRequest):
         return data
     except HTTPException:
         raise
+    except httpx.TimeoutException as e:
+        try:
+            raise_and_log(e, False, 502, "Upstream request timed out")
+        except HTTPException as exc:
+            raise HTTPException(
+                status_code=exc.status_code,
+                detail={"error": ERROR_CODE_UPSTREAM_TIMEOUT},
+            ) from e
     except Exception as e:
         raise_and_log(e, False, 502, "Failed to proxy request")
     finally:

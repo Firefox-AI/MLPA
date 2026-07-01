@@ -9,6 +9,7 @@ from mlpa.core.classes import AuthorizedSearchRequest
 from mlpa.core.config import (
     ERROR_CODE_BUDGET_LIMIT_EXCEEDED,
     ERROR_CODE_REQUEST_TOO_LARGE,
+    ERROR_CODE_UPSTREAM_TIMEOUT,
 )
 from mlpa.core.metrics import SEARCH_MODEL
 from mlpa.core.prometheus_metrics import PrometheusRejectionReason, PrometheusResult
@@ -77,6 +78,27 @@ async def test_get_search_sanitizes_response_surrogates(mocker):
 
     assert "\ud83e" not in data["results"][0]["title"]
     _httpx_encode_json(data)  # must not raise
+
+
+async def test_get_search_timeout_returns_custom_error_code(mocker, metrics_spy):
+    mock_client = AsyncMock()
+    mock_client.post.side_effect = httpx.ReadTimeout("")
+    mocker.patch("mlpa.core.search.get_http_client", return_value=mock_client)
+
+    req = AuthorizedSearchRequest(
+        user="test-user:search",
+        service_type="search",
+        query="weather in tokyo",
+        max_results=5,
+    )
+
+    with pytest.raises(HTTPException) as exc_info:
+        await get_search(req)
+
+    assert exc_info.value.status_code == 502
+    assert exc_info.value.detail == {"error": ERROR_CODE_UPSTREAM_TIMEOUT}
+    metrics_spy.assert_only({"search_latency"})
+    assert _search_latency_count(metrics_spy, PrometheusResult.ERROR) == 1
 
 
 def _search_rejection_count(

@@ -395,6 +395,7 @@ ERROR_CODE_FASTLY_WAF_RATE_LIMIT: int = 6
 
 ERROR_CODE_INVALID_MODEL_NAME: int = 8
 ERROR_CODE_INVALID_REQUEST: int = 9
+ERROR_CODE_UPSTREAM_TIMEOUT: int = 10
 
 ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
     429: {
@@ -553,6 +554,46 @@ ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
                         "value": {"error": ERROR_CODE_MAX_USERS_REACHED},
                         "description": "New sign-ins for cap-managed service types are rejected because capacity is full.",
                     }
+                },
+            }
+        },
+    },
+    502: {
+        "description": "Bad Gateway - upstream proxy request failed or timed out",
+        "content": {
+            "application/json": {
+                "schema": {
+                    "type": "object",
+                    "properties": {
+                        "detail": {
+                            "type": "object",
+                            "properties": {
+                                "error": {
+                                    "anyOf": [
+                                        {"type": "integer"},
+                                        {"type": "string"},
+                                    ],
+                                    "description": (
+                                        "Error code: 10 upstream timeout. "
+                                        "Unclassified proxy failures may return a string."
+                                    ),
+                                }
+                            },
+                            "required": ["error"],
+                        }
+                    },
+                    "required": ["detail"],
+                },
+                "examples": {
+                    "upstream_timeout": {
+                        "summary": "Upstream timeout",
+                        "value": {"detail": {"error": ERROR_CODE_UPSTREAM_TIMEOUT}},
+                        "description": "MLPA timed out waiting for LiteLLM or the upstream model provider.",
+                    },
+                    "proxy_failure": {
+                        "summary": "Unclassified proxy failure",
+                        "value": {"detail": {"error": "Failed to proxy request"}},
+                    },
                 },
             }
         },
