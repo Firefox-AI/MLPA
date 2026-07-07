@@ -125,6 +125,18 @@ async def authorize_chat_request(
     )
 
     if not is_service_type_valid:
+        valid_service_types = env.forced_model_service_type_pairs.get(
+            chat_request.model
+        )
+        if valid_service_types is not None:
+            detail = f"Invalid service-type value for model {chat_request.model}. Should be one of {valid_service_types}"
+        else:
+            valid_models = [
+                model
+                for model, service_types in env.forced_model_service_type_pairs.items()
+                if service_type.value in service_types
+            ]
+            detail = f"Invalid service-type value {service_type.value} for model {chat_request.model}. Service type {service_type.value} is only valid for models {valid_models}"
         record_chat_availability_for(
             AvailabilityReason.INVALID_SERVICE_TYPE_FOR_MODEL,
             model=chat_request.model,
@@ -133,7 +145,7 @@ async def authorize_chat_request(
         )
         raise HTTPException(
             status_code=400,
-            detail=f"Invalid service-type value for model {chat_request.model}. Should be one of {env.forced_model_service_type_pairs.get(chat_request.model)}",
+            detail=detail,
         )
 
     try:

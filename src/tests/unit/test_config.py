@@ -101,11 +101,12 @@ def test_valid_service_types_all_service_types():
     assert "search" in service_types
     assert "answer" in service_types
     assert "telemetry" in service_types
+    assert "agent" in service_types
     assert "ai-dev" in service_types
     assert "memories-dev" in service_types
     assert "mochi-dev" in service_types
     assert "search-dev" in service_types
-    assert len(service_types) == 11
+    assert len(service_types) == 12
 
 
 def test_service_type_purposes():
@@ -220,13 +221,17 @@ def test_valid_service_type_for_model_forced_pair():
 
     assert env.valid_service_type_for_model("search", "exa-search") is True
     assert env.valid_service_type_for_model("search-dev", "exa-search") is True
+    assert env.valid_service_type_for_model("answer", "exa-search") is False
     assert env.valid_service_type_for_model("answer", "exa") is True
     assert env.valid_service_type_for_model("ai", "exa") is False
+    assert env.valid_service_type_for_model("search", "exa") is False
 
 
 def test_valid_service_type_for_model_unconfigured_model():
-    """Test that unconfigured models accept any service type."""
+    """Test that unconfigured models reject service types forced to other models."""
     env = Env()
 
     assert env.valid_service_type_for_model("ai", "gpt-oss-120b") is True
-    assert env.valid_service_type_for_model("search", "gpt-oss-120b") is True
+    assert env.valid_service_type_for_model("answer", "gpt-oss-120b") is False
+    assert env.valid_service_type_for_model("search", "gpt-oss-120b") is False
+    assert env.valid_service_type_for_model("search-dev", "gpt-oss-120b") is False
