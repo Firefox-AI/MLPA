@@ -19,6 +19,7 @@ def test_chat_service_type_header_docs_exclude_search_types():
             "memories",
             "answer",
             "telemetry",
+            "agent",
             "ai-dev",
             "memories-dev",
             "mochi-dev",

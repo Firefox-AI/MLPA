@@ -82,6 +82,12 @@ class Env(BaseSettings):
     USER_FEATURE_BUDGET_TELEMETRY_TPM_LIMIT: int = 2000
     USER_FEATURE_BUDGET_TELEMETRY_BUDGET_DURATION: str = "1d"
 
+    USER_FEATURE_BUDGET_AGENT_BUDGET_ID: str = "end-user-budget-agent"
+    USER_FEATURE_BUDGET_AGENT_MAX_BUDGET: float = 0.1
+    USER_FEATURE_BUDGET_AGENT_RPM_LIMIT: int = 10
+    USER_FEATURE_BUDGET_AGENT_TPM_LIMIT: int = 2000
+    USER_FEATURE_BUDGET_AGENT_BUDGET_DURATION: str = "1d"
+
     # User Feature Budget - ai-dev service type (experimentation, batch predictions)
     USER_FEATURE_BUDGET_AI_DEV_BUDGET_ID: str = "end-user-budget-ai-dev"
     USER_FEATURE_BUDGET_AI_DEV_MAX_BUDGET: float = 1.0
@@ -165,6 +171,13 @@ class Env(BaseSettings):
                 "tpm_limit": self.USER_FEATURE_BUDGET_TELEMETRY_TPM_LIMIT,
                 "budget_duration": self.USER_FEATURE_BUDGET_TELEMETRY_BUDGET_DURATION,
             },
+            "agent": {
+                "budget_id": self.USER_FEATURE_BUDGET_AGENT_BUDGET_ID,
+                "max_budget": self.USER_FEATURE_BUDGET_AGENT_MAX_BUDGET,
+                "rpm_limit": self.USER_FEATURE_BUDGET_AGENT_RPM_LIMIT,
+                "tpm_limit": self.USER_FEATURE_BUDGET_AGENT_TPM_LIMIT,
+                "budget_duration": self.USER_FEATURE_BUDGET_AGENT_BUDGET_DURATION,
+            },
             "ai-dev": {
                 "budget_id": self.USER_FEATURE_BUDGET_AI_DEV_BUDGET_ID,
                 "max_budget": self.USER_FEATURE_BUDGET_AI_DEV_MAX_BUDGET,
@@ -213,7 +226,6 @@ class Env(BaseSettings):
             "convo-starters-sidebar",
         ]
         memories_purposes = ["memory-generation"]
-        telemetry_purposes = ["chat"]
         return {
             "ai": ai_purposes,
             "ai-dev": ai_purposes,
@@ -225,7 +237,8 @@ class Env(BaseSettings):
             "search": [],
             "answer": [],
             "search-dev": [],
-            "telemetry": telemetry_purposes,
+            "telemetry": ["chat"],
+            "agent": ["monitor", "research"],
         }
 
     def valid_purposes_for_service_type(self, service_type: str) -> list[str]:
@@ -247,9 +260,13 @@ class Env(BaseSettings):
     def valid_service_type_for_model(self, service_type: str, model: str) -> bool:
         """Check if a service type is valid for a specific model."""
         valid_service_types = self.forced_model_service_type_pairs.get(model)
-        if valid_service_types is None:
-            return True  # Return true if not explicitly configured above
-        return service_type in valid_service_types
+        if valid_service_types is not None:
+            return service_type in valid_service_types
+
+        return not any(
+            service_type in service_types
+            for service_types in self.forced_model_service_type_pairs.values()
+        )
 
     # Logging
     LOG_JSON: bool = False  # Set to True for GKE deployment

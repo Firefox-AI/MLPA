@@ -254,7 +254,7 @@ async def search(
     ):
         raise HTTPException(
             status_code=400,
-            detail="service-type header must be one of ['search', 'search-dev']",
+            detail=f"service-type header must be one of {env.forced_model_service_type_pairs.get(SEARCH_MODEL)}",
         )
     user_id = authorized_search_request.user
     if not user_id:

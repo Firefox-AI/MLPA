@@ -88,3 +88,21 @@ async def test_authorize_chat_request_rejects_invalid_service_type_for_model():
         exc_info.value.detail
         == "Invalid service-type value for model exa. Should be one of ['answer']"
     )
+
+
+async def test_authorize_chat_request_rejects_answer_for_non_exa_model():
+    with pytest.raises(HTTPException) as exc_info:
+        await authorize_module.authorize_chat_request(
+            request=_make_request("/v1/chat/completions"),
+            chat_request=ChatRequest(model="openai/gpt-4o", messages=[]),
+            authorization="Bearer token",
+            service_type=authorize_module.ServiceType.answer,
+            purpose=None,
+        )
+
+    assert exc_info.value.status_code == 400
+    assert (
+        exc_info.value.detail
+        == "Invalid service-type value answer for model openai/gpt-4o. "
+        "Service type answer is only valid for models ['exa']"
+    )
