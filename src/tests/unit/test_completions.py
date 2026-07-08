@@ -1,6 +1,7 @@
 import asyncio
 import contextlib
 import json
+from typing import Callable
 from unittest.mock import AsyncMock, MagicMock
 
 import httpx
@@ -1354,21 +1355,41 @@ def _assert_error_latency(spy) -> None:
     assert _latency_count(spy, PrometheusResult.ERROR) == 1
 
 
-def _patch_mock_stream_client(mocker, aiter_bytes_fn, capture: dict | None = None):
+def _patch_mock_stream_client(
+    mocker,
+    aiter_bytes_fn,
+    capture: dict | None = None,
+    aclose_impl: Callable | None = None,
+):
     """Patch get_http_client with a mock that streams via aiter_bytes_fn.
 
     capture: if provided, stream call kwargs are merged into it (for timeout inspection).
+    alongside close calls which where executed in the stream
     """
     mock_response = MagicMock()
     mock_response.raise_for_status.return_value = None
     mock_response.headers = {}
     mock_response.aiter_bytes = aiter_bytes_fn
 
+    async def _aclose():
+        if capture is not None:
+            if "close_count" not in capture:
+                capture["close_count"] = 1
+            else:
+                capture["close_count"] += 1
+        if aclose_impl is not None:
+            await aclose_impl()
+
+    mock_response.aclose = _aclose
+
     @contextlib.asynccontextmanager
     async def _mock_stream(*args, **kwargs):
-        if capture is not None:
-            capture.update(kwargs)
-        yield mock_response
+        try:
+            if capture is not None:
+                capture.update(kwargs)
+            yield mock_response
+        finally:
+            await mock_response.aclose()
 
     mock_client = MagicMock()
     mock_client.stream = _mock_stream
@@ -1663,3 +1684,60 @@ async def test_stream_completion_aclose_from_separate_task_does_not_crash(
 
     assert _latency_count(metrics_spy, PrometheusResult.ABORT) == 1
     assert _latency_count(metrics_spy, PrometheusResult.ERROR) == 0
+
+
+async def test_response_aclose_called_once_on_disconnect(mocker, mock_request):
+    role_chunk = b'data: {"choices":[{"delta":{"role":"assistant"}}]}\n\n'
+
+    async def _aiter_bytes():
+        yield role_chunk
+        await asyncio.Event().wait()  # blocks: simulate waiting on next chunk
+
+    capture = {}
+    _patch_mock_stream_client(mocker, _aiter_bytes, capture)
+    mock_request.is_disconnected = AsyncMock(side_effect=[False, True])
+
+    received = [c async for c in stream_completion(SAMPLE_REQUEST, mock_request)]
+
+    assert received == [role_chunk]
+    assert capture.get("close_count") == 1, (
+        f"expected response.aclose() to be called exactly once, got {capture.get('close_count')}"
+    )
+
+
+async def test_pending_task_cancel_runtime_error_suppressed(mocker, mock_request):
+    started = asyncio.Event()
+
+    async def _aiter_bytes():
+        try:
+            started.set()
+            await asyncio.Event().wait()  # blocks until next_chunk_task is cancelled
+            yield b""  # pragma: no cover - unreachable, keeps this an async generator
+        except asyncio.CancelledError:
+            raise RuntimeError("aclose(): asynchronous generator is already running")
+
+    _patch_mock_stream_client(mocker, _aiter_bytes)
+    mock_request.is_disconnected = AsyncMock(return_value=False)
+
+    async def _consume():
+        async for _ in stream_completion(SAMPLE_REQUEST, mock_request):
+            pass
+
+    records = []
+    sink_id = loguru_logger.add(records.append, level="DEBUG", format="{message}")
+    task = asyncio.create_task(_consume())
+    try:
+        await started.wait()
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+    finally:
+        loguru_logger.remove(sink_id)
+
+    error_records = [
+        r.record["message"] for r in records if r.record["level"].name == "ERROR"
+    ]
+    assert error_records == [], (
+        "a cancelled request must propagate CancelledError cleanly, not log "
+        f"an ERROR for teardown noise, got: {error_records}"
+    )
