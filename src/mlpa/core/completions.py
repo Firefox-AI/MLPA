@@ -190,6 +190,7 @@ async def stream_completion(
                         asyncio.CancelledError,
                         StopAsyncIteration,
                         httpx.ReadError,
+                        RuntimeError,
                     ):
                         await next_chunk_task
                     break
