@@ -190,10 +190,9 @@ async def stream_completion(
                         asyncio.CancelledError,
                         StopAsyncIteration,
                         httpx.ReadError,
+                        RuntimeError,
                     ):
                         await next_chunk_task
-                    with contextlib.suppress(httpx.ReadError):
-                        await response.aclose()
                     break
 
                 try:
@@ -305,6 +304,7 @@ async def stream_completion(
                 asyncio.CancelledError,
                 StopAsyncIteration,
                 httpx.ReadError,
+                RuntimeError,
             ):
                 await next_chunk_task
         # Cancel the disconnect watcher and wait for it to finish to avoid
