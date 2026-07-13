@@ -58,6 +58,106 @@ def test_middleware_execution_order(test_app):
     assert response.status_code == 200
 
 
+def test_instrumentation_bounds_pre_auth_request_labels(metrics_spy):
+    from mlpa.core.middleware.instrumentation import instrument_requests_middleware
+
+    app = FastAPI()
+    app.middleware("http")(instrument_requests_middleware)
+
+    @app.get("/test")
+    async def test_endpoint():
+        return {"status": "ok"}
+
+    client = TestClient(app)
+    response = client.get(
+        "/test",
+        headers={
+            "service-type": "not-real-service-type",
+            "purpose": "not-real-purpose",
+        },
+    )
+
+    assert response.status_code == 200
+    assert (
+        metrics_spy.value(
+            "requests_total",
+            method="GET",
+            endpoint="/test",
+            service_type="other",
+            purpose="other",
+        )
+        == 1
+    )
+    assert (
+        metrics_spy.value(
+            "requests_total",
+            method="GET",
+            endpoint="/test",
+            service_type="not-real-service-type",
+            purpose="not-real-purpose",
+        )
+        == 0
+    )
+
+
+def test_instrumentation_keeps_known_pre_auth_request_labels(metrics_spy):
+    from mlpa.core.middleware.instrumentation import instrument_requests_middleware
+
+    app = FastAPI()
+    app.middleware("http")(instrument_requests_middleware)
+
+    @app.get("/test")
+    async def test_endpoint():
+        return {"status": "ok"}
+
+    client = TestClient(app)
+    response = client.get(
+        "/test",
+        headers={
+            "service-type": "ai",
+            "purpose": "chat",
+        },
+    )
+
+    assert response.status_code == 200
+    assert (
+        metrics_spy.value(
+            "requests_total",
+            method="GET",
+            endpoint="/test",
+            service_type="ai",
+            purpose="chat",
+        )
+        == 1
+    )
+
+
+def test_instrumentation_keeps_empty_purpose_as_bounded_label(metrics_spy):
+    from mlpa.core.middleware.instrumentation import instrument_requests_middleware
+
+    app = FastAPI()
+    app.middleware("http")(instrument_requests_middleware)
+
+    @app.get("/test")
+    async def test_endpoint():
+        return {"status": "ok"}
+
+    client = TestClient(app)
+    response = client.get("/test", headers={"service-type": "s2s"})
+
+    assert response.status_code == 200
+    assert (
+        metrics_spy.value(
+            "requests_total",
+            method="GET",
+            endpoint="/test",
+            service_type="s2s",
+            purpose="",
+        )
+        == 1
+    )
+
+
 def test_register_middleware_function():
     """Test that register_middleware correctly registers all middleware."""
     app = FastAPI()

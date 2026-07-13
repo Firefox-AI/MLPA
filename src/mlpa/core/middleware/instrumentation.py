@@ -4,6 +4,7 @@ from fastapi import Request
 
 from mlpa.core.logger import logger
 from mlpa.core.prometheus_metrics import metrics
+from mlpa.core.utils import clamp_purpose, clamp_service_type
 
 
 async def instrument_requests_middleware(request: Request, call_next):
@@ -25,7 +26,7 @@ async def instrument_requests_middleware(request: Request, call_next):
 
             route = request.scope.get("route")
             endpoint = route.path if route else request.url.path
-            service_type = request.headers.get("service-type", "NA")
+            service_type = request.headers.get("service-type", "")
             purpose = request.headers.get("purpose", "")
 
             metrics.request_latency.labels(
@@ -34,8 +35,8 @@ async def instrument_requests_middleware(request: Request, call_next):
             metrics.requests_total.labels(
                 method=request.method,
                 endpoint=endpoint,
-                service_type=service_type,
-                purpose=purpose,
+                service_type=clamp_service_type(service_type),
+                purpose=clamp_purpose(purpose),
             ).inc()
             metrics.response_status_codes.labels(status_code=response.status_code).inc()
             return response

@@ -1,11 +1,16 @@
 from unittest.mock import AsyncMock, patch
 
 from mlpa.core.metrics import SEARCH_MODEL
+from mlpa.core.utils import INVALID_MODEL_LABEL, clamp_model
 from tests.consts import SAMPLE_REQUEST, TEST_FXA_TOKEN
 
 
 def _country_count(metrics_spy, **labels):
     return metrics_spy.value("requests_by_country_total", **labels)
+
+
+def _chat_payload(model: str = "openai/gpt-4o"):
+    return SAMPLE_REQUEST.model_copy(update={"model": model}).model_dump()
 
 
 def test_chat_records_country(mocked_client_integration, metrics_spy):
@@ -17,12 +22,15 @@ def test_chat_records_country(mocked_client_integration, metrics_spy):
             "purpose": "chat",
             "X-Geo-Country": "DE",
         },
-        json=SAMPLE_REQUEST.model_dump(),
+        json=_chat_payload(),
     )
     assert response.status_code == 200
     assert (
         _country_count(
-            metrics_spy, service_type="ai", model="test-model", client_country="DE"
+            metrics_spy,
+            service_type="ai",
+            model="openai/gpt-4o",
+            client_country="DE",
         )
         == 1.0
     )
@@ -36,12 +44,15 @@ def test_chat_missing_geo_header_is_unknown(mocked_client_integration, metrics_s
             "service-type": "ai",
             "purpose": "chat",
         },
-        json=SAMPLE_REQUEST.model_dump(),
+        json=_chat_payload(),
     )
     assert response.status_code == 200
     assert (
         _country_count(
-            metrics_spy, service_type="ai", model="test-model", client_country="unknown"
+            metrics_spy,
+            service_type="ai",
+            model="openai/gpt-4o",
+            client_country="unknown",
         )
         == 1.0
     )
@@ -56,17 +67,23 @@ def test_chat_spoofed_geo_header_is_clamped(mocked_client_integration, metrics_s
             "purpose": "chat",
             "X-Geo-Country": "ZZZ",
         },
-        json=SAMPLE_REQUEST.model_dump(),
+        json=_chat_payload(),
     )
     assert (
         _country_count(
-            metrics_spy, service_type="ai", model="test-model", client_country="unknown"
+            metrics_spy,
+            service_type="ai",
+            model="openai/gpt-4o",
+            client_country="unknown",
         )
         == 1.0
     )
     assert (
         _country_count(
-            metrics_spy, service_type="ai", model="test-model", client_country="ZZZ"
+            metrics_spy,
+            service_type="ai",
+            model="openai/gpt-4o",
+            client_country="ZZZ",
         )
         == 0.0
     )
@@ -91,6 +108,32 @@ def test_search_records_country_with_search_model(
             service_type="search",
             model=SEARCH_MODEL,
             client_country="US",
+        )
+        == 1.0
+    )
+
+
+def test_chat_unknown_model_country_uses_invalid_model_bucket(
+    mocked_client_integration, metrics_spy
+):
+    mocked_client_integration.post(
+        "/v1/chat/completions",
+        headers={
+            "authorization": f"Bearer {TEST_FXA_TOKEN}",
+            "service-type": "ai",
+            "purpose": "chat",
+            "X-Geo-Country": "CA",
+        },
+        json=_chat_payload("not-a-configured-model"),
+    )
+
+    assert clamp_model("not-a-configured-model") == INVALID_MODEL_LABEL
+    assert (
+        _country_count(
+            metrics_spy,
+            service_type="ai",
+            model=INVALID_MODEL_LABEL,
+            client_country="CA",
         )
         == 1.0
     )

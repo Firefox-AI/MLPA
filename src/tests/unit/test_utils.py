@@ -208,7 +208,9 @@ def test_is_invalid_request_error_no_match():
     [
         ("DE", "DE"),
         ("US", "US"),
+        ("GB", "GB"),
         ("de", "unknown"),
+        ("ZZ", "unknown"),
         ("**", "unknown"),
         ("--", "unknown"),
         ("USA", "unknown"),

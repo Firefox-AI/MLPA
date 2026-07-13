@@ -318,26 +318,26 @@ def build_metrics(registry: CollectorRegistry = REGISTRY) -> PrometheusMetrics:
         chat_tool_calls=Counter(
             "mlpa_chat_tool_calls_total",
             "Total number of LLM tool invocations.",
-            ["tool_name", "model", "service_type", "purpose"],
+            ["model", "service_type", "purpose"],
             registry=registry,
         ),
         chat_completions_with_tools=Counter(
             "mlpa_chat_completions_with_tools_total",
             "Number of completions that contained at least one tool call.",
-            ["tool_name", "model", "service_type", "purpose"],
+            ["model", "service_type", "purpose"],
             registry=registry,
         ),
         chat_tool_calls_per_completion=Histogram(
             "mlpa_chat_tool_calls_per_completion",
             "Distribution of tool calls per completion.",
-            ["tool_name", "model", "service_type", "purpose"],
+            ["model", "service_type", "purpose"],
             buckets=BUCKETS_TOOL_CALLS,
             registry=registry,
         ),
         chat_requests_with_tools=Counter(
             "mlpa_chat_requests_with_tools_total",
             "Number of chat requests that included a tools payload.",
-            ["tool_name", "model", "service_type", "purpose"],
+            ["model", "service_type", "purpose"],
             registry=registry,
         ),
         chat_request_rejections=Counter(

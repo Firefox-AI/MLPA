@@ -109,6 +109,15 @@ def test_valid_service_types_all_service_types():
     assert len(service_types) == 12
 
 
+def test_valid_service_types_set_matches_ordered_list():
+    """The set is for membership checks; the list stays ordered for docs/errors."""
+    env = Env()
+
+    assert env.valid_service_types_set == set(env.valid_service_types)
+    assert isinstance(env.valid_service_types, list)
+    assert isinstance(env.valid_service_types_set, set)
+
+
 def test_service_type_purposes():
     """Test service_type_purposes: AI types have chat/title-generation/convo-starters-sidebar, memories have memory-generation. Telemetry has chat."""
     env = Env()
@@ -162,6 +171,24 @@ def test_valid_purposes_for_service_type():
     assert env.valid_purposes_for_service_type("search") == []
     assert env.valid_purposes_for_service_type("answer") == []
     assert env.valid_purposes_for_service_type("telemetry") == ["chat"]
+
+
+def test_valid_purposes_is_bounded_global_metric_allowlist():
+    env = Env()
+
+    assert "" in env.valid_purposes_set
+    assert "chat" in env.valid_purposes_set
+    assert "memory-generation" in env.valid_purposes_set
+    assert "definitely-not-valid" not in env.valid_purposes_set
+
+
+def test_valid_model_labels_are_explicit_metric_allowlist():
+    env = Env()
+
+    assert "openai/gpt-4o" in env.valid_model_labels
+    assert "exa" in env.valid_model_labels
+    assert "exa-search" in env.valid_model_labels
+    assert "not-a-configured-model" not in env.valid_model_labels
 
 
 def test_user_feature_budget_structure_consistency():

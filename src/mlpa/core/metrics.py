@@ -5,6 +5,7 @@ from mlpa.core.classes import (
     AuthorizedSearchRequest,
     LitellmRoutingSnapshot,
 )
+from mlpa.core.config import env
 from mlpa.core.prometheus_metrics import (
     AvailabilityReason,
     PrometheusRejectionReason,
@@ -13,24 +14,31 @@ from mlpa.core.prometheus_metrics import (
     availability_outcome_for,
     metrics,
 )
-from mlpa.core.utils import clamp_country
+from mlpa.core.utils import (
+    clamp_country,
+    clamp_model,
+    clamp_purpose,
+    clamp_service_type,
+)
 
 SEARCH_MODEL = "exa-search"
 
 
-def _chat_labels(req: AuthorizedChatRequest) -> dict[str, str]:
+def _chat_labels(
+    req: AuthorizedChatRequest, *, bounded_model: bool = False
+) -> dict[str, str]:
     return {
-        "model": req.model,
-        "service_type": req.service_type,
-        "purpose": req.purpose,
+        "model": clamp_model(req.model) if bounded_model else req.model,
+        "service_type": clamp_service_type(req.service_type),
+        "purpose": clamp_purpose(req.purpose),
     }
 
 
 def _search_labels(req: AuthorizedSearchRequest) -> dict[str, str]:
     return {
         "model": SEARCH_MODEL,
-        "service_type": req.service_type,
-        "purpose": req.purpose,
+        "service_type": clamp_service_type(req.service_type),
+        "purpose": clamp_purpose(req.purpose),
     }
 
 
@@ -38,8 +46,8 @@ def record_request_country(
     raw_country: str | None, *, service_type: str, model: str
 ) -> None:
     metrics.requests_by_country_total.labels(
-        service_type=service_type,
-        model=model,
+        service_type=clamp_service_type(service_type),
+        model=clamp_model(model),
         client_country=clamp_country(raw_country),
     ).inc()
 
@@ -47,7 +55,9 @@ def record_request_country(
 def record_chat_request_rejection(
     req: AuthorizedChatRequest, reason: PrometheusRejectionReason
 ) -> None:
-    metrics.chat_request_rejections.labels(reason=reason, **_chat_labels(req)).inc()
+    metrics.chat_request_rejections.labels(
+        reason=reason, **_chat_labels(req, bounded_model=True)
+    ).inc()
 
 
 def record_search_request_rejection(
@@ -66,9 +76,9 @@ def record_chat_availability_for(
     metrics.chat_availability.labels(
         outcome=availability_outcome_for(reason),
         reason=reason,
-        model=model,
-        service_type=service_type,
-        purpose=purpose,
+        model=clamp_model(model),
+        service_type=clamp_service_type(service_type),
+        purpose=clamp_purpose(purpose),
     ).inc()
 
 
@@ -88,7 +98,8 @@ def record_completion_latency(
     result: PrometheusResult,
     elapsed_seconds: float,
 ) -> None:
-    metrics.chat_completion_latency.labels(result=result, **_chat_labels(req)).observe(
+    labels = _chat_labels(req, bounded_model=result != PrometheusResult.SUCCESS)
+    metrics.chat_completion_latency.labels(result=result, **labels).observe(
         elapsed_seconds
     )
 
@@ -113,23 +124,17 @@ def extract_tool_names(items: Iterable[dict]) -> list[str]:
 def record_request_with_tools(req: AuthorizedChatRequest) -> None:
     if not req.tools:
         return
-    for name in extract_tool_names(req.tools):
-        metrics.chat_requests_with_tools.labels(
-            tool_name=name, **_chat_labels(req)
-        ).inc()
+    metrics.chat_requests_with_tools.labels(**_chat_labels(req)).inc()
 
 
 def record_tool_metrics(req: AuthorizedChatRequest, tool_names: list[str]) -> None:
     n_calls = len(tool_names)
+    if n_calls == 0:
+        return
     labels_no_tool = _chat_labels(req)
-    for name in tool_names:
-        metrics.chat_tool_calls.labels(tool_name=name, **labels_no_tool).inc()
-        metrics.chat_completions_with_tools.labels(
-            tool_name=name, **labels_no_tool
-        ).inc()
-        metrics.chat_tool_calls_per_completion.labels(
-            tool_name=name, **labels_no_tool
-        ).observe(n_calls)
+    metrics.chat_tool_calls.labels(**labels_no_tool).inc(n_calls)
+    metrics.chat_completions_with_tools.labels(**labels_no_tool).inc()
+    metrics.chat_tool_calls_per_completion.labels(**labels_no_tool).observe(n_calls)
 
 
 def _record_token_side(
@@ -152,8 +157,8 @@ def record_litellm_routing_metrics(
     labels_base = {
         "requested_model": req.model,
         "backend": snapshot.backend,
-        "service_type": req.service_type,
-        "purpose": req.purpose,
+        "service_type": clamp_service_type(req.service_type),
+        "purpose": clamp_purpose(req.purpose),
     }
     metrics.litellm_routed_completions.labels(
         **labels_base,

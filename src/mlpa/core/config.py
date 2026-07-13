@@ -216,6 +216,16 @@ class Env(BaseSettings):
         return list(self.user_feature_budget.keys())
 
     @cached_property
+    def valid_service_types_set(self) -> set[str]:
+        """
+        Valid service types for O(1) membership checks.
+
+        Keep `valid_service_types` as the ordered list for OpenAPI enum and error
+        message stability.
+        """
+        return set(self.valid_service_types)
+
+    @cached_property
     def service_type_purposes(self) -> dict[str, list[str]]:
         """
         Valid purpose values per service type (for the purpose header and Prometheus).
@@ -245,6 +255,23 @@ class Env(BaseSettings):
         """Return valid purpose values for a service type (empty if purpose not used)."""
         return self.service_type_purposes.get(service_type, [])
 
+    @cached_property
+    def valid_purposes_set(self) -> set[str]:
+        """
+        Valid purpose label values across service types.
+
+        Empty purpose is an intentional bounded value for service types that do not
+        use a purpose header.
+        """
+        return set(
+            {
+                purpose
+                for purposes in self.service_type_purposes.values()
+                for purpose in purposes
+            }
+            | {""}
+        )
+
     def service_type_requires_purpose(self, service_type: str) -> bool:
         """True if the purpose header is mandatory for this service type."""
         return len(self.valid_purposes_for_service_type(service_type)) > 0
@@ -267,6 +294,29 @@ class Env(BaseSettings):
             service_type in service_types
             for service_types in self.forced_model_service_type_pairs.values()
         )
+
+    @cached_property
+    def valid_model_labels(self) -> set[str]:
+        """
+        Valid model label values for Prometheus.
+
+        Keep this in sync with the LiteLLM model list/search tools. It is defined
+        here rather than parsed from LiteLLM config because the MLPA pod should
+        not depend on that file existing at runtime.
+        """
+        return {
+            "exa",
+            "exa-search",
+            "gemini-2.5-flash-lite",
+            "gemini-3.1-flash-lite",
+            "gpt-oss-120b",
+            "openai/gpt-4o",
+            "mistral-small-2503",
+            "mistral-small-2603",
+            "moz-summarization",
+            "qwen3-235b-a22b-instruct-2507-maas",
+            "vertex_ai/mistral-small-2503",
+        }
 
     # Logging
     LOG_JSON: bool = False  # Set to True for GKE deployment

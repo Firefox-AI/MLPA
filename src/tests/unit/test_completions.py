@@ -37,6 +37,7 @@ from mlpa.core.prometheus_metrics import (
     PrometheusRejectionReason,
     PrometheusResult,
 )
+from mlpa.core.utils import clamp_model
 from tests.consts import SAMPLE_REQUEST, SUCCESSFUL_CHAT_RESPONSE
 
 
@@ -66,10 +67,11 @@ def _proxy_error_records(records):
 
 
 def _latency_count(spy, result: PrometheusResult, req=SAMPLE_REQUEST) -> float:
+    model = req.model if result == PrometheusResult.SUCCESS else clamp_model(req.model)
     return spy.histogram_count(
         "chat_completion_latency",
         result=result,
-        model=req.model,
+        model=model,
         service_type=req.service_type,
         purpose=req.purpose,
     )
@@ -81,7 +83,7 @@ def _rejection_count(
     return spy.value(
         "chat_request_rejections",
         reason=reason,
-        model=req.model,
+        model=clamp_model(req.model),
         service_type=req.service_type,
         purpose=req.purpose,
     )
@@ -97,7 +99,7 @@ def _availability_count(
         "chat_availability",
         outcome=outcome,
         reason=reason,
-        model=req.model,
+        model=clamp_model(req.model),
         service_type=req.service_type,
         purpose=req.purpose,
     )
@@ -114,7 +116,7 @@ def _availability_total(spy, req=SAMPLE_REQUEST) -> float:
         s.value
         for s in spy.samples("chat_availability")
         if s.name.endswith("_total")
-        and s.labels.get("model") == req.model
+        and s.labels.get("model") == clamp_model(req.model)
         and s.labels.get("service_type") == req.service_type
         and s.labels.get("purpose") == req.purpose
     )
