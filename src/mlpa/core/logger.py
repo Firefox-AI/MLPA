@@ -102,30 +102,36 @@ def _truncate_mapping(mapping, limit=5):
     return result
 
 
+def _httpx_params_repr(params):
+    return _truncate_mapping(params) if isinstance(params, dict) else _truncate(params)
+
+
+def _httpx_json_repr(json_data):
+    if isinstance(json_data, dict) and "messages" in json_data:
+        json_data = dict(json_data)
+        json_data["messages"] = "[...]"
+    return (
+        _truncate_mapping(json_data)
+        if isinstance(json_data, dict)
+        else _truncate(json_data)
+    )
+
+
 def _enable_httpx_logging():
     if not env.HTTPX_LOGGING:
         return
 
     def _build_wrapper(method_name, original):
+        method_label = method_name.upper()
+
         async def _wrapper(self, *args, **kwargs):
             url = args[0] if args else kwargs.get("url")
-            params = kwargs.get("params")
-            json_data = kwargs.get("json")
-            if isinstance(json_data, dict) and "messages" in json_data:
-                json_data = dict(json_data)
-                json_data["messages"] = "[...]"
-            params_repr = (
-                _truncate_mapping(params)
-                if isinstance(params, dict)
-                else _truncate(params)
-            )
-            json_repr = (
-                _truncate_mapping(json_data)
-                if isinstance(json_data, dict)
-                else _truncate(json_data)
-            )
-            logger.debug(
-                f"HTTPX {method_name.upper()} request -> {url=} {params_repr=} {json_repr=}",
+            logger.opt(lazy=True).debug(
+                "HTTPX {} request -> url={!r} params_repr={!r} json_repr={!r}",
+                lambda: method_label,
+                lambda: url,
+                lambda: _httpx_params_repr(kwargs.get("params")),
+                lambda: _httpx_json_repr(kwargs.get("json")),
             )
             try:
                 response = await original(self, *args, **kwargs)
@@ -137,8 +143,11 @@ def _enable_httpx_logging():
                     f"{type(exc).__name__}: {exc!r}"
                 )
                 raise
-            logger.debug(
-                f"HTTPX {method_name.upper()} response <- {url=} {response.status_code=}",
+            logger.opt(lazy=True).debug(
+                "HTTPX {} response <- url={!r} status_code={}",
+                lambda: method_label,
+                lambda: url,
+                lambda: response.status_code,
             )
             return response
 
@@ -165,16 +174,21 @@ def _enable_asyncpg_logging():
         return
 
     async def _execute_wrapper(self, query, *args, **kwargs):
-        logger.debug(
-            f"ASYNCPG execute -> {query=} {args=}",
+        logger.opt(lazy=True).debug(
+            "ASYNCPG execute -> query={!r} args={!r}",
+            lambda: query,
+            lambda: args,
         )
         try:
             result = await original_execute(self, query, *args, **kwargs)
         except Exception:
             logger.error(f"ASYNCPG execute failed -> {query=}")
             raise
-        logger.debug(
-            f"ASYNCPG execute <- {query=} {args=}{result=}",
+        logger.opt(lazy=True).debug(
+            "ASYNCPG execute <- query={!r} args={!r} result={!r}",
+            lambda: query,
+            lambda: args,
+            lambda: result,
         )
         return result
 

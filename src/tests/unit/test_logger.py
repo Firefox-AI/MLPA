@@ -1,11 +1,12 @@
 import contextlib
 
+import asyncpg
 import httpx
 import pytest
 from loguru import logger as loguru_logger
 
 from mlpa.core.config import env
-from mlpa.core.logger import _enable_httpx_logging
+from mlpa.core.logger import _enable_asyncpg_logging, _enable_httpx_logging
 
 
 @contextlib.contextmanager
@@ -16,6 +17,15 @@ def _capture_logs():
         yield records
     finally:
         loguru_logger.remove(sink_id)
+
+
+@contextlib.contextmanager
+def _disable_logger_module():
+    loguru_logger.disable("mlpa.core.logger")
+    try:
+        yield
+    finally:
+        loguru_logger.enable("mlpa.core.logger")
 
 
 async def test_httpx_wrapper_logs_exc_type_on_transport_failure(mocker):
@@ -56,3 +66,86 @@ async def test_httpx_wrapper_logs_exc_type_on_transport_failure(mocker):
     msg = failures[0]
     assert "ConnectError" in msg
     assert url in msg
+
+
+async def test_httpx_debug_payload_build_is_lazy_when_debug_is_disabled(mocker):
+    mocker.patch.object(env, "HTTPX_LOGGING", True)
+    truncate_mapping = mocker.patch(
+        "mlpa.core.logger._truncate_mapping",
+        side_effect=AssertionError("debug payload should not be built"),
+    )
+
+    before_get = httpx.AsyncClient.get
+    before_post = httpx.AsyncClient.post
+    try:
+        _enable_httpx_logging()
+
+        transport = httpx.MockTransport(lambda request: httpx.Response(200))
+        url = "http://litellm:8000/v1/chat/completions"
+        with _disable_logger_module():
+            async with httpx.AsyncClient(transport=transport) as client:
+                await client.post(
+                    url,
+                    params={"user_id": "test-user"},
+                    json={
+                        "messages": [{"role": "user", "content": "secret"}],
+                        "model": "exa",
+                    },
+                )
+    finally:
+        httpx.AsyncClient.get = before_get
+        httpx.AsyncClient.post = before_post
+
+    truncate_mapping.assert_not_called()
+
+
+async def test_asyncpg_debug_args_build_is_lazy_when_debug_is_disabled(mocker):
+    mocker.patch.object(env, "ASYNCPG_LOGGING", True)
+
+    class UnreprableArg:
+        def __repr__(self):
+            raise AssertionError("debug args should not be formatted")
+
+    async def _execute(self, query, *args, **kwargs):
+        return "OK"
+
+    before_execute = asyncpg.connection.Connection.execute
+    try:
+        asyncpg.connection.Connection.execute = _execute
+        _enable_asyncpg_logging()
+
+        with _disable_logger_module():
+            result = await asyncpg.connection.Connection.execute(
+                object(), "SELECT $1", UnreprableArg()
+            )
+    finally:
+        asyncpg.connection.Connection.execute = before_execute
+
+    assert result == "OK"
+
+
+async def test_asyncpg_wrapper_logs_query_on_execute_failure(mocker):
+    mocker.patch.object(env, "ASYNCPG_LOGGING", True)
+
+    async def _execute(self, query, *args, **kwargs):
+        raise RuntimeError("bad query")
+
+    before_execute = asyncpg.connection.Connection.execute
+    try:
+        asyncpg.connection.Connection.execute = _execute
+        _enable_asyncpg_logging()
+
+        query = "SELECT bad"
+        with _capture_logs() as records:
+            with pytest.raises(RuntimeError):
+                await asyncpg.connection.Connection.execute(object(), query)
+    finally:
+        asyncpg.connection.Connection.execute = before_execute
+
+    failures = [
+        item.record["message"]
+        for item in records
+        if item.record["level"].name == "ERROR"
+        and "ASYNCPG execute failed" in item.record["message"]
+    ]
+    assert failures == [f"ASYNCPG execute failed -> query='{query}'"]
