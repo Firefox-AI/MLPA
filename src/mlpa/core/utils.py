@@ -22,32 +22,6 @@ from mlpa.core.logger import logger
 from mlpa.core.pg_services.services import app_attest_pg, litellm_pg
 from mlpa.core.prometheus_metrics import PrometheusResult, metrics
 
-INVALID_MODEL_LABEL = "invalid_model"
-
-
-def clamp_model(model: str) -> str:
-    return model if model in env.valid_model_labels else INVALID_MODEL_LABEL
-
-
-def clamp_service_type(raw: str) -> str:
-    return raw if raw in env.valid_service_types_set else "other"
-
-
-def clamp_purpose(raw: str) -> str:
-    return raw if raw in env.valid_purposes_set else "other"
-
-
-def clamp_country(raw: str | None) -> str:
-    """Bound an edge-stamped client country to a known country code, else "unknown".
-
-    Country is coarse, edge-derived geo (MLPA never sees the client IP) used only
-    for aggregate metrics, never per-user data or logs. The clamp also caps label
-    cardinality and blocks injection from a spoofed ``X-Geo-Country`` header.
-    """
-    return raw if raw in COUNTRY_CODES else "unknown"
-
-
-UNKNOWN_METHOD_LABEL = "INVALID"
 KNOWN_HTTP_METHODS = frozenset(
     {
         "DELETE",
@@ -61,9 +35,31 @@ KNOWN_HTTP_METHODS = frozenset(
 )
 
 
+def clamp_model(model: str) -> str:
+    return model if model in env.valid_model_labels else "invalid"
+
+
+def clamp_service_type(raw: str) -> str:
+    return raw if raw == "" or raw in env.valid_service_types_set else "other"
+
+
+def clamp_purpose(raw: str) -> str:
+    return raw if raw == "" or raw in env.valid_purposes_set else "other"
+
+
+def clamp_country(raw: str | None) -> str:
+    """Bound an edge-stamped client country to a known country code, else "unknown".
+
+    Country is coarse, edge-derived geo (MLPA never sees the client IP) used only
+    for aggregate metrics, never per-user data or logs. The clamp also caps label
+    cardinality and blocks injection from a spoofed ``X-Geo-Country`` header.
+    """
+    return raw if raw in COUNTRY_CODES else "unknown"
+
+
 def clamp_request_method(method: str) -> str:
     normalized = method.upper()
-    return normalized if normalized in KNOWN_HTTP_METHODS else UNKNOWN_METHOD_LABEL
+    return normalized if normalized in KNOWN_HTTP_METHODS else "INVALID"
 
 
 async def get_or_create_user(user_id: str):
