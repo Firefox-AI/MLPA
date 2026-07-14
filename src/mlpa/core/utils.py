@@ -47,6 +47,25 @@ def clamp_country(raw: str | None) -> str:
     return raw if raw in COUNTRY_CODES else "unknown"
 
 
+UNKNOWN_METHOD_LABEL = "INVALID"
+KNOWN_HTTP_METHODS = frozenset(
+    {
+        "DELETE",
+        "GET",
+        "HEAD",
+        "OPTIONS",
+        "PATCH",
+        "POST",
+        "PUT",
+    }
+)
+
+
+def clamp_request_method(method: str) -> str:
+    normalized = method.upper()
+    return normalized if normalized in KNOWN_HTTP_METHODS else UNKNOWN_METHOD_LABEL
+
+
 async def get_or_create_user(user_id: str):
     """Returns user info from LiteLLM, creating the user if they don't exist.
     Args:

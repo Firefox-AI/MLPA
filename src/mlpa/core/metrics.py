@@ -124,7 +124,9 @@ def extract_tool_names(items: Iterable[dict]) -> list[str]:
 def record_request_with_tools(req: AuthorizedChatRequest) -> None:
     if not req.tools:
         return
-    metrics.chat_requests_with_tools.labels(**_chat_labels(req)).inc()
+    metrics.chat_requests_with_tools.labels(
+        **_chat_labels(req, bounded_model=True)
+    ).inc()
 
 
 def record_tool_metrics(req: AuthorizedChatRequest, tool_names: list[str]) -> None:

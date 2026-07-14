@@ -68,6 +68,7 @@ def test_unknown_models_are_bucketed_on_failure_side_metrics(metrics_spy):
     record_chat_request_rejection(req, PrometheusRejectionReason.INVALID_MODEL_NAME)
     record_chat_availability(req, AvailabilityReason.INVALID_MODEL_NAME)
     record_completion_latency(req, PrometheusResult.ERROR, 0.1)
+    record_request_with_tools(req)
 
     assert (
         metrics_spy.value(
@@ -78,6 +79,7 @@ def test_unknown_models_are_bucketed_on_failure_side_metrics(metrics_spy):
         )
         == 1
     )
+    assert metrics_spy.value("chat_requests_with_tools", **labels) == 1
     assert (
         metrics_spy.value(
             "chat_request_rejections",

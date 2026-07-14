@@ -158,6 +158,49 @@ def test_instrumentation_keeps_empty_purpose_as_bounded_label(metrics_spy):
     )
 
 
+def test_instrumentation_buckets_unknown_methods(metrics_spy):
+    from mlpa.core.middleware.instrumentation import instrument_requests_middleware
+
+    app = FastAPI()
+    app.middleware("http")(instrument_requests_middleware)
+
+    @app.get("/test")
+    async def test_endpoint():
+        return {"status": "ok"}
+
+    client = TestClient(app)
+    response = client.request(
+        "BREW",
+        "/test",
+        headers={
+            "service-type": "ai",
+            "purpose": "chat",
+        },
+    )
+
+    assert response.status_code in {404, 405}
+    assert (
+        metrics_spy.value(
+            "requests_total",
+            method="INVALID",
+            endpoint="/test",
+            service_type="ai",
+            purpose="chat",
+        )
+        == 1
+    )
+    assert (
+        metrics_spy.value(
+            "requests_total",
+            method="BREW",
+            endpoint="/test",
+            service_type="ai",
+            purpose="chat",
+        )
+        == 0
+    )
+
+
 def test_register_middleware_function():
     """Test that register_middleware correctly registers all middleware."""
     app = FastAPI()
