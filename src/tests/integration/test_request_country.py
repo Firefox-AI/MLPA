@@ -1,7 +1,7 @@
 from unittest.mock import AsyncMock, patch
 
 from mlpa.core.metrics import SEARCH_MODEL
-from mlpa.core.utils import INVALID_MODEL_LABEL, clamp_model
+from mlpa.core.utils import clamp_model
 from tests.consts import SAMPLE_REQUEST, TEST_FXA_TOKEN
 
 
@@ -127,12 +127,12 @@ def test_chat_unknown_model_country_uses_invalid_model_bucket(
         json=_chat_payload("not-a-configured-model"),
     )
 
-    assert clamp_model("not-a-configured-model") == INVALID_MODEL_LABEL
+    assert clamp_model("not-a-configured-model") == "invalid"
     assert (
         _country_count(
             metrics_spy,
             service_type="ai",
-            model=INVALID_MODEL_LABEL,
+            model="invalid",
             client_country="CA",
         )
         == 1.0

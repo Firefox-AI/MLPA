@@ -1,7 +1,6 @@
 import json
 
 from mlpa.core.config import env
-from mlpa.core.utils import INVALID_MODEL_LABEL
 from tests.consts import TEST_FXA_TOKEN
 
 
@@ -67,7 +66,7 @@ def test_request_size_over_limit(mocked_client_integration, metrics_spy):
             "chat_availability",
             outcome="excluded",
             reason="payload_too_large",
-            model=INVALID_MODEL_LABEL,
+            model="invalid",
             service_type="ai",
             purpose="chat",
         )
