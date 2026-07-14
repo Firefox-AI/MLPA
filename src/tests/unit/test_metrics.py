@@ -12,7 +12,7 @@ from mlpa.core.prometheus_metrics import (
     PrometheusRejectionReason,
     PrometheusResult,
 )
-from mlpa.core.utils import INVALID_MODEL_LABEL, clamp_model
+from mlpa.core.utils import clamp_model
 
 
 def _chat_request(model: str = "openai/gpt-4o") -> AuthorizedChatRequest:
@@ -58,8 +58,9 @@ def test_tool_metrics_are_aggregated_without_tool_name(metrics_spy):
 
 def test_unknown_models_are_bucketed_on_failure_side_metrics(metrics_spy):
     req = _chat_request(model="unconfigured-model-from-request")
+    invalid_model_label = clamp_model(req.model)
     labels = {
-        "model": INVALID_MODEL_LABEL,
+        "model": invalid_model_label,
         "service_type": req.service_type,
         "purpose": req.purpose,
     }
@@ -74,7 +75,7 @@ def test_unknown_models_are_bucketed_on_failure_side_metrics(metrics_spy):
         metrics_spy.value(
             "requests_by_country_total",
             service_type=req.service_type,
-            model=INVALID_MODEL_LABEL,
+            model=invalid_model_label,
             client_country="US",
         )
         == 1
@@ -128,6 +129,57 @@ def test_invalid_service_type_and_purpose_are_bucketed(metrics_spy):
             **labels,
         )
         == 1
+    )
+    assert (
+        metrics_spy.value(
+            "chat_availability",
+            outcome="excluded",
+            reason=AvailabilityReason.INVALID_REQUEST,
+            **labels,
+        )
+        == 1
+    )
+    assert (
+        metrics_spy.histogram_count(
+            "chat_completion_latency",
+            result=PrometheusResult.ERROR,
+            **labels,
+        )
+        == 1
+    )
+
+
+def test_missing_service_type_and_purpose_are_not_bucketed_as_other(metrics_spy):
+    req = _chat_request(model="openai/gpt-4o")
+    req.service_type = ""
+    req.purpose = ""
+
+    record_chat_request_rejection(req, PrometheusRejectionReason.INVALID_REQUEST)
+    record_chat_availability(req, AvailabilityReason.INVALID_REQUEST)
+    record_completion_latency(req, PrometheusResult.ERROR, 0.1)
+
+    labels = {
+        "model": req.model,
+        "service_type": "",
+        "purpose": "",
+    }
+    assert (
+        metrics_spy.value(
+            "chat_request_rejections",
+            reason=PrometheusRejectionReason.INVALID_REQUEST,
+            **labels,
+        )
+        == 1
+    )
+    assert (
+        metrics_spy.value(
+            "chat_request_rejections",
+            reason=PrometheusRejectionReason.INVALID_REQUEST,
+            model=req.model,
+            service_type="other",
+            purpose="other",
+        )
+        == 0
     )
     assert (
         metrics_spy.value(
