@@ -122,7 +122,7 @@ async def update_user_budget(
     """Update a user's budget tier by service type (e.g. ai-dev for higher limits)."""
     if not user_id or user_id.strip() == "":
         raise HTTPException(status_code=404, detail="User not found")
-    if payload.service_type not in env.valid_service_types:
+    if payload.service_type not in env.valid_service_types_set:
         raise HTTPException(
             status_code=422,
             detail={

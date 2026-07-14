@@ -23,6 +23,7 @@ from mlpa.core.prometheus_metrics import (
     AvailabilityOutcome,
     AvailabilityReason,
 )
+from mlpa.core.utils import clamp_model, clamp_purpose, clamp_service_type
 from tests.consts import SAMPLE_REQUEST
 
 # A model/service-type pair that is valid together, so the wrapper passes its own
@@ -57,9 +58,9 @@ def _availability(
         "chat_availability",
         outcome=outcome,
         reason=reason,
-        model=model,
-        service_type=service_type,
-        purpose=purpose,
+        model=clamp_model(model),
+        service_type=clamp_service_type(service_type),
+        purpose=clamp_purpose(purpose),
     )
 
 
