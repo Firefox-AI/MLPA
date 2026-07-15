@@ -1,0 +1,21 @@
+version: 2
+updates:
+  - package-ecosystem: "uv"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+
+    groups:
+      # Group minor and patch updates into one PR.
+      # Major updates remain as individual PRs.
+      minor-and-patch:
+        applies-to: version-updates
+        patterns:
+          - "*"
+        update-types:
+          - "minor"
+          - "patch"
+
+    # Limit the number of concurrent version-update PRs.
+    # This does not limit dependencies per grouped PR.
+    open-pull-requests-limit: 5
