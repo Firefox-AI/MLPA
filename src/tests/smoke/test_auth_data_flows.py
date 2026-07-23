@@ -30,9 +30,7 @@ APP_ATTEST_QA_CERT_FILENAMES = (
     "root_cert.pem",
     "root_key.pem",
 )
-DEFAULT_APP_ATTEST_QA_BUCKET = (
-    f"gs://{env.APP_ATTEST_QA_BUCKET}/{env.APP_ATTEST_QA_BUCKET_PREFIX.strip('/')}"
-)
+DEFAULT_APP_ATTEST_QA_BUCKET = f"gs://{env.APP_ATTEST_QA_BUCKET}/{(env.APP_ATTEST_QA_BUCKET_PREFIX or '').strip('/')}"
 
 
 def _chat_payload() -> dict:

@@ -121,7 +121,6 @@ jobs:
           echo "APP_ATTEST_QA_CERT_DIR=$RUNNER_TEMP/app-attest-qa" >> "$GITHUB_ENV"
 
       - name: Run smoke tests
-        if: steps.argo_wait.outcome == 'success'
         id: smoke
         continue-on-error: true
         env:
@@ -132,7 +131,6 @@ jobs:
           SMOKE_PLAY_INTEGRITY_TOKEN: ${{ secrets.SMOKE_PLAY_INTEGRITY_TOKEN }}
           SMOKE_PLAY_INTEGRITY_USER_ID: ${{ secrets.SMOKE_PLAY_INTEGRITY_USER_ID }}
           CI_WAF_TOKEN: ${{ secrets.CI_WAF_TOKEN }}
-          APP_ATTEST_QA_CERT_DIR: $RUNNER_TEMP/app-attest-qa
         run: uv run pytest src/tests/smoke -v
 
       - name: Check Slack configuration
