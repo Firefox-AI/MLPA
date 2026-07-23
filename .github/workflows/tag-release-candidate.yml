@@ -1,0 +1,181 @@
+name: Tag Release Candidate in GAR
+
+on:
+  workflow_dispatch:
+    inputs:
+      commit_sha:
+        description: "Full commit SHA on main that the image was built from"
+        required: true
+        type: string
+      rc_number:
+        description: "Release candidate number (the N in vX.Y.Z-rc.N)"
+        required: true
+        type: string
+
+concurrency:
+  group: mlpa-image-promotion
+  cancel-in-progress: false
+
+env:
+  GAR_LOCATION: us
+  GCP_PROJECT_ID: moz-fx-llm-proxy-prod-b0b8
+  GAR_REPOSITORY: llm-proxy-prod
+  GAR_NAME: mlpa
+  GCPV2_GITHUB_WORKLOAD_IDENTITY_PROVIDER: projects/324168772199/locations/global/workloadIdentityPools/github-actions/providers/github-actions
+
+jobs:
+  tag-rc:
+    runs-on: ubuntu-latest
+    environment: build
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Validate inputs
+        env:
+          COMMIT_SHA: ${{ inputs.commit_sha }}
+          RC_NUMBER: ${{ inputs.rc_number }}
+        run: |
+          set -euo pipefail
+          if [[ ! "$COMMIT_SHA" =~ ^[0-9a-fA-F]{40}$ ]]; then
+            echo "::error::commit_sha must be a full 40-character hex SHA"
+            exit 1
+          fi
+          if [[ ! "$RC_NUMBER" =~ ^[1-9][0-9]*$ ]]; then
+            echo "::error::rc_number must be a positive integer"
+            exit 1
+          fi
+
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.commit_sha }}
+          # Full history so the on-main check below can fetch origin/main.
+          # persist-credentials: false is fine while the repo is public (the fetch
+          # needs no auth); a private repo would need a token here instead.
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify candidate is on main
+        env:
+          COMMIT_SHA: ${{ inputs.commit_sha }}
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin "+refs/heads/main:refs/remotes/origin/main"
+          if ! git merge-base --is-ancestor "$COMMIT_SHA" origin/main; then
+            echo "::error::Commit $COMMIT_SHA is not an ancestor of main"
+            exit 1
+          fi
+
+      - name: Derive tags and version
+        id: tags
+        env:
+          COMMIT_SHA: ${{ inputs.commit_sha }}
+          RC_NUMBER: ${{ inputs.rc_number }}
+        run: |
+          set -euo pipefail
+
+          # Use the same short SHA the build used to tag the image.
+          SOURCE_TAG="$(git rev-parse --short=10 "$COMMIT_SHA")"
+
+          VERSION="$(python3 -c "import tomllib, pathlib; print(tomllib.loads(pathlib.Path('pyproject.toml').read_text())['project']['version'])")"
+          if [[ ! "$VERSION" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+            echo "::error::project.version '$VERSION' is not a valid X.Y.Z version"
+            exit 1
+          fi
+
+          echo "source_tag=${SOURCE_TAG}" >> "$GITHUB_OUTPUT"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "rc_tag=v${VERSION}-rc.${RC_NUMBER}" >> "$GITHUB_OUTPUT"
+          echo "Source tag: ${SOURCE_TAG}  ->  RC tag: v${VERSION}-rc.${RC_NUMBER}"
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          service_account: artifact-writer@${{ env.GCP_PROJECT_ID }}.iam.gserviceaccount.com
+          workload_identity_provider: ${{ env.GCPV2_GITHUB_WORKLOAD_IDENTITY_PROVIDER }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Tag release candidate
+        id: tag
+        env:
+          SOURCE_TAG: ${{ steps.tags.outputs.source_tag }}
+          RC_TAG: ${{ steps.tags.outputs.rc_tag }}
+        run: |
+          set -euo pipefail
+          IMAGE="${GAR_LOCATION}-docker.pkg.dev/${GCP_PROJECT_ID}/${GAR_REPOSITORY}/${GAR_NAME}"
+
+          # Return the image digest for a ref, or empty if it doesn't resolve.
+          get_digest() {
+            gcloud artifacts docker images describe "$1" \
+              --format='value(image_summary.digest)' 2>/dev/null || true
+          }
+
+          # Source image must exist — stop if we can't resolve its digest.
+          SOURCE_DIGEST="$(get_digest "${IMAGE}:${SOURCE_TAG}")"
+          if [[ -z "$SOURCE_DIGEST" ]]; then
+            echo "::error::Source image ${IMAGE}:${SOURCE_TAG} not found. Was this commit built on main?"
+            exit 1
+          fi
+          if [[ ! "$SOURCE_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+            echo "::error::Invalid source digest: '$SOURCE_DIGEST'"
+            exit 1
+          fi
+          echo "Source: ${IMAGE}:${SOURCE_TAG} -> ${SOURCE_DIGEST}"
+
+          # Use `tags list` (not `images describe`) to check existence: describe
+          # can't tell a missing tag from an API error, so we could accidentally
+          # overwrite an existing RC tag. `tags list` only fails on a real error.
+          if ! RC_TAGS="$(gcloud artifacts docker tags list "$IMAGE" \
+              --format='value(tag)')"; then
+            echo "::error::Failed to list tags for ${IMAGE}; aborting rather than risk moving an existing RC tag."
+            exit 1
+          fi
+
+          rc_exists=false
+          while IFS= read -r t; do
+            # Docker tags can't contain '/', so basename matches a short name or full path.
+            [[ -n "$t" && "${t##*/}" == "$RC_TAG" ]] && { rc_exists=true; break; }
+          done <<< "$RC_TAGS"
+
+          # Same digest: already tagged, nothing to do. Different digest: refuse
+          # to move an existing RC tag.
+          if [[ "$rc_exists" == "true" ]]; then
+            RC_DIGEST="$(get_digest "${IMAGE}:${RC_TAG}")"
+            if [[ "$RC_DIGEST" == "$SOURCE_DIGEST" ]]; then
+              echo "RC tag ${RC_TAG} already points to ${SOURCE_DIGEST}. Nothing to do."
+            else
+              echo "::error::RC tag ${RC_TAG} already exists on a different digest (${RC_DIGEST:-unknown}); refusing to move it."
+              exit 1
+            fi
+          else
+            gcloud artifacts docker tags add "${IMAGE}@${SOURCE_DIGEST}" "${IMAGE}:${RC_TAG}"
+            echo "Tagged ${IMAGE}@${SOURCE_DIGEST} as ${IMAGE}:${RC_TAG}"
+          fi
+
+          echo "digest=${SOURCE_DIGEST}" >> "$GITHUB_OUTPUT"
+
+      - name: Summary
+        env:
+          COMMIT_SHA: ${{ inputs.commit_sha }}
+          SOURCE_TAG: ${{ steps.tags.outputs.source_tag }}
+          VERSION: ${{ steps.tags.outputs.version }}
+          RC_TAG: ${{ steps.tags.outputs.rc_tag }}
+          DIGEST: ${{ steps.tag.outputs.digest }}
+        run: |
+          set -euo pipefail
+          cat >> "$GITHUB_STEP_SUMMARY" << EOF
+          ## RC Tag
+
+          | Field | Value |
+          |---|---|
+          | Commit | \`${COMMIT_SHA}\` |
+          | Source tag | \`${SOURCE_TAG}\` |
+          | Version | \`${VERSION}\` |
+          | RC tag | \`${RC_TAG}\` |
+          | Digest | \`${DIGEST}\` |
+          EOF
