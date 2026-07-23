@@ -1,0 +1,167 @@
+name: Post-deploy smoke
+
+on:
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Deployed environment to smoke"
+        required: true
+        type: choice
+        options:
+          - dev
+          - stage
+      base_url:
+        description: "Deployed MLPA base URL"
+        required: true
+        type: string
+      argo_app:
+        description: "Argo CD application name"
+        required: true
+        type: string
+      blocking:
+        description: "Fail this workflow on Argo/smoke failure"
+        required: false
+        default: false
+        type: boolean
+  workflow_call:
+    inputs:
+      environment:
+        required: true
+        type: string
+      base_url:
+        required: true
+        type: string
+      argo_app:
+        required: true
+        type: string
+      blocking:
+        required: false
+        default: false
+        type: boolean
+    secrets:
+      # ARGOCD_AUTH_TOKEN:
+      #   required: true
+      # ARGOCD_SERVER:
+      #   required: true
+      SMOKE_APP_ATTEST_QA_CERT_B64:
+        required: false
+      SMOKE_APP_DEVELOPMENT_TEAM:
+        required: false
+      SMOKE_FXA_TOKEN:
+        required: false
+      SMOKE_PLAY_INTEGRITY_TOKEN:
+        required: false
+      SMOKE_PLAY_INTEGRITY_USER_ID:
+        required: false
+      SLACK_BOT_TOKEN:
+        required: false
+      SLACK_CHANNEL_ID:
+        required: false
+
+permissions:
+  contents: read
+
+env:
+  APP_ATTEST_QA: "true"
+  ARGOCD_VERSION: v2.14.10
+
+jobs:
+  post-deploy-smoke:
+    runs-on: ubuntu-latest
+    environment: ${{ inputs.environment }}
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        run: pip install uv==0.10.8
+
+      - name: Sync dependencies
+        run: |
+          uv venv
+          uv sync --all-groups
+          uv pip install --no-cache-dir -e .
+
+      - name: Install Argo CD CLI
+        run: |
+          curl -fsSL -o argocd "https://github.com/argoproj/argo-cd/releases/download/${ARGOCD_VERSION}/argocd-linux-amd64"
+          chmod +x argocd
+          sudo mv argocd /usr/local/bin/argocd
+
+      # - name: Wait for Argo CD sync and health
+      #   id: argo_wait
+      #   continue-on-error: true
+      #   env:
+      #     ARGOCD_AUTH_TOKEN: ${{ secrets.ARGOCD_AUTH_TOKEN }}
+      #     ARGOCD_SERVER: ${{ secrets.ARGOCD_SERVER }}
+      #   run: |
+      #     argocd app wait "${{ inputs.argo_app }}" \
+      #       --server "$ARGOCD_SERVER" \
+      #       --auth-token "$ARGOCD_AUTH_TOKEN" \
+      #       --grpc-web \
+      #       --sync \
+      #       --health \
+      #       --timeout 900
+
+      - name: Decode App Attest QA certificates
+        env:
+          SMOKE_APP_ATTEST_QA_CERT_B64: ${{ secrets.SMOKE_APP_ATTEST_QA_CERT_B64 }}
+        run: |
+          if [ -z "$SMOKE_APP_ATTEST_QA_CERT_B64" ]; then
+            echo "No App Attest QA certificate bundle configured; live App Attest smoke will skip."
+            exit 0
+          fi
+          mkdir -p "$RUNNER_TEMP/app-attest-qa"
+          printf '%s' "$SMOKE_APP_ATTEST_QA_CERT_B64" | base64 -d | tar -xz -C "$RUNNER_TEMP/app-attest-qa"
+          echo "APP_ATTEST_QA_CERT_DIR=$RUNNER_TEMP/app-attest-qa" >> "$GITHUB_ENV"
+
+      - name: Run smoke tests
+        if: steps.argo_wait.outcome == 'success'
+        id: smoke
+        continue-on-error: true
+        env:
+          SMOKE_APP_BUNDLE_ID: ${{ vars.SMOKE_APP_BUNDLE_ID || 'org.mozilla.ios.Fennec' }}
+          SMOKE_APP_DEVELOPMENT_TEAM: ${{ secrets.SMOKE_APP_DEVELOPMENT_TEAM }}
+          SMOKE_BASE_URL: ${{ inputs.base_url }}
+          SMOKE_FXA_TOKEN: ${{ secrets.SMOKE_FXA_TOKEN }}
+          SMOKE_PLAY_INTEGRITY_TOKEN: ${{ secrets.SMOKE_PLAY_INTEGRITY_TOKEN }}
+          SMOKE_PLAY_INTEGRITY_USER_ID: ${{ secrets.SMOKE_PLAY_INTEGRITY_USER_ID }}
+          CI_WAF_TOKEN: ${{ secrets.CI_WAF_TOKEN }}
+          APP_ATTEST_QA_CERT_DIR: $RUNNER_TEMP/app-attest-qa
+        run: uv run pytest src/tests/smoke -v
+
+      - name: Check Slack configuration
+        id: slack_config
+        env:
+          SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+          SLACK_CHANNEL_ID: ${{ secrets.SLACK_CHANNEL_ID }}
+        run: |
+          if [ -n "$SLACK_BOT_TOKEN" ] && [ -n "$SLACK_CHANNEL_ID" ]; then
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Notify Slack on failure
+        if: (steps.argo_wait.outcome == 'failure' || steps.smoke.outcome == 'failure') && steps.slack_config.outputs.configured == 'true'
+        uses: slackapi/slack-github-action@v2
+        with:
+          method: chat.postMessage
+          token: ${{ secrets.SLACK_BOT_TOKEN }}
+          payload: |
+            channel: "${{ secrets.SLACK_CHANNEL_ID }}"
+            text: "MLPA post-deploy smoke failed for ${{ inputs.environment }}."
+            blocks:
+              - type: section
+                text:
+                  type: mrkdwn
+                  text: "*MLPA post-deploy smoke failed*\n*Environment:* `${{ inputs.environment }}`\n*Argo app:* `${{ inputs.argo_app }}`\n*Base URL:* `${{ inputs.base_url }}`\n*Argo wait:* `${{ steps.argo_wait.outcome }}`\n*Smoke:* `${{ steps.smoke.outcome || 'skipped' }}`\n*Blocking:* `${{ inputs.blocking }}`\n*Run:* <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|${{ github.run_id }}>"
+
+      - name: Fail if blocking
+        if: inputs.blocking && (steps.argo_wait.outcome == 'failure' || steps.smoke.outcome == 'failure')
+        run: exit 1
