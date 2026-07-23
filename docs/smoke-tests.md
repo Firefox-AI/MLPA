@@ -27,7 +27,7 @@ user during pytest teardown. The default target is FxA stage.
 
 Useful overrides:
 
-- `SMOKE_FXA_ENV`: `stage` or `prod`; defaults to `stage`
+- `SMOKE_FXA_ENV`: `stage`;
 - `SMOKE_FXA_CLIENT_ID`: OAuth client id; defaults to the smoke client
 - `SMOKE_FXA_SCOPES`: space-separated scopes; defaults to `profile`
 
