@@ -4,15 +4,16 @@ on:
   workflow_dispatch:
     inputs:
       commit_sha:
-        description: "Full commit SHA on main that the image was built from"
+        description: "Full 40-character commit SHA from a merged main commit (copy from the commit page on GitHub or `git log`)"
         required: true
         type: string
       rc_number:
-        description: "Release candidate number (the N in vX.Y.Z-rc.N)"
+        description: "Release candidate number, e.g. 1 for vX.Y.Z-rc.1. Increment for each new candidate of the same version"
         required: true
         type: string
 
 concurrency:
+  # Shared with the stable promotion workflow so the two cannot mutate tags at the same time
   group: mlpa-image-promotion
   cancel-in-progress: false
 
@@ -40,11 +41,11 @@ jobs:
         run: |
           set -euo pipefail
           if [[ ! "$COMMIT_SHA" =~ ^[0-9a-fA-F]{40}$ ]]; then
-            echo "::error::commit_sha must be a full 40-character hex SHA"
+            echo "::error::commit_sha must be a full 40-character hex SHA, got: '$COMMIT_SHA'"
             exit 1
           fi
           if [[ ! "$RC_NUMBER" =~ ^[1-9][0-9]*$ ]]; then
-            echo "::error::rc_number must be a positive integer"
+            echo "::error::rc_number must be a positive integer with no leading zeros, got: '$RC_NUMBER'"
             exit 1
           fi
 
@@ -52,20 +53,23 @@ jobs:
         uses: actions/checkout@v4
         with:
           ref: ${{ inputs.commit_sha }}
-          # Full history so the on-main check below can fetch origin/main.
-          # persist-credentials: false is fine while the repo is public (the fetch
-          # needs no auth); a private repo would need a token here instead.
+          # Full history: needed to fetch and compare against `origin/main` below
           fetch-depth: 0
           persist-credentials: false
 
+      # The short-SHA image tags we look up are only created by pushes to `main`
+      # We confirm the candidate actually landed there before looking it up in GAR
       - name: Verify candidate is on main
         env:
           COMMIT_SHA: ${{ inputs.commit_sha }}
         run: |
           set -euo pipefail
+
+          # The explicit refspec guarantees `origin/main` is up-to-date locally
           git fetch --no-tags origin "+refs/heads/main:refs/remotes/origin/main"
+
           if ! git merge-base --is-ancestor "$COMMIT_SHA" origin/main; then
-            echo "::error::Commit $COMMIT_SHA is not an ancestor of main"
+            echo "::error::Commit $COMMIT_SHA is not on main. Has it been merged?"
             exit 1
           fi
 
@@ -77,19 +81,24 @@ jobs:
         run: |
           set -euo pipefail
 
-          # Use the same short SHA the build used to tag the image.
+          # Recompute the tag w/ the same command the build used (length can exceed 10)
           SOURCE_TAG="$(git rev-parse --short=10 "$COMMIT_SHA")"
 
+          # Read the version from `pyproject.toml` as of the candidate commit
           VERSION="$(python3 -c "import tomllib, pathlib; print(tomllib.loads(pathlib.Path('pyproject.toml').read_text())['project']['version'])")"
+
+          # Strict semver with no leading zeros, so the eventual stable vX.Y.Z promotion is a valid prod tag
           if [[ ! "$VERSION" =~ ^(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
             echo "::error::project.version '$VERSION' is not a valid X.Y.Z version"
             exit 1
           fi
 
+          RC_TAG="v${VERSION}-rc.${RC_NUMBER}"
+
           echo "source_tag=${SOURCE_TAG}" >> "$GITHUB_OUTPUT"
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
-          echo "rc_tag=v${VERSION}-rc.${RC_NUMBER}" >> "$GITHUB_OUTPUT"
-          echo "Source tag: ${SOURCE_TAG}  ->  RC tag: v${VERSION}-rc.${RC_NUMBER}"
+          echo "rc_tag=${RC_TAG}" >> "$GITHUB_OUTPUT"
+          echo "Source tag: ${SOURCE_TAG}  ->  RC tag: ${RC_TAG}"
 
       - name: Authenticate to Google Cloud
         uses: google-github-actions/auth@v2
@@ -110,15 +119,18 @@ jobs:
           IMAGE="${GAR_LOCATION}-docker.pkg.dev/${GCP_PROJECT_ID}/${GAR_REPOSITORY}/${GAR_NAME}"
 
           # Return the image digest for a ref, or empty if it doesn't resolve.
+          # Errors are silenced, i.e., an empty digest does not distinguish
+          # a missing image from an API failure.
           get_digest() {
             gcloud artifacts docker images describe "$1" \
               --format='value(image_summary.digest)' 2>/dev/null || true
           }
 
-          # Source image must exist — stop if we can't resolve its digest.
+          # The source image must exist
           SOURCE_DIGEST="$(get_digest "${IMAGE}:${SOURCE_TAG}")"
           if [[ -z "$SOURCE_DIGEST" ]]; then
-            echo "::error::Source image ${IMAGE}:${SOURCE_TAG} not found. Was this commit built on main?"
+            echo "::error::Source image ${IMAGE}:${SOURCE_TAG} could not be resolved."
+            echo "::error::It may not exist, or the GAR lookup may have failed. Confirm the build for this commit completed."
             exit 1
           fi
           if [[ ! "$SOURCE_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]; then
@@ -127,10 +139,10 @@ jobs:
           fi
           echo "Source: ${IMAGE}:${SOURCE_TAG} -> ${SOURCE_DIGEST}"
 
-          # Use `tags list` (not `images describe`) to check existence: describe
-          # can't tell a missing tag from an API error, so we could accidentally
-          # overwrite an existing RC tag. `tags list` only fails on a real error.
-          if ! RC_TAGS="$(gcloud artifacts docker tags list "$IMAGE" \
+          # Use `tags list` here instead of `images describe` for the existence check:
+          # - `describe` cannot tell between a missing tag and an API failure
+          # - `list` only exits non-zero for a real failure
+          if ! ALL_TAGS="$(gcloud artifacts docker tags list "$IMAGE" \
               --format='value(tag)')"; then
             echo "::error::Failed to list tags for ${IMAGE}; aborting rather than risk moving an existing RC tag."
             exit 1
@@ -138,18 +150,27 @@ jobs:
 
           rc_exists=false
           while IFS= read -r t; do
-            # Docker tags can't contain '/', so basename matches a short name or full path.
+            # Docker tags can't contain '/', so stripping any path prefix is safe
             [[ -n "$t" && "${t##*/}" == "$RC_TAG" ]] && { rc_exists=true; break; }
-          done <<< "$RC_TAGS"
+          done <<< "$ALL_TAGS"
 
-          # Same digest: already tagged, nothing to do. Different digest: refuse
-          # to move an existing RC tag.
           if [[ "$rc_exists" == "true" ]]; then
             RC_DIGEST="$(get_digest "${IMAGE}:${RC_TAG}")"
-            if [[ "$RC_DIGEST" == "$SOURCE_DIGEST" ]]; then
+            if [[ -z "$RC_DIGEST" ]]; then
+              echo "::error::RC tag ${RC_TAG} exists, but its digest could not be resolved."
+              echo "::error::Check GAR access and API availability, then rerun."
+              exit 1
+            elif [[ ! "$RC_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+              echo "::error::Invalid digest for RC tag ${RC_TAG}: '$RC_DIGEST'"
+              exit 1
+            elif [[ "$RC_DIGEST" == "$SOURCE_DIGEST" ]]; then
               echo "RC tag ${RC_TAG} already points to ${SOURCE_DIGEST}. Nothing to do."
             else
-              echo "::error::RC tag ${RC_TAG} already exists on a different digest (${RC_DIGEST:-unknown}); refusing to move it."
+              # `tags add` would repoint the tag at this image instead. Stage pins to
+              # this tag, so moving it could cause stage to run a different image
+              # without a values-file change. We exit instead of overwriting.
+              echo "::error::RC tag ${RC_TAG} already points to a different image (${RC_DIGEST})."
+              echo "::error::Use a new RC number instead of overwriting this tag."
               exit 1
             fi
           else
