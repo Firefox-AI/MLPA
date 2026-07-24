@@ -9,7 +9,6 @@ import base64
 import datetime
 import hashlib
 import json
-import os
 import struct
 import time
 from pathlib import Path
@@ -29,8 +28,9 @@ from cryptography.x509.extensions import UnrecognizedExtension
 from cryptography.x509.oid import NameOID
 from pyattest.testutils.factories.certificates import key_usage
 
-from mlpa.core.config import LITELLM_MASTER_AUTH_HEADERS, env
+from mlpa.core.config import env
 from mlpa.core.pg_services.services import app_attest_pg
+from tests.consts import MOCK_MODEL_NAME
 
 app = typer.Typer(
     help="Utilities for registering App Attest devices and requesting completions."
@@ -334,6 +334,7 @@ def submit_completion(
         "use-app-attest": "true",
         "use-qa-certificates": "true",
         "service-type": "ai",
+        "purpose": "chat",
     }
     response = httpx.post(url, json=payload, headers=headers, timeout=30.0)
     response.raise_for_status()
@@ -355,11 +356,10 @@ def build_payload() -> dict:
                 "content": "Hello, this is a test message from App Attest QA script.",
             }
         ],
-        "model": "openai/gpt-4o",
+        "model": MOCK_MODEL_NAME,
         "temperature": env.TEMPERATURE,
         "max_completion_tokens": env.MAX_COMPLETION_TOKENS,
         "top_p": env.TOP_P,
-        "mock_response": "Ok sure",
     }
 
 
@@ -373,7 +373,9 @@ def compute_payload_hash(payload: dict) -> bytes:
     Returns:
         SHA256 hash digest as bytes
     """
-    payload_bytes = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode()
+    payload_bytes = json.dumps(
+        payload, ensure_ascii=False, separators=(",", ":"), allow_nan=False
+    ).encode()
     return hashlib.sha256(payload_bytes).digest()
 
 

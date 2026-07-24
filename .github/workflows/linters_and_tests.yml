@@ -42,8 +42,56 @@ jobs:
       - name: Run integration tests
         run: uv run pytest src/tests/integration -v
 
+  build-and-verify-docs:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Install uv
+        run: pip install uv==0.10.8
+
+      - name: Sync dependencies
+        run: |
+          uv venv
+          uv sync --all-groups
+          uv pip install --no-cache-dir -e .
+
       - name: Build docs
         run: make docs
 
       - name: Verify docs are up to date
         run: git diff --exit-code -- docs/index.html
+
+  smoke-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        run: pip install uv==0.10.8
+
+      - name: Sync dependencies
+        run: |
+          uv venv
+          uv sync --all-groups
+          uv pip install --no-cache-dir -e .
+
+      - name: Run smoke tests
+        run: uv run pytest src/tests/smoke -v
