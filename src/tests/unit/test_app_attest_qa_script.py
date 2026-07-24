@@ -64,3 +64,16 @@ def test_compute_payload_hash_matches_httpx_json_encoding():
         app_attest_qa.compute_payload_hash(payload)
         == hashlib.sha256(request.content).digest()
     )
+
+
+def test_compute_payload_hash_matches_httpx_json_encoding_for_non_ascii():
+    app_attest_qa = _load_app_attest_qa_script()
+    payload = app_attest_qa.build_payload()
+    payload["messages"][0]["content"] = "smoke test 🚀"
+
+    request = httpx.Request("POST", "http://example.test", json=payload)
+
+    assert (
+        app_attest_qa.compute_payload_hash(payload)
+        == hashlib.sha256(request.content).digest()
+    )
