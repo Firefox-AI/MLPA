@@ -131,7 +131,7 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git checkout -b "auto/bump-version-${NEW_VERSION}"
           git add pyproject.toml uv.lock docs/index.html
-          git commit -m "chore: bump version to ${NEW_VERSION} [skip ci]"
+          git commit -m "chore: bump version to ${NEW_VERSION}"
           git push --set-upstream origin "auto/bump-version-${NEW_VERSION}"
 
       - name: Create pull request for version bump

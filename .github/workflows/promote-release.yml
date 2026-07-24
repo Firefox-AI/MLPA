@@ -1,0 +1,246 @@
+name: Promote Release Candidate to Stable in GAR
+
+on:
+  release:
+    types:
+      - released
+
+concurrency:
+  # Shared with the RC tagging workflow so the two cannot mutate tags at the same time
+  group: mlpa-image-promotion
+  cancel-in-progress: false
+
+env:
+  GAR_LOCATION: us
+  GCP_PROJECT_ID: moz-fx-llm-proxy-prod-b0b8
+  GAR_REPOSITORY: llm-proxy-prod
+  GAR_NAME: mlpa
+  GCPV2_GITHUB_WORKLOAD_IDENTITY_PROVIDER: projects/324168772199/locations/global/workloadIdentityPools/github-actions/providers/github-actions
+
+jobs:
+  promote:
+    runs-on: ubuntu-latest
+    environment: build
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - name: Validate release tag
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          set -euo pipefail
+
+          # v-prefixed strict semver, no leading zeros or pre-release suffix
+          if [[ ! "$RELEASE_TAG" =~ ^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)$ ]]; then
+            echo "::error::Release tag must be a v-prefixed stable version, got: '$RELEASE_TAG'"
+            exit 1
+          fi
+
+      - name: Checkout release tag
+        uses: actions/checkout@v4
+        with:
+          # `github.ref` is refs/tags/<tag> for a release event. Avoids
+          # target_commitish, which can be a branch name and resolve to HEAD
+          ref: ${{ github.ref }}
+          # Full history: needed to fetch and compare against `origin/main` below
+          fetch-depth: 0
+          persist-credentials: false
+
+      # The short-SHA image tags we look up are only created by pushes to `main`
+      # We confirm the release commit actually landed there before looking it up in GAR
+      - name: Verify release commit is on main
+        id: commit
+        run: |
+          set -euo pipefail
+
+          RELEASE_SHA="$(git rev-parse HEAD)"
+
+          # The explicit refspec guarantees `origin/main` is up-to-date locally
+          git fetch --no-tags origin "+refs/heads/main:refs/remotes/origin/main"
+
+          if ! git merge-base --is-ancestor "$RELEASE_SHA" origin/main; then
+            echo "::error::Release commit $RELEASE_SHA is not on main."
+            exit 1
+          fi
+
+          echo "release_sha=${RELEASE_SHA}" >> "$GITHUB_OUTPUT"
+
+      - name: Derive tags and verify version
+        id: tags
+        env:
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          RELEASE_SHA: ${{ steps.commit.outputs.release_sha }}
+        run: |
+          set -euo pipefail
+
+          # Read the version from `pyproject.toml` as of the release commit
+          VERSION="$(python3 -c "import tomllib, pathlib; print(tomllib.loads(pathlib.Path('pyproject.toml').read_text())['project']['version'])")"
+
+          # The release tag and the version in the repo must agree, otherwise the
+          # stable tag would not describe what is actually in the image
+          if [[ "$RELEASE_TAG" != "v${VERSION}" ]]; then
+            echo "::error::Release tag ${RELEASE_TAG} does not match project.version '${VERSION}' at this commit."
+            exit 1
+          fi
+
+          # Recompute the tag w/ the same command the build used (length can exceed 10)
+          SOURCE_TAG="$(git rev-parse --short=10 "$RELEASE_SHA")"
+
+          echo "source_tag=${SOURCE_TAG}" >> "$GITHUB_OUTPUT"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "stable_tag=${RELEASE_TAG}" >> "$GITHUB_OUTPUT"
+          echo "Source tag: ${SOURCE_TAG}  ->  stable tag: ${RELEASE_TAG}"
+
+      - name: Authenticate to Google Cloud
+        uses: google-github-actions/auth@v2
+        with:
+          service_account: artifact-writer@${{ env.GCP_PROJECT_ID }}.iam.gserviceaccount.com
+          workload_identity_provider: ${{ env.GCPV2_GITHUB_WORKLOAD_IDENTITY_PROVIDER }}
+
+      - name: Set up gcloud
+        uses: google-github-actions/setup-gcloud@v2
+
+      - name: Promote release candidate to stable
+        id: promote
+        env:
+          SOURCE_TAG: ${{ steps.tags.outputs.source_tag }}
+          STABLE_TAG: ${{ steps.tags.outputs.stable_tag }}
+        run: |
+          set -euo pipefail
+          IMAGE="${GAR_LOCATION}-docker.pkg.dev/${GCP_PROJECT_ID}/${GAR_REPOSITORY}/${GAR_NAME}"
+
+          # Return the image digest for a ref, or empty if it doesn't resolve.
+          # Errors are silenced, i.e., an empty digest does not distinguish
+          # a missing image from an API failure.
+          get_digest() {
+            gcloud artifacts docker images describe "$1" \
+              --format='value(image_summary.digest)' 2>/dev/null || true
+          }
+
+          # The source image must exist
+          SOURCE_DIGEST="$(get_digest "${IMAGE}:${SOURCE_TAG}")"
+          if [[ -z "$SOURCE_DIGEST" ]]; then
+            echo "::error::Source image ${IMAGE}:${SOURCE_TAG} could not be resolved."
+            echo "::error::It may not exist, or the GAR lookup may have failed. Confirm the build for this commit completed."
+            exit 1
+          fi
+          if [[ ! "$SOURCE_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+            echo "::error::Invalid source digest: '$SOURCE_DIGEST'"
+            exit 1
+          fi
+          echo "Source: ${IMAGE}:${SOURCE_TAG} -> ${SOURCE_DIGEST}"
+
+          # Use `tags list` here instead of `images describe` for the existence check:
+          # - `describe` cannot tell between a missing tag and an API failure
+          # - `list` only exits non-zero for a real failure
+          if ! ALL_TAGS="$(gcloud artifacts docker tags list "$IMAGE" \
+              --format='value(tag)')"; then
+            echo "::error::Failed to list tags for ${IMAGE}; aborting rather than risk promoting an unverified image."
+            exit 1
+          fi
+
+          stable_exists=false
+          while IFS= read -r t; do
+            # Docker tags can't contain '/', so stripping any path prefix is safe
+            [[ -n "$t" && "${t##*/}" == "$STABLE_TAG" ]] && { stable_exists=true; break; }
+          done <<< "$ALL_TAGS"
+
+          # Check this before the RC gate so a rerun still succeeds if the RC tags
+          # have since been cleaned up
+          if [[ "$stable_exists" == "true" ]]; then
+            STABLE_DIGEST="$(get_digest "${IMAGE}:${STABLE_TAG}")"
+            if [[ -z "$STABLE_DIGEST" ]]; then
+              echo "::error::Stable tag ${STABLE_TAG} exists, but its digest could not be resolved."
+              echo "::error::Check GAR access and API availability, then rerun."
+              exit 1
+            elif [[ ! "$STABLE_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+              echo "::error::Invalid digest for stable tag ${STABLE_TAG}: '$STABLE_DIGEST'"
+              exit 1
+            elif [[ "$STABLE_DIGEST" == "$SOURCE_DIGEST" ]]; then
+              # If the stable tag already points to this release digest, treat the
+              # run as idempotent even if its RC tag has since been removed. New
+              # stable tags must still pass the RC gate below.
+              echo "Stable tag ${STABLE_TAG} already points to ${SOURCE_DIGEST}. Nothing to do."
+              echo "digest=${SOURCE_DIGEST}" >> "$GITHUB_OUTPUT"
+              echo "matched_rc=already promoted" >> "$GITHUB_OUTPUT"
+              exit 0
+            else
+              # `tags add` would repoint the tag at this image instead. Prod pins to
+              # this tag, so moving it could cause prod to run a different image
+              # without a values-file change. We exit instead of overwriting.
+              echo "::error::Stable tag ${STABLE_TAG} already points to a different image (${STABLE_DIGEST})."
+              echo "::error::A released version cannot be repointed. Cut a new version instead."
+              exit 1
+            fi
+          fi
+
+          # Require a release candidate tag for this version on the source digest.
+          # This establishes continuity with the RC tier, but does not prove that
+          # stage testing passed.
+          RC_PREFIX="${STABLE_TAG}-rc."
+          matched_rc=""
+          while IFS= read -r t; do
+            tag="${t##*/}"
+            [[ -n "$tag" ]] || continue
+            [[ "$tag" == "${RC_PREFIX}"* ]] || continue
+
+            # Match the RC workflow's rule: positive integer, no leading zeros
+            rc_number="${tag#"$RC_PREFIX"}"
+            [[ "$rc_number" =~ ^[1-9][0-9]*$ ]] || continue
+
+            RC_DIGEST="$(get_digest "${IMAGE}:${tag}")"
+            if [[ -z "$RC_DIGEST" ]]; then
+              # An unreadable digest is not evidence of a non-match, so stop rather
+              # than risk concluding no RC exists when one does
+              echo "::error::Could not resolve the digest for RC tag ${tag}."
+              echo "::error::Check GAR access and API availability, then rerun."
+              exit 1
+            fi
+            if [[ ! "$RC_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]; then
+              echo "::error::Invalid digest for RC tag ${tag}: '$RC_DIGEST'"
+              exit 1
+            fi
+            if [[ "$RC_DIGEST" == "$SOURCE_DIGEST" ]]; then
+              matched_rc="$tag"
+              break
+            fi
+          done <<< "$ALL_TAGS"
+
+          if [[ -z "$matched_rc" ]]; then
+            echo "::error::No ${RC_PREFIX}N tag points at ${SOURCE_DIGEST}."
+            echo "::error::Run the RC tagging workflow for this commit before releasing."
+            exit 1
+          fi
+          echo "Matched RC tag: ${matched_rc}"
+
+          gcloud artifacts docker tags add "${IMAGE}@${SOURCE_DIGEST}" "${IMAGE}:${STABLE_TAG}"
+          echo "Tagged ${IMAGE}@${SOURCE_DIGEST} as ${IMAGE}:${STABLE_TAG}"
+
+          echo "digest=${SOURCE_DIGEST}" >> "$GITHUB_OUTPUT"
+          echo "matched_rc=${matched_rc}" >> "$GITHUB_OUTPUT"
+
+      - name: Summary
+        env:
+          RELEASE_SHA: ${{ steps.commit.outputs.release_sha }}
+          SOURCE_TAG: ${{ steps.tags.outputs.source_tag }}
+          VERSION: ${{ steps.tags.outputs.version }}
+          MATCHED_RC: ${{ steps.promote.outputs.matched_rc }}
+          STABLE_TAG: ${{ steps.tags.outputs.stable_tag }}
+          DIGEST: ${{ steps.promote.outputs.digest }}
+        run: |
+          set -euo pipefail
+          cat >> "$GITHUB_STEP_SUMMARY" << EOF
+          ## Stable Promotion
+
+          | Field | Value |
+          |---|---|
+          | Release commit | \`${RELEASE_SHA}\` |
+          | Source tag | \`${SOURCE_TAG}\` |
+          | Version | \`${VERSION}\` |
+          | Matched RC | \`${MATCHED_RC}\` |
+          | Stable tag | \`${STABLE_TAG}\` |
+          | Digest | \`${DIGEST}\` |
+          EOF
