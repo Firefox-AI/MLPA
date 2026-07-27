@@ -18,7 +18,7 @@ SAMPLE_REQUEST = AuthorizedChatRequest(
     max_completion_tokens=150,
 )
 
-MOCK_MODEL_NAME = "mock-gpt"
+MOCK_MODEL_NAME = "mock"
 
 SAMPLE_CHAT_REQUEST = ChatRequest(
     model=MOCK_MODEL_NAME,
@@ -38,7 +38,7 @@ SUCCESSFUL_CHAT_RESPONSE = {
             "finish_reason": "stop",
             "index": 0,
             "message": {
-                "content": "I'd be happy to help with that!",
+                "content": "I'd be happy to help with that! (mocked)",
                 "role": "assistant",
             },
         }
@@ -49,7 +49,7 @@ SUCCESSFUL_CHAT_RESPONSE = {
 MOCK_CHAT_RESPONSE = {
     "choices": [{"message": {"content": "mock completion response"}}],
     "usage": {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15},
-    "model": "mock-gpt",
+    "model": "mock",
 }
 
 MOCK_STREAMING_CHUNKS = [

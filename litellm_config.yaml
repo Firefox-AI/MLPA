@@ -19,6 +19,10 @@ model_list:
       model: openai/exa
       api_base: https://api.exa.ai
       api_key: os.environ/EXA_API_KEY
+  - model_name: mock
+    litellm_params:
+      model: vertex_ai/qwen/qwen3-235b-a22b-instruct-2507-maas
+      mock_response: "this is a mocked response"
 
 search_tools:
   - search_tool_name: exa-search
