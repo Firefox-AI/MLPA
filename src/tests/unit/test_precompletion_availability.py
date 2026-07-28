@@ -28,7 +28,7 @@ from tests.consts import SAMPLE_REQUEST
 
 # A model/service-type pair that is valid together, so the wrapper passes its own
 # check and reaches the shared auth call.
-_VALID_MODEL = "openai/gpt-4o"
+_VALID_MODEL = "gpt-oss-120b"
 _AI = authorize_module.ServiceType.ai
 
 

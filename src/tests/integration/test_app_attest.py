@@ -42,6 +42,14 @@ def test_get_challenge(mocked_client_integration):
     assert len(response.json().get("challenge")) > 0
 
 
+def test_get_challenge_rejects_garbage_key_id(mocked_client_integration):
+    response = mocked_client_integration.get(
+        "/verify/challenge",
+        params={"key_id_b64": "' OR (SELECT pg_sleep(6)) IS NULL --"},
+    )
+    assert response.status_code == 400
+
+
 def test_invalid_methods(mocked_client_integration):
     response = mocked_client_integration.post(
         "/verify/challenge",

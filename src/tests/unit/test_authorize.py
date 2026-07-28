@@ -30,7 +30,7 @@ async def test_authorize_chat_request_returns_authorized_chat_request(mocker):
     result = await authorize_module.authorize_chat_request(
         request=_make_request("/v1/chat/completions"),
         chat_request=ChatRequest(
-            model="openai/gpt-4o", messages=[{"role": "user", "content": "hello"}]
+            model="gpt-oss-120b", messages=[{"role": "user", "content": "hello"}]
         ),
         authorization="Bearer token",
         service_type=authorize_module.ServiceType.ai,
@@ -94,7 +94,7 @@ async def test_authorize_chat_request_rejects_answer_for_non_exa_model():
     with pytest.raises(HTTPException) as exc_info:
         await authorize_module.authorize_chat_request(
             request=_make_request("/v1/chat/completions"),
-            chat_request=ChatRequest(model="openai/gpt-4o", messages=[]),
+            chat_request=ChatRequest(model="gpt-oss-120b", messages=[]),
             authorization="Bearer token",
             service_type=authorize_module.ServiceType.answer,
             purpose=None,
@@ -103,6 +103,29 @@ async def test_authorize_chat_request_rejects_answer_for_non_exa_model():
     assert exc_info.value.status_code == 400
     assert (
         exc_info.value.detail
-        == "Invalid service-type value answer for model openai/gpt-4o. "
+        == "Invalid service-type value answer for model gpt-oss-120b. "
         "Service type answer is only valid for models ['exa']"
     )
+
+
+async def test_authorize_chat_request_rejects_invalid_model_name(mocker):
+    valid_service_type_mock = mocker.patch.object(
+        type(authorize_module.env), "valid_service_type_for_model"
+    )
+    fxa_auth_mock = mocker.patch.object(authorize_module, "fxa_auth")
+
+    with pytest.raises(HTTPException) as exc_info:
+        await authorize_module.authorize_chat_request(
+            request=_make_request("/v1/chat/completions"),
+            chat_request=ChatRequest(
+                model="' OR (SELECT pg_sleep(6)) IS NULL --", messages=[]
+            ),
+            authorization="Bearer token",
+            service_type=authorize_module.ServiceType.ai,
+            purpose="chat",
+        )
+
+    assert exc_info.value.status_code == 400
+    assert exc_info.value.detail == {"error": 8}
+    valid_service_type_mock.assert_not_called()
+    fxa_auth_mock.assert_not_called()

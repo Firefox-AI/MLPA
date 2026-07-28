@@ -2,6 +2,7 @@ import ast
 import base64
 import json
 import re
+import string
 import time
 from functools import lru_cache
 from typing import Any, Literal, NoReturn, cast, overload
@@ -37,6 +38,46 @@ KNOWN_HTTP_METHODS = frozenset(
 
 def clamp_model(model: str) -> str:
     return model if model in env.valid_model_labels else "invalid"
+
+
+_ALLOWED_MODEL_CHARS = frozenset(string.ascii_lowercase + string.digits + ".-")
+_ALLOWED_MODEL_EDGE_CHARS = frozenset(string.ascii_lowercase + string.digits)
+MAX_MODEL_NAME_LEN = 64
+
+
+def is_valid_model_name(model: str) -> bool:
+    if not model or len(model) > MAX_MODEL_NAME_LEN:
+        return False
+    if (
+        model[0] not in _ALLOWED_MODEL_EDGE_CHARS
+        or model[-1] not in _ALLOWED_MODEL_EDGE_CHARS
+    ):
+        return False
+    return set(model) <= _ALLOWED_MODEL_CHARS
+
+
+# Real App Attest key IDs are base64(SHA-256 digest) = 44 chars; this bound is
+# generous slack, not a hand-tuned exact length.
+_BASE64_STANDARD_CHARS = frozenset(string.ascii_letters + string.digits + "+/=")
+MAX_KEY_ID_B64_LEN = 128
+
+
+def is_plausible_base64_key_id(key_id_b64: str) -> bool:
+    if not key_id_b64 or len(key_id_b64) > MAX_KEY_ID_B64_LEN:
+        return False
+    return set(key_id_b64) <= _BASE64_STANDARD_CHARS
+
+
+# Play Integrity tokens are compact JWT/JWE strings (base64url segments joined
+# by "."); this bound is generous slack for the real token size, not exact.
+_JWT_LIKE_CHARS = frozenset(string.ascii_letters + string.digits + "-_.")
+MAX_INTEGRITY_TOKEN_LEN = 10000
+
+
+def is_plausible_integrity_token(integrity_token: str) -> bool:
+    if not integrity_token or len(integrity_token) > MAX_INTEGRITY_TOKEN_LEN:
+        return False
+    return set(integrity_token) <= _JWT_LIKE_CHARS
 
 
 def clamp_service_type(raw: str) -> str:

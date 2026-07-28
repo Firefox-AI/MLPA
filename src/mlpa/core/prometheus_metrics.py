@@ -44,6 +44,8 @@ class AvailabilityReason(StrEnum):
     AUTH_SYSTEM_FAILURE = "auth_system_failure"  # failure
 
     # --- completion-stage reasons (recorded inside stream_completion / get_completion) ---
+    # INVALID_MODEL_NAME is the exception: also recorded pre-completion, in
+    # authorize_chat_request, when the model fails the charset/length check.
     VALID_RESPONSE = "valid_response"  # success
     UPSTREAM_ERROR = "upstream_error"  # failure
     EMPTY_RESPONSE = "empty_response"  # failure

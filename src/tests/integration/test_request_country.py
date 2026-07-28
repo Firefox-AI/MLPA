@@ -9,7 +9,7 @@ def _country_count(metrics_spy, **labels):
     return metrics_spy.value("requests_by_country_total", **labels)
 
 
-def _chat_payload(model: str = "openai/gpt-4o"):
+def _chat_payload(model: str = "gpt-oss-120b"):
     return SAMPLE_REQUEST.model_copy(update={"model": model}).model_dump()
 
 
@@ -29,7 +29,7 @@ def test_chat_records_country(mocked_client_integration, metrics_spy):
         _country_count(
             metrics_spy,
             service_type="ai",
-            model="openai/gpt-4o",
+            model="gpt-oss-120b",
             client_country="DE",
         )
         == 1.0
@@ -51,7 +51,7 @@ def test_chat_missing_geo_header_is_unknown(mocked_client_integration, metrics_s
         _country_count(
             metrics_spy,
             service_type="ai",
-            model="openai/gpt-4o",
+            model="gpt-oss-120b",
             client_country="unknown",
         )
         == 1.0
@@ -73,7 +73,7 @@ def test_chat_spoofed_geo_header_is_clamped(mocked_client_integration, metrics_s
         _country_count(
             metrics_spy,
             service_type="ai",
-            model="openai/gpt-4o",
+            model="gpt-oss-120b",
             client_country="unknown",
         )
         == 1.0
@@ -82,7 +82,7 @@ def test_chat_spoofed_geo_header_is_clamped(mocked_client_integration, metrics_s
         _country_count(
             metrics_spy,
             service_type="ai",
-            model="openai/gpt-4o",
+            model="gpt-oss-120b",
             client_country="ZZZ",
         )
         == 0.0

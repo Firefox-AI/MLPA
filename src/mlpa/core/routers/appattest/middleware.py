@@ -14,7 +14,11 @@ from mlpa.core.routers.appattest import (
     verify_assert,
     verify_attest,
 )
-from mlpa.core.utils import b64decode_safe, parse_app_attest_jwt
+from mlpa.core.utils import (
+    b64decode_safe,
+    is_plausible_base64_key_id,
+    parse_app_attest_jwt,
+)
 
 router = APIRouter()
 
@@ -41,6 +45,8 @@ async def get_challenge(
         raise HTTPException(status_code=400, detail="Bad Request: missing key_id_b64")
     # iOS key id generation not urlsafe workaround
     key_id_b64 = key_id_b64.replace(" ", "+")
+    if not is_plausible_base64_key_id(key_id_b64):
+        raise HTTPException(status_code=400, detail="Bad Request: invalid key_id_b64")
     return {"challenge": await generate_client_challenge(key_id_b64)}
 
 
