@@ -3,6 +3,7 @@ import base64
 import pytest
 from fastapi import HTTPException
 
+from mlpa.core.config import env
 from mlpa.core.utils import (
     b64decode_safe,
     clamp_country,
@@ -17,13 +18,9 @@ from mlpa.core.utils import (
     is_valid_model_name,
 )
 
-VALID_CLIENT_FACING_MODEL_NAMES = [
-    "exa",
-    "exa-search",
-    "gemini-3.1-flash-lite",
-    "gpt-oss-120b",
-    "qwen3-235b-a22b-instruct-2507-maas",
-]
+# Sourced from env.valid_model_labels (not hand-copied) so a future model name
+# with an unexpected character is caught here instead of silently 400ing.
+VALID_CLIENT_FACING_MODEL_NAMES = sorted(env.valid_model_labels)
 
 SAMPLED_ATTACK_PAYLOADS = [
     "' OR (SELECT pg_sleep(6)) IS NULL --",
@@ -56,11 +53,19 @@ def test_is_valid_model_name_rejects_sampled_attack_payloads(model):
         "gpt-oss.",
         "a" * 65,
         "GPT-OSS-120B",
-        "gpt_oss_120b",
+        "_gpt-oss",
+        "gpt-oss_",
+        "/gpt-oss",
+        "gpt-oss/",
     ],
 )
 def test_is_valid_model_name_rejects_edge_cases(model):
     assert is_valid_model_name(model) is False
+
+
+@pytest.mark.parametrize("model", ["openai/gpt-4o", "vertex_ai/mistral-small-2503"])
+def test_is_valid_model_name_accepts_slash_and_underscore_namespaced_models(model):
+    assert is_valid_model_name(model) is True
 
 
 def test_is_valid_model_name_accepts_max_length():

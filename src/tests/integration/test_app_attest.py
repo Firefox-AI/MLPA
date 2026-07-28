@@ -10,8 +10,9 @@ from cryptography.hazmat.primitives.asymmetric import ec
 from fastapi import HTTPException
 from pyattest.testutils.factories.attestation import apple as apple_factory
 
+from mlpa.core.classes import AssertionAuth
 from mlpa.core.config import env
-from mlpa.core.routers.appattest import appattest
+from mlpa.core.routers.appattest import appattest, middleware
 from tests.consts import (
     SAMPLE_CHAT_REQUEST,
     SUCCESSFUL_CHAT_RESPONSE,
@@ -84,6 +85,35 @@ def test_invalid_methods(mocked_client_integration):
         "/verify/attest",
     )
     assert response.status_code == 405
+
+
+def test_attest_rejects_garbage_key_id(mocker, mocked_client_integration):
+    get_challenge_mock = mocker.patch(
+        "mlpa.core.routers.appattest.appattest.app_attest_pg.get_challenge",
+    )
+    app_attest_jwt = jwt.encode(
+        {
+            "challenge_b64": base64.b64encode(b"whatever").decode(),
+            "key_id_b64": "' OR (SELECT pg_sleep(6)) IS NULL --",
+            "attestation_obj_b64": "VEVTVF9BVFRFU1RBVElPTl9CQVNFNjRVUkw=",
+            "bundle_id": TEST_BUNDLE_ID,
+        },
+        key=jwt_secret,
+        algorithm="HS256",
+    )
+    headers = {
+        "Authorization": f"Bearer {app_attest_jwt}",
+        "use-app-attest": "true",
+        "service-type": "ai",
+        "purpose": "chat",
+    }
+    response = mocked_client_integration.post(
+        "/verify/attest",
+        headers=headers,
+        json=sample_chat_request,
+    )
+    assert response.status_code == 400
+    get_challenge_mock.assert_not_called()
 
 
 def test_invalid_challenge(mocked_client_integration):
@@ -332,6 +362,27 @@ def _build_fake_assertion(counter: int) -> bytes:
     auth_data = bytearray(37)
     auth_data[33:37] = counter.to_bytes(4, "big")
     return cbor2.dumps({"authenticatorData": bytes(auth_data)})
+
+
+async def test_app_attest_auth_rejects_garbage_key_id(mocker):
+    # app_attest_auth is mocked out entirely by mocked_client_integration, so
+    # this exercises the real function directly to prove the DB lookup is
+    # never reached for a garbage key_id_b64.
+    get_challenge_mock = mocker.patch(
+        "mlpa.core.routers.appattest.appattest.app_attest_pg.get_challenge",
+    )
+    assertion_auth = AssertionAuth(
+        key_id_b64="' OR (SELECT pg_sleep(6)) IS NULL --",
+        challenge_b64=base64.b64encode(b"whatever").decode(),
+        assertion_obj_b64="VEVTVF9BU1NFUlRJT05fQkFTRTY0VVJM",
+        bundle_id=TEST_BUNDLE_ID,
+    )
+
+    with pytest.raises(HTTPException) as exc:
+        await middleware.app_attest_auth(assertion_auth, b"expected_hash", False)
+
+    assert exc.value.status_code == 401
+    get_challenge_mock.assert_not_called()
 
 
 async def test_verify_assert_rejects_non_monotonic_counter(mocker):

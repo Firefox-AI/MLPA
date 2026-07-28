@@ -85,6 +85,8 @@ async def attest(
     ] = None,
 ):
     attestationAuth = parse_app_attest_jwt(authorization, "attest")
+    if not is_plausible_base64_key_id(attestationAuth.key_id_b64):
+        raise HTTPException(status_code=400, detail="Bad Request: invalid key_id_b64")
     challenge_bytes = b64decode_safe(attestationAuth.challenge_b64, "challenge_b64")
     if not await validate_challenge(
         challenge_bytes.decode(), attestationAuth.key_id_b64
@@ -114,6 +116,8 @@ async def app_attest_auth(
     expected_hash: bytes,
     use_qa_certificates: bool,
 ):
+    if not is_plausible_base64_key_id(assertionAuth.key_id_b64):
+        raise HTTPException(status_code=401, detail="Invalid App Attest assertion")
     challenge_bytes = b64decode_safe(assertionAuth.challenge_b64, "challenge_b64")
     if not await validate_challenge(challenge_bytes.decode(), assertionAuth.key_id_b64):
         raise HTTPException(status_code=401, detail="Invalid or expired challenge")

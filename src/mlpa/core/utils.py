@@ -40,7 +40,9 @@ def clamp_model(model: str) -> str:
     return model if model in env.valid_model_labels else "invalid"
 
 
-_ALLOWED_MODEL_CHARS = frozenset(string.ascii_lowercase + string.digits + ".-")
+# "/" and "_" are required for real, configured model names like
+# "openai/gpt-4o" and "vertex_ai/mistral-small-2503" (see litellm_config.yaml).
+_ALLOWED_MODEL_CHARS = frozenset(string.ascii_lowercase + string.digits + "./_-")
 _ALLOWED_MODEL_EDGE_CHARS = frozenset(string.ascii_lowercase + string.digits)
 MAX_MODEL_NAME_LEN = 64
 
