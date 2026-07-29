@@ -17,7 +17,7 @@ RUN chmod +x /app/scripts/migrate-app-attest-database.sh
 RUN chmod +x /app/scripts/migrate-litellm-database.sh
 
 # Install dependencies
-RUN pip install --no-cache-dir uv
+RUN pip install --no-cache-dir uv==0.10.8
 RUN apt-get update && apt-get install -y git
 RUN uv pip install --system --editable .
 
