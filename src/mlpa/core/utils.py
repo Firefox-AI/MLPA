@@ -2,6 +2,7 @@ import ast
 import base64
 import json
 import re
+import string
 import time
 from functools import lru_cache
 from typing import Any, Literal, NoReturn, cast, overload
@@ -37,6 +38,40 @@ KNOWN_HTTP_METHODS = frozenset(
 
 def clamp_model(model: str) -> str:
     return model if model in env.valid_model_labels else "invalid"
+
+
+# "/" and "_" are required for real, configured model names like
+# "openai/gpt-4o" and "vertex_ai/mistral-small-2503" (see litellm_config.yaml).
+# Max length 64: edge chars (2) + up to 62 interior chars.
+_VALID_MODEL_NAME_PATTERN = re.compile(r"^[a-z0-9](?:[a-z0-9./_-]{0,62}[a-z0-9])?$")
+
+
+def is_valid_model_name(model: str) -> bool:
+    return bool(_VALID_MODEL_NAME_PATTERN.match(model))
+
+
+# Real App Attest key IDs are base64(SHA-256 digest) = 44 chars; this bound is
+# generous slack, not a hand-tuned exact length.
+_BASE64_STANDARD_CHARS = frozenset(string.ascii_letters + string.digits + "+/=")
+MAX_KEY_ID_B64_LEN = 128
+
+
+def is_plausible_base64_key_id(key_id_b64: str) -> bool:
+    if not key_id_b64 or len(key_id_b64) > MAX_KEY_ID_B64_LEN:
+        return False
+    return set(key_id_b64) <= _BASE64_STANDARD_CHARS
+
+
+# Play Integrity tokens are compact JWT/JWE strings (base64url segments joined
+# by "."); this bound is generous slack for the real token size, not exact.
+_JWT_LIKE_CHARS = frozenset(string.ascii_letters + string.digits + "-_.")
+MAX_INTEGRITY_TOKEN_LEN = 10000
+
+
+def is_plausible_integrity_token(integrity_token: str) -> bool:
+    if not integrity_token or len(integrity_token) > MAX_INTEGRITY_TOKEN_LEN:
+        return False
+    return set(integrity_token) <= _JWT_LIKE_CHARS
 
 
 def clamp_service_type(raw: str) -> str:

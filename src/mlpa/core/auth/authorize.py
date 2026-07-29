@@ -12,11 +12,15 @@ from mlpa.core.classes import (
     SearchRequest,
     ServiceType,
 )
-from mlpa.core.config import env
+from mlpa.core.config import ERROR_CODE_INVALID_MODEL_NAME, env
 from mlpa.core.metrics import record_chat_availability_for
 from mlpa.core.prometheus_metrics import AvailabilityReason
 from mlpa.core.routers.appattest import app_attest_auth
-from mlpa.core.utils import extract_user_from_play_integrity_jwt, parse_app_attest_jwt
+from mlpa.core.utils import (
+    extract_user_from_play_integrity_jwt,
+    is_valid_model_name,
+    parse_app_attest_jwt,
+)
 
 TAuthorizedRequest = TypeVar(
     "TAuthorizedRequest", AuthorizedChatRequest, AuthorizedSearchRequest
@@ -120,6 +124,20 @@ async def authorize_chat_request(
     use_qa_certificates: Annotated[bool | None, Header()] = None,
     use_play_integrity: Annotated[bool | None, Header()] = None,
 ) -> AuthorizedChatRequest:
+    # Charset/length check runs before any auth, DB, or LiteLLM work below, so
+    # fuzzed/scanner model values are rejected without that cost.
+    if not is_valid_model_name(chat_request.model):
+        record_chat_availability_for(
+            AvailabilityReason.INVALID_MODEL_NAME,
+            model=chat_request.model,
+            service_type=service_type.value,
+            purpose=purpose or "",
+        )
+        raise HTTPException(
+            status_code=400,
+            detail={"error": ERROR_CODE_INVALID_MODEL_NAME},
+        )
+
     is_service_type_valid = env.valid_service_type_for_model(
         service_type.value, chat_request.model
     )

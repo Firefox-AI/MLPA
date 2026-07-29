@@ -3,6 +3,7 @@ import base64
 import pytest
 from fastapi import HTTPException
 
+from mlpa.core.config import env
 from mlpa.core.utils import (
     b64decode_safe,
     clamp_country,
@@ -11,8 +12,100 @@ from mlpa.core.utils import (
     is_context_window_error,
     is_invalid_model_name_error,
     is_invalid_request_error,
+    is_plausible_base64_key_id,
+    is_plausible_integrity_token,
     is_rate_limit_error,
+    is_valid_model_name,
 )
+
+# Sourced from env.valid_model_labels (not hand-copied) so a future model name
+# with an unexpected character is caught here instead of silently 400ing.
+VALID_CLIENT_FACING_MODEL_NAMES = sorted(env.valid_model_labels)
+
+SAMPLED_ATTACK_PAYLOADS = [
+    "' OR (SELECT pg_sleep(6)) IS NULL --",
+    "1'||sleep(27*1000)*ugxuhb||'",
+    "'\"()&%<zzz><ScRiPt >MkKR(9785)</ScRiPt>",
+    "str(__import__('time').sleep(9))+__import__('socket').gethostbyname(...)",
+    "-1 OR 5*5=25 --",
+    "1'||DBMS_PIPE.RECEIVE_MESSAGE(CHR(98)...",
+    "|echo culqcs$()\\ wbjwmr\nz^xyu||a #",
+]
+
+
+@pytest.mark.parametrize("model", VALID_CLIENT_FACING_MODEL_NAMES)
+def test_is_valid_model_name_accepts_real_model_names(model):
+    assert is_valid_model_name(model) is True
+
+
+@pytest.mark.parametrize("model", SAMPLED_ATTACK_PAYLOADS)
+def test_is_valid_model_name_rejects_sampled_attack_payloads(model):
+    assert is_valid_model_name(model) is False
+
+
+@pytest.mark.parametrize(
+    "model",
+    [
+        "",
+        "-gpt-oss",
+        "gpt-oss-",
+        ".gpt-oss",
+        "gpt-oss.",
+        "a" * 65,
+        "GPT-OSS-120B",
+        "_gpt-oss",
+        "gpt-oss_",
+        "/gpt-oss",
+        "gpt-oss/",
+    ],
+)
+def test_is_valid_model_name_rejects_edge_cases(model):
+    assert is_valid_model_name(model) is False
+
+
+@pytest.mark.parametrize("model", ["openai/gpt-4o", "vertex_ai/mistral-small-2503"])
+def test_is_valid_model_name_accepts_slash_and_underscore_namespaced_models(model):
+    assert is_valid_model_name(model) is True
+
+
+def test_is_valid_model_name_accepts_max_length():
+    assert is_valid_model_name("a" * 64) is True
+
+
+@pytest.mark.parametrize("key_id_b64", ["dGVzdC1rZXktaWQ=", "A" * 44, "a+b/c==", "x"])
+def test_is_plausible_base64_key_id_accepts_valid(key_id_b64):
+    assert is_plausible_base64_key_id(key_id_b64) is True
+
+
+@pytest.mark.parametrize(
+    "key_id_b64",
+    [
+        "",
+        "a" * 129,
+        *SAMPLED_ATTACK_PAYLOADS,
+    ],
+)
+def test_is_plausible_base64_key_id_rejects_invalid(key_id_b64):
+    assert is_plausible_base64_key_id(key_id_b64) is False
+
+
+@pytest.mark.parametrize(
+    "integrity_token", ["test-token", "a" * 10000, "header.payload.sig.iv.tag"]
+)
+def test_is_plausible_integrity_token_accepts_valid(integrity_token):
+    assert is_plausible_integrity_token(integrity_token) is True
+
+
+@pytest.mark.parametrize(
+    "integrity_token",
+    [
+        "",
+        "a" * 10001,
+        *SAMPLED_ATTACK_PAYLOADS,
+    ],
+)
+def test_is_plausible_integrity_token_rejects_invalid(integrity_token):
+    assert is_plausible_integrity_token(integrity_token) is False
 
 
 def test_b64decode_safe():
