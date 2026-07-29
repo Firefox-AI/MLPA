@@ -42,20 +42,12 @@ def clamp_model(model: str) -> str:
 
 # "/" and "_" are required for real, configured model names like
 # "openai/gpt-4o" and "vertex_ai/mistral-small-2503" (see litellm_config.yaml).
-_ALLOWED_MODEL_CHARS = frozenset(string.ascii_lowercase + string.digits + "./_-")
-_ALLOWED_MODEL_EDGE_CHARS = frozenset(string.ascii_lowercase + string.digits)
-MAX_MODEL_NAME_LEN = 64
+# Max length 64: edge chars (2) + up to 62 interior chars.
+_VALID_MODEL_NAME_PATTERN = re.compile(r"^[a-z0-9](?:[a-z0-9./_-]{0,62}[a-z0-9])?$")
 
 
 def is_valid_model_name(model: str) -> bool:
-    if not model or len(model) > MAX_MODEL_NAME_LEN:
-        return False
-    if (
-        model[0] not in _ALLOWED_MODEL_EDGE_CHARS
-        or model[-1] not in _ALLOWED_MODEL_EDGE_CHARS
-    ):
-        return False
-    return set(model) <= _ALLOWED_MODEL_CHARS
+    return bool(_VALID_MODEL_NAME_PATTERN.match(model))
 
 
 # Real App Attest key IDs are base64(SHA-256 digest) = 44 chars; this bound is
