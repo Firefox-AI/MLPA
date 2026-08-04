@@ -6,9 +6,9 @@ on:
       - released
 
 concurrency:
-  # Shared with the RC tagging workflow so the two cannot mutate tags at the same time
+  # Serialize RC tagging and stable promotion without dropping pending runs.
   group: mlpa-image-promotion
-  cancel-in-progress: false
+  queue: max
 
 env:
   GAR_LOCATION: us
@@ -178,8 +178,8 @@ jobs:
           fi
 
           # Require a release candidate tag for this version on the source digest.
-          # This establishes continuity with the RC tier, but does not prove that
-          # stage testing passed.
+          # With automatic RC tagging, this confirms that the artifact reached the RC tier.
+          # It does not prove that it was deployed to stage or that stage validation passed.
           RC_PREFIX="${STABLE_TAG}-rc."
           matched_rc=""
           while IFS= read -r t; do
