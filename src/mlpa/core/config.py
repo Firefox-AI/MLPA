@@ -272,6 +272,10 @@ class Env(BaseSettings):
             | {""}
         )
 
+    @cached_property
+    def valid_major_fx_versions_set(self) -> set[str]:
+        return {str(n) for n in range(100, 200)}
+
     def service_type_requires_purpose(self, service_type: str) -> bool:
         """True if the purpose header is mandatory for this service type."""
         return len(self.valid_purposes_for_service_type(service_type)) > 0

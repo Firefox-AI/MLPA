@@ -82,6 +82,11 @@ def clamp_purpose(raw: str) -> str:
     return raw if raw == "" or raw in env.valid_purposes_set else "other"
 
 
+def clamp_major_fx_version(raw: str) -> str:
+    """Bound firefox version to known values, else "unknown"."""
+    return raw if raw == "" or raw in env.valid_major_fx_versions_set else "unknown"
+
+
 def clamp_country(raw: str | None) -> str:
     """Bound an edge-stamped client country to a known country code, else "unknown".
 
