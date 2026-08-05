@@ -1,4 +1,3 @@
-import re
 import time
 
 from fastapi import Request
@@ -10,9 +9,8 @@ from mlpa.core.utils import (
     clamp_purpose,
     clamp_request_method,
     clamp_service_type,
+    parse_firefox_major_version_from_user_agent,
 )
-
-FX_USER_AGENT_RE = r".*?Firefox/(\d+\.\d+)"
 
 
 async def instrument_requests_middleware(request: Request, call_next):
@@ -39,21 +37,7 @@ async def instrument_requests_middleware(request: Request, call_next):
             service_type = request.headers.get("service-type", "")
             purpose = request.headers.get("purpose", "")
             user_agent = request.headers.get("user-agent", "")
-            major_fx_version = ""
-            try:
-                if user_agent:
-                    fx_user_agent_match = re.match(FX_USER_AGENT_RE, user_agent)
-                    fx_version = (
-                        fx_user_agent_match.group(1) if fx_user_agent_match else ""
-                    )
-                    (major_fx_version, minor_fx_version) = (
-                        fx_version.split(".") if fx_version else ("", "")
-                    )
-            except Exception as e:
-                logger.error(
-                    f"Failed to parse firefox version from user-agent: {user_agent} {e}"
-                )
-                major_fx_version = "unknown"
+            major_fx_version = parse_firefox_major_version_from_user_agent(user_agent)
             metrics.request_latency.labels(method=method, endpoint=endpoint).observe(
                 time.perf_counter() - start_time
             )

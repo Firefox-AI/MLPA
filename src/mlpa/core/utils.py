@@ -34,6 +34,7 @@ KNOWN_HTTP_METHODS = frozenset(
         "PUT",
     }
 )
+FX_USER_AGENT_RE = r".*?Firefox/(\d+\.\d+)"
 
 
 def clamp_model(model: str) -> str:
@@ -424,3 +425,15 @@ def issue_mlpa_access_token(user_id: str) -> str:
         env.MLPA_ACCESS_TOKEN_SECRET,
         algorithm="HS256",
     )
+
+
+def parse_firefox_major_version_from_user_agent(user_agent: str) -> str:
+    major_version = ""
+    try:
+        match = re.match(FX_USER_AGENT_RE, user_agent)
+        if match:
+            major_version = match.group(1).split(".")[0]
+    except Exception as e:
+        logger.error(f"Failed to parse user agent: {user_agent} {e}")
+        major_version = "unknown"
+    return major_version
