@@ -119,10 +119,14 @@ def test_valid_service_types_set_matches_ordered_list():
 
 
 def test_service_type_purposes():
-    """Test service_type_purposes: AI types have chat/title-generation/convo-starters-sidebar, memories have memory-generation. Telemetry has chat."""
     env = Env()
     purposes = env.service_type_purposes
-    ai_purposes = ["chat", "title-generation", "convo-starters-sidebar"]
+    ai_purposes = [
+        "chat",
+        "title-generation",
+        "convo-starters-sidebar",
+        "smart-form-fill",
+    ]
     assert purposes["ai"] == ai_purposes
     assert purposes["memories"] == ["memory-generation"]
     assert purposes["telemetry"] == ["chat"]
@@ -165,6 +169,7 @@ def test_valid_purposes_for_service_type():
         "chat",
         "title-generation",
         "convo-starters-sidebar",
+        "smart-form-fill",
     }
     assert env.valid_purposes_for_service_type("memories") == ["memory-generation"]
     assert env.valid_purposes_for_service_type("s2s") == []

@@ -234,6 +234,7 @@ class Env(BaseSettings):
             "chat",
             "title-generation",
             "convo-starters-sidebar",
+            "smart-form-fill",
         ]
         memories_purposes = ["memory-generation"]
         return {
