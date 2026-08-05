@@ -85,6 +85,7 @@ def test_instrumentation_bounds_pre_auth_request_labels(metrics_spy):
             endpoint="/test",
             service_type="other",
             purpose="other",
+            major_fx_version="",
         )
         == 1
     )
@@ -95,6 +96,7 @@ def test_instrumentation_bounds_pre_auth_request_labels(metrics_spy):
             endpoint="/test",
             service_type="not-real-service-type",
             purpose="not-real-purpose",
+            major_fx_version="",
         )
         == 0
     )
@@ -127,6 +129,7 @@ def test_instrumentation_keeps_known_pre_auth_request_labels(metrics_spy):
             endpoint="/test",
             service_type="ai",
             purpose="chat",
+            major_fx_version="",
         )
         == 1
     )
@@ -153,6 +156,7 @@ def test_instrumentation_keeps_empty_purpose_as_bounded_label(metrics_spy):
             endpoint="/test",
             service_type="s2s",
             purpose="",
+            major_fx_version="",
         )
         == 1
     )
@@ -186,6 +190,7 @@ def test_instrumentation_buckets_unknown_methods(metrics_spy):
             endpoint="/test",
             service_type="ai",
             purpose="chat",
+            major_fx_version="",
         )
         == 1
     )
@@ -196,6 +201,7 @@ def test_instrumentation_buckets_unknown_methods(metrics_spy):
             endpoint="/test",
             service_type="ai",
             purpose="chat",
+            major_fx_version="",
         )
         == 0
     )
@@ -270,3 +276,77 @@ def test_set_json_content_type_does_not_change_other_routes():
     assert response.status_code == 200
     assert response.json() == {"content_type": "application/x-www-form-urlencoded"}
     assert seen_content_types == ["application/x-www-form-urlencoded"]
+
+
+def test_instrumentation_tracks_valid_firefox_major_version(metrics_spy):
+    from mlpa.core.middleware.instrumentation import instrument_requests_middleware
+    from mlpa.core.utils import parse_firefox_major_version_from_user_agent
+
+    user_agent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:155.0) Gecko/20100101 Firefox/155.0"
+
+    app = FastAPI()
+    app.middleware("http")(instrument_requests_middleware)
+
+    @app.get("/test")
+    async def test_endpoint():
+        return {"status": "ok"}
+
+    client = TestClient(app)
+    response = client.get(
+        "/test",
+        headers={
+            "service-type": "ai",
+            "purpose": "chat",
+            "user-agent": user_agent,
+        },
+    )
+
+    assert response.status_code == 200
+    assert (
+        metrics_spy.value(
+            "requests_total",
+            method="GET",
+            endpoint="/test",
+            service_type="ai",
+            purpose="chat",
+            major_fx_version=parse_firefox_major_version_from_user_agent(user_agent),
+        )
+        == 1
+    )
+
+
+def test_instrumentation_tracks_invalid_firefox_major_version(metrics_spy):
+    from mlpa.core.middleware.instrumentation import instrument_requests_middleware
+    from mlpa.core.utils import parse_firefox_major_version_from_user_agent
+
+    user_agent = "bruno-runtime/3.4.2"
+
+    app = FastAPI()
+    app.middleware("http")(instrument_requests_middleware)
+
+    @app.get("/test")
+    async def test_endpoint():
+        return {"status": "ok"}
+
+    client = TestClient(app)
+    response = client.get(
+        "/test",
+        headers={
+            "service-type": "ai",
+            "purpose": "chat",
+            "user-agent": user_agent,
+        },
+    )
+
+    assert response.status_code == 200
+    assert (
+        metrics_spy.value(
+            "requests_total",
+            method="GET",
+            endpoint="/test",
+            service_type="ai",
+            purpose="chat",
+            major_fx_version=parse_firefox_major_version_from_user_agent(user_agent),
+        )
+        == 1
+    )

@@ -66,6 +66,14 @@ def test_valid_service_types_includes_memories():
     assert isinstance(service_types, list)
 
 
+def test_valid_major_fx_versions_set_uses_string_range():
+    env = Env()
+
+    assert "155" in env.valid_major_fx_versions_set
+    assert 155 not in env.valid_major_fx_versions_set
+    assert env.valid_major_fx_versions_set == {str(n) for n in range(100, 200)}
+
+
 def test_user_feature_budget_dev_service_types_default_values():
     """Test that ai-dev, memories-dev, and mochi-dev have correct default values."""
     env = Env()

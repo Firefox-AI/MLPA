@@ -16,6 +16,7 @@ from mlpa.core.utils import (
     is_plausible_integrity_token,
     is_rate_limit_error,
     is_valid_model_name,
+    parse_firefox_major_version_from_user_agent,
 )
 
 # Sourced from env.valid_model_labels (not hand-copied) so a future model name
@@ -70,6 +71,22 @@ def test_is_valid_model_name_accepts_slash_and_underscore_namespaced_models(mode
 
 def test_is_valid_model_name_accepts_max_length():
     assert is_valid_model_name("a" * 64) is True
+
+
+@pytest.mark.parametrize(
+    ("user_agent", "expected"),
+    [
+        (
+            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:155.0) Gecko/20100101 Firefox/155.0",
+            "155",
+        ),
+        ("Mozilla/5.0 Firefox/100.12", "100"),
+        ("bruno-runtime/3.4.2", ""),
+        ("", ""),
+    ],
+)
+def test_parse_firefox_major_version_from_user_agent(user_agent, expected):
+    assert parse_firefox_major_version_from_user_agent(user_agent) == expected
 
 
 @pytest.mark.parametrize("key_id_b64", ["dGVzdC1rZXktaWQ=", "A" * 44, "a+b/c==", "x"])
