@@ -235,6 +235,7 @@ class Env(BaseSettings):
             "title-generation",
             "convo-starters-sidebar",
             "smart-form-fill",
+            "aitab",
         ]
         memories_purposes = ["memory-generation"]
         return {
