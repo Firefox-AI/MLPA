@@ -134,6 +134,7 @@ def test_service_type_purposes():
         "title-generation",
         "convo-starters-sidebar",
         "smart-form-fill",
+        "aitab",
     ]
     assert purposes["ai"] == ai_purposes
     assert purposes["memories"] == ["memory-generation"]
@@ -178,6 +179,7 @@ def test_valid_purposes_for_service_type():
         "title-generation",
         "convo-starters-sidebar",
         "smart-form-fill",
+        "aitab",
     }
     assert env.valid_purposes_for_service_type("memories") == ["memory-generation"]
     assert env.valid_purposes_for_service_type("s2s") == []
