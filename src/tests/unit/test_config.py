@@ -110,11 +110,12 @@ def test_valid_service_types_all_service_types():
     assert "answer" in service_types
     assert "telemetry" in service_types
     assert "agent" in service_types
+    assert "agent-search" in service_types
     assert "ai-dev" in service_types
     assert "memories-dev" in service_types
     assert "mochi-dev" in service_types
     assert "search-dev" in service_types
-    assert len(service_types) == 12
+    assert len(service_types) == 13
 
 
 def test_valid_service_types_set_matches_ordered_list():
@@ -169,6 +170,8 @@ def test_service_type_requires_purpose():
     assert env.service_type_requires_purpose("mochi-dev") is True
     assert env.service_type_requires_purpose("memories-dev") is True
     assert env.service_type_requires_purpose("search-dev") is False
+    assert env.service_type_requires_purpose("agent") is True
+    assert env.service_type_requires_purpose("agent-search") is True
 
 
 def test_valid_purposes_for_service_type():
@@ -252,7 +255,7 @@ def test_forced_model_service_type_pairs_defaults():
     env = Env()
 
     assert env.forced_model_service_type_pairs == {
-        "exa-search": ["search", "search-dev"],
+        "exa-search": ["search", "search-dev", "agent-search"],
         "exa": ["answer"],
     }
 

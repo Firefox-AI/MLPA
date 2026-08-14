@@ -6,6 +6,9 @@ from fastapi.openapi.utils import get_openapi
 from mlpa.core.classes import AssertionAuth, AttestationAuth
 from mlpa.core.config import env
 
+SEARCH_SERVICE_TYPES = ("search", "search-dev", "agent-search")
+SEARCH_SERVICE_TYPES_SET = set(SEARCH_SERVICE_TYPES)
+
 
 def customize_openapi(app: FastAPI, tags_metadata: list[dict]) -> None:
     """Add AttestationAuth and AssertionAuth schemas to OpenAPI docs."""
@@ -38,7 +41,7 @@ def customize_openapi(app: FastAPI, tags_metadata: list[dict]) -> None:
             chat_service_types = [
                 st
                 for st in env.valid_service_types
-                if st not in {"search", "search-dev"}
+                if st not in SEARCH_SERVICE_TYPES_SET
             ]
             purpose_required = (
                 [
@@ -88,7 +91,7 @@ def customize_openapi(app: FastAPI, tags_metadata: list[dict]) -> None:
                     )
                     p["schema"] = {
                         "type": "string",
-                        "enum": ["search", "search-dev"],
+                        "enum": list(SEARCH_SERVICE_TYPES),
                         "default": "search",
                         "title": "Service-Type",
                     }
