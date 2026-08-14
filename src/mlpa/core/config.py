@@ -236,6 +236,7 @@ class Env(BaseSettings):
             "convo-starters-sidebar",
             "smart-form-fill",
             "aitab",
+            "auto-tab-grouping",
         ]
         memories_purposes = ["memory-generation"]
         return {
