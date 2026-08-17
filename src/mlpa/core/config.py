@@ -86,7 +86,13 @@ class Env(BaseSettings):
     USER_FEATURE_BUDGET_AGENT_MAX_BUDGET: float = 0.1
     USER_FEATURE_BUDGET_AGENT_RPM_LIMIT: int = 10
     USER_FEATURE_BUDGET_AGENT_TPM_LIMIT: int = 2000
-    USER_FEATURE_BUDGET_AGENT_BUDGET_DURATION: str = "1d"
+    USER_FEATURE_BUDGET_AGENT_BUDGET_DURATION: str = "7d"
+
+    USER_FEATURE_BUDGET_AGENT_SEARCH_BUDGET_ID: str = "end-user-budget-agent-search"
+    USER_FEATURE_BUDGET_AGENT_SEARCH_MAX_BUDGET: float = 0.1
+    USER_FEATURE_BUDGET_AGENT_SEARCH_RPM_LIMIT: int = 10
+    USER_FEATURE_BUDGET_AGENT_SEARCH_TPM_LIMIT: int = 2000
+    USER_FEATURE_BUDGET_AGENT_SEARCH_BUDGET_DURATION: str = "7d"
 
     # User Feature Budget - ai-dev service type (experimentation, batch predictions)
     USER_FEATURE_BUDGET_AI_DEV_BUDGET_ID: str = "end-user-budget-ai-dev"
@@ -178,6 +184,13 @@ class Env(BaseSettings):
                 "tpm_limit": self.USER_FEATURE_BUDGET_AGENT_TPM_LIMIT,
                 "budget_duration": self.USER_FEATURE_BUDGET_AGENT_BUDGET_DURATION,
             },
+            "agent-search": {
+                "budget_id": self.USER_FEATURE_BUDGET_AGENT_SEARCH_BUDGET_ID,
+                "max_budget": self.USER_FEATURE_BUDGET_AGENT_SEARCH_MAX_BUDGET,
+                "rpm_limit": self.USER_FEATURE_BUDGET_AGENT_SEARCH_RPM_LIMIT,
+                "tpm_limit": self.USER_FEATURE_BUDGET_AGENT_SEARCH_TPM_LIMIT,
+                "budget_duration": self.USER_FEATURE_BUDGET_AGENT_SEARCH_BUDGET_DURATION,
+            },
             "ai-dev": {
                 "budget_id": self.USER_FEATURE_BUDGET_AI_DEV_BUDGET_ID,
                 "max_budget": self.USER_FEATURE_BUDGET_AI_DEV_MAX_BUDGET,
@@ -252,6 +265,7 @@ class Env(BaseSettings):
             "search-dev": [],
             "telemetry": ["chat"],
             "agent": ["monitor", "research"],
+            "agent-search": ["research"],
         }
 
     def valid_purposes_for_service_type(self, service_type: str) -> list[str]:
@@ -289,7 +303,10 @@ class Env(BaseSettings):
         Returns a dictionary mapping model names to their valid service types.
         """
         # Force certain models to use certain service types
-        return {"exa-search": ["search", "search-dev"], "exa": ["answer"]}
+        return {
+            "exa-search": ["search", "search-dev", "agent-search"],
+            "exa": ["answer"],
+        }
 
     def valid_service_type_for_model(self, service_type: str, model: str) -> bool:
         """Check if a service type is valid for a specific model."""
