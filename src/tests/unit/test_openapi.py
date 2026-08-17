@@ -33,7 +33,7 @@ def test_search_service_type_header_docs_are_search_only():
 
     assert service_type["schema"] == {
         "type": "string",
-        "enum": ["search", "search-dev"],
+        "enum": ["search", "search-dev", "agent-search"],
         "default": "search",
         "title": "Service-Type",
     }
