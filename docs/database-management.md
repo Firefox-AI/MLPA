@@ -160,18 +160,37 @@ default. Careful: it is NOT relaxed by the per-transaction `SET LOCAL` budgets. 
 you turn it on, set it above `PG_MAINTENANCE_STATEMENT_TIMEOUT_MS` (30s) or it
 will cancel the maintenance/admin reads.
 
-### These timeouts only apply to MLPA
+### Where each timeout actually applies
 
-All of the above is set as asyncpg `server_settings` on MLPA's own connection
-pools, at connect time. It's per-session, not database-wide and not on the DB
-role. Nothing in the migrations or scripts sets `statement_timeout` at the
-`ALTER DATABASE` / `ALTER ROLE` level.
+The per-session `server_settings` above are what this doc used to describe:
+set on MLPA's own connection pools at connect time, MLPA-only, per-session.
 
-So anything else that connects to these databases on its own session is NOT
-affected. That includes the cleanup cron job in the llm-proxy infra, LiteLLM
-itself, and the Cloud SQL console. They run with the Postgres default (usually
-unlimited) unless someone sets a timeout for that role separately. The cron job
-can take as long as it needs, the 3s default won't touch it.
+That mechanism breaks under PgBouncer's transaction pooling.
+`statement_timeout` and `idle_in_transaction_session_timeout` aren't
+`GUC_REPORT` parameters, so PgBouncer can't replay them onto a pooled backend
+connection. `track_extra_parameters` in pgbouncer.ini doesn't help here even
+with both listed - per [PgBouncer's own config docs](https://www.pgbouncer.org/config.html),
+it only tracks parameters Postgres reports back to the client, and these two
+aren't in that set ([AIPLAT-1026](https://mozilla-hub.atlassian.net/browse/AIPLAT-1026)).
+
+`scripts/migrate-app-attest-database.sh` now also sets both values at the role
+level (`ALTER ROLE ... SET ...`), at the end of the migration job, whenever
+`PG_STATEMENT_TIMEOUT_MS` is non-zero for that environment. This is a
+Postgres-side default, so it applies whether the connection is direct or
+pooled, and whether PgBouncer is deployed at all. It covers every session on
+that role - including LiteLLM's own connections and any cron job that doesn't
+override it.
+
+Both settings are live wherever `PG_STATEMENT_TIMEOUT_MS != 0`. On a direct
+connection the session-level one already wins, so the role default just sits
+there unused. Through PgBouncer, the session-level one silently does nothing
+and the role default is what's actually protecting you.
+
+Most llm-proxy jobs on the shared role already set their own
+`PGOPTIONS -c statement_timeout=...`, which wins over the role default.
+Prisma-based jobs (LiteLLM's migrations) can't do that - Prisma has no
+`statement_timeout` connection param and doesn't honor `PGOPTIONS` - so they
+inherit the role default with no per-job override available.
 
 ## Migrations
 
