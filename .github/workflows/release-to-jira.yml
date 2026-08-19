@@ -1,0 +1,43 @@
+name: Release to Jira
+on:
+  release:
+    types: [published]   # fires when Argo publishes the release (not for drafts)
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install requests
+      - name: Create Jira release from GitHub release
+        id: sync
+        env:
+          GH_TOKEN:            ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO:             ${{ github.repository }}
+          RELEASE_TAG:         ${{ github.event.release.tag_name }}
+          RELEASE_URL:         ${{ github.event.release.html_url }}
+          RELEASE_BODY:        ${{ github.event.release.body }}
+          # Service account must use the api.atlassian.com/ex gateway, not the site URL.
+          ATLASSIAN_CLOUD_ID:   "d8febd08-c6e9-4c03-9c13-db37c2369ce5"
+          JIRA_SITE_URL:        "https://mozilla-hub.atlassian.net"   # human-facing links only
+          JIRA_EMAIL:          ${{ secrets.JIRA_EMAIL }}
+          JIRA_API_TOKEN:      ${{ secrets.JIRA_API_TOKEN }}
+          JIRA_PROJECT_KEY:    AIPLAT
+          CONFLUENCE_PARENT_ID: "2885845046"   # "Release Notes Folder" in FAAMT
+        run: python .github/scripts/release_to_jira.py
+
+      - name: Notify Slack
+        uses: slackapi/slack-github-action@v2
+        with:
+          method: chat.postMessage
+          token: ${{ secrets.SLACK_BOT_TOKEN }}
+          payload: |
+            channel: "${{ secrets.SLACK_CHANNEL_ID }}"
+            text: ":rocket: *MLPA ${{ steps.sync.outputs.tag }}* released — <${{ steps.sync.outputs.page_url }}|View release notes>"
