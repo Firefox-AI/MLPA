@@ -2,17 +2,6 @@ name: Release to Jira
 on:
   release:
     types: [published]   # fires when Argo publishes the release (not for drafts)
-  workflow_dispatch:
-    inputs:
-      release_tag:
-        description: "Jira/Confluence version name (use a throwaway value for QA)"
-        required: true
-      release_url:
-        description: "URL to link from Confluence/Slack"
-        required: true
-      release_body:
-        description: "Release notes body (PR URLs get parsed out of this)"
-        required: true
 
 permissions:
   contents: read
@@ -32,9 +21,9 @@ jobs:
         env:
           GH_TOKEN:            ${{ secrets.GITHUB_TOKEN }}
           GH_REPO:             ${{ github.repository }}
-          RELEASE_TAG:         ${{ github.event.inputs.release_tag || github.event.release.tag_name }}
-          RELEASE_URL:         ${{ github.event.inputs.release_url || github.event.release.html_url }}
-          RELEASE_BODY:        ${{ github.event.inputs.release_body || github.event.release.body }}
+          RELEASE_TAG:         ${{ github.event.release.tag_name }}
+          RELEASE_URL:         ${{ github.event.release.html_url }}
+          RELEASE_BODY:        ${{ github.event.release.body }}
           # Service account must use the api.atlassian.com/ex gateway, not the site URL.
           ATLASSIAN_CLOUD_ID:   "d8febd08-c6e9-4c03-9c13-db37c2369ce5"
           JIRA_SITE_URL:        "https://mozilla-hub.atlassian.net"   # human-facing links only
@@ -45,7 +34,6 @@ jobs:
         run: python .github/scripts/release_to_jira.py
 
       - name: Notify Slack
-        if: github.event_name == 'release'
         uses: slackapi/slack-github-action@v2
         with:
           method: chat.postMessage
