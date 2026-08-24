@@ -208,7 +208,7 @@ async def chat_completion(
     ],
 ):
     record_request_country(
-        request.headers.get("X-Geo-Country"),
+        authorized_chat_request.client_country,
         service_type=authorized_chat_request.service_type,
         model=authorized_chat_request.model,
     )

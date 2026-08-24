@@ -18,6 +18,13 @@ class Env(BaseSettings):
     MLPA_CAPPED_SERVICE_TYPES: set[str] = {"ai", "memories"}
     MLPA_ADMISSION_LOCK_TIMEOUT_MS: int = 5000
 
+    # Countries with their own Grafana breakout (AIPLAT-1266). Deliberately a
+    # small set, distinct from the full ISO country_codes.COUNTRY_CODES list,
+    # so the per-country latency/TTFT/availability metrics stay cheap.
+    # Everything else clamps to "other" (see utils.clamp_launch_country).
+    # Grafana's country/region dropdown reads the same values.
+    MLPA_LAUNCH_COUNTRIES: set[str] = {"US", "CA", "FR", "DE"}
+
     # Purpose header enforcement/backwards-compatibility:
     # when false (default), the `purpose` header is optional for all service types.
     # when true, the `purpose` header becomes mandatory for service types that

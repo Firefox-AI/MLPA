@@ -120,6 +120,8 @@ class AuthorizedChatRequest(ChatRequest, AuthorizedRequestLogMixin):
     purpose: str = (
         ""  # From header; empty for service types without defined purposes (e.g. s2s)
     )
+    # Raw X-Geo-Country, edge-stamped; clamp at metric time.
+    client_country: str = ""
 
 
 class SearchRequest(BaseModel):
@@ -133,6 +135,10 @@ class AuthorizedSearchRequest(SearchRequest, AuthorizedRequestLogMixin):
     purpose: str = (
         ""  # From header; empty for service types without defined purposes (e.g. s2s)
     )
+    # Raw X-Geo-Country, edge-stamped; clamp at metric time. Only chat metrics
+    # (AIPLAT-1266) read this today; search carries it for parity but doesn't
+    # record a by-country metric yet.
+    client_country: str = ""
 
 
 # Dynamically create ServiceType enum from config

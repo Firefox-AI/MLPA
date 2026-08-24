@@ -28,6 +28,7 @@ async def check_request_size_middleware(request: Request, call_next):
                         model="",
                         service_type=request.headers.get("service-type") or "",
                         purpose=request.headers.get("purpose") or "",
+                        client_country=request.headers.get("X-Geo-Country") or "",
                     )
                     return JSONResponse(
                         status_code=413,

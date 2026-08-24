@@ -7,6 +7,7 @@ from mlpa.core.config import env
 from mlpa.core.utils import (
     b64decode_safe,
     clamp_country,
+    clamp_launch_country,
     clamp_purpose,
     clamp_service_type,
     is_context_window_error,
@@ -361,3 +362,20 @@ def test_clamp_purpose_preserves_missing_value(raw, expected):
 )
 def test_clamp_country(raw, expected):
     assert clamp_country(raw) == expected
+
+
+@pytest.mark.parametrize(
+    "raw,expected",
+    [
+        ("US", "US"),
+        ("CA", "CA"),
+        ("FR", "FR"),
+        ("DE", "DE"),
+        ("GB", "other"),
+        ("us", "other"),
+        ("", "other"),
+        ("DE; rm -rf", "other"),
+    ],
+)
+def test_clamp_launch_country(raw, expected):
+    assert clamp_launch_country(raw) == expected

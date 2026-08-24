@@ -26,7 +26,10 @@ async def get_search(authorized_search_request: AuthorizedSearchRequest):
 async def _get_search(authorized_search_request: AuthorizedSearchRequest):
     start_time = time.perf_counter()
     body = sanitize_request_body(
-        authorized_search_request.model_dump(exclude_none=True)
+        authorized_search_request.model_dump(
+            exclude={"client_country"},
+            exclude_none=True,
+        )
     )
     result = PrometheusResult.ERROR
     logger.debug(

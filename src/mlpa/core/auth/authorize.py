@@ -124,6 +124,8 @@ async def authorize_chat_request(
     use_qa_certificates: Annotated[bool | None, Header()] = None,
     use_play_integrity: Annotated[bool | None, Header()] = None,
 ) -> AuthorizedChatRequest:
+    client_country = request.headers.get("X-Geo-Country") or ""
+
     # Charset/length check runs before any auth, DB, or LiteLLM work below, so
     # fuzzed/scanner model values are rejected without that cost.
     if not is_valid_model_name(chat_request.model):
@@ -132,6 +134,7 @@ async def authorize_chat_request(
             model=chat_request.model,
             service_type=service_type.value,
             purpose=purpose or "",
+            client_country=client_country,
         )
         raise HTTPException(
             status_code=400,
@@ -160,6 +163,7 @@ async def authorize_chat_request(
             model=chat_request.model,
             service_type=service_type.value,
             purpose=purpose or "",
+            client_country=client_country,
         )
         raise HTTPException(
             status_code=400,
@@ -173,6 +177,7 @@ async def authorize_chat_request(
                 user=user,
                 service_type=service_type.value,
                 purpose=purpose_value,
+                client_country=client_country,
                 **chat_request.model_dump(exclude_unset=True),
             ),
             authorization=authorization,
@@ -202,6 +207,7 @@ async def authorize_chat_request(
             model=chat_request.model,
             service_type=service_type.value,
             purpose=purpose or "",
+            client_country=client_country,
         )
         raise
 
@@ -217,12 +223,14 @@ async def authorize_search_request(
     use_qa_certificates: Annotated[bool | None, Header()] = None,
     use_play_integrity: Annotated[bool | None, Header()] = None,
 ) -> AuthorizedSearchRequest:
+    client_country = request.headers.get("X-Geo-Country") or ""
     return await _authorize_common_request(
         request=request,
         build_authorized_request=lambda user, purpose_value: AuthorizedSearchRequest(
             user=user,
             service_type=service_type.value,
             purpose=purpose_value,
+            client_country=client_country,
             **search_request.model_dump(exclude_unset=True),
         ),
         authorization=authorization,
