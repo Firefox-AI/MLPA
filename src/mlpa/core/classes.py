@@ -87,18 +87,28 @@ class PlayIntegrityTokenResponse(BaseModel):
     expires_in: int
 
 
-class AuthorizedRequestLogMixin:
+class AuthorizedRequestLogMixin(BaseModel):
     """Shared structured log fields for authorized requests.
 
     Bound into the loguru contextvar via ``logger.contextualize(**log_fields)``
     in the proxy handlers so every log line emitted while serving the request
     (including mid-stream errors) carries them as queryable ``record.extra.*``
     fields, rather than concatenated into the message string.
+
+    A ``BaseModel`` itself (not a plain mixin) so ``ty`` resolves these fields
+    on ``AuthorizedChatRequest``/``AuthorizedSearchRequest`` through multiple
+    inheritance instead of flagging their constructor calls as unknown kwargs.
     """
 
     user: str
     service_type: str
-    purpose: str
+    purpose: str = (
+        ""  # From header; empty for service types without defined purposes (e.g. s2s)
+    )
+    # Raw X-Geo-Country, edge-stamped; clamp at metric time. Read by
+    # requests_by_country_total for both chat and search, and additionally by
+    # the latency/TTFT/availability by-country metrics (AIPLAT-1266) for chat.
+    client_country: str = ""
 
     @property
     def log_fields(self) -> dict[str, str]:
@@ -115,14 +125,7 @@ class AuthorizedRequestLogMixin:
 
 
 class AuthorizedChatRequest(ChatRequest, AuthorizedRequestLogMixin):
-    user: str
-    service_type: str
-    purpose: str = (
-        ""  # From header; empty for service types without defined purposes (e.g. s2s)
-    )
-    # Raw X-Geo-Country, edge-stamped; clamp at metric time. Read by the
-    # by-country chat metrics (AIPLAT-1266).
-    client_country: str = ""
+    pass
 
 
 class SearchRequest(BaseModel):
@@ -131,15 +134,7 @@ class SearchRequest(BaseModel):
 
 
 class AuthorizedSearchRequest(SearchRequest, AuthorizedRequestLogMixin):
-    user: str
-    service_type: str
-    purpose: str = (
-        ""  # From header; empty for service types without defined purposes (e.g. s2s)
-    )
-    # Raw X-Geo-Country, edge-stamped; clamp at metric time. Read by
-    # requests_by_country_total, but not by the latency/TTFT/availability
-    # by-country metrics (AIPLAT-1266), which are chat-only for now.
-    client_country: str = ""
+    pass
 
 
 # Dynamically create ServiceType enum from config
