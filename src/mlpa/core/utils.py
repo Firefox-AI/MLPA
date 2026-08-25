@@ -7,7 +7,7 @@ import time
 from functools import lru_cache
 from typing import Any, Literal, NoReturn, cast, overload
 
-from fastapi import HTTPException
+from fastapi import HTTPException, Request
 from fxa.oauth import Client
 from jwtoxide import DecodingKey, ValidationOptions, decode, encode
 
@@ -88,6 +88,18 @@ def clamp_major_fx_version(raw: str) -> str:
     return raw if raw == "" or raw in env.valid_major_fx_versions_set else "unknown"
 
 
+def _clamp_to_set(
+    raw: str | None, valid: frozenset[str] | set[str], fallback: str
+) -> str:
+    """Bound a raw label value to a known set, else `fallback`. Caps cardinality."""
+    return raw if raw in valid else fallback
+
+
+def get_client_country(request: Request) -> str:
+    """Read the raw, edge-stamped ``X-Geo-Country`` header. Clamp at metric time."""
+    return request.headers.get("X-Geo-Country") or ""
+
+
 def clamp_country(raw: str | None) -> str:
     """Bound an edge-stamped client country to a known country code, else "unknown".
 
@@ -95,7 +107,17 @@ def clamp_country(raw: str | None) -> str:
     for aggregate metrics, never per-user data or logs. The clamp also caps label
     cardinality and blocks injection from a spoofed ``X-Geo-Country`` header.
     """
-    return raw if raw in COUNTRY_CODES else "unknown"
+    return _clamp_to_set(raw, COUNTRY_CODES, "unknown")
+
+
+def clamp_launch_country(raw: str) -> str:
+    """Bound a client country to the small Grafana-filterable launch-market set.
+
+    Distinct from `clamp_country`: this backs the dedicated by-country latency/
+    TTFT/availability metrics (AIPLAT-1266), which stay cheap only because this
+    set is a handful of values, not the full ISO list.
+    """
+    return _clamp_to_set(raw, env.MLPA_LAUNCH_COUNTRIES, "other")
 
 
 def clamp_request_method(method: str) -> str:

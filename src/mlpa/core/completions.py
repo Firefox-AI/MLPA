@@ -41,7 +41,7 @@ from mlpa.core.utils import (
 
 def _build_litellm_body(req: AuthorizedChatRequest, *, stream: bool) -> dict:
     body = req.model_dump(
-        exclude={"max_completion_tokens", "service_type", "purpose"},
+        exclude={"max_completion_tokens", "service_type", "purpose", "client_country"},
         exclude_none=True,
     )
     body["max_tokens"] = req.max_completion_tokens
@@ -211,7 +211,7 @@ async def stream_completion(
 
                 if is_first_token:
                     record_ttft(
-                        authorized_chat_request.model,
+                        authorized_chat_request,
                         time.perf_counter() - start_time,
                     )
                     is_first_token = False

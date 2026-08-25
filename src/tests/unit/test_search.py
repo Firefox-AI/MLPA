@@ -56,6 +56,37 @@ async def test_get_search_handles_unpaired_surrogate(mocker):
     assert sent_json["query"].startswith("weather in tokyo ")
 
 
+async def test_get_search_excludes_internal_fields_from_upstream_body(mocker):
+    """client_country/service_type/purpose/user are internal auth/routing fields;
+    they must never be forwarded to the Exa search backend."""
+    mock_response = MagicMock()
+    mock_response.json.return_value = {"results": []}
+    mock_response.raise_for_status.return_value = None
+
+    mock_client = AsyncMock()
+    mock_client.post.return_value = mock_response
+    mocker.patch("mlpa.core.search.get_http_client", return_value=mock_client)
+
+    req = AuthorizedSearchRequest(
+        user="test-user:search",
+        service_type="search",
+        purpose="",
+        client_country="US",
+        query="weather in tokyo",
+        max_results=5,
+    )
+
+    await get_search(req)
+
+    _, call_kwargs = mock_client.post.call_args
+    sent_json = call_kwargs["json"]
+    assert "client_country" not in sent_json
+    assert "service_type" not in sent_json
+    assert "purpose" not in sent_json
+    assert "user" not in sent_json
+    assert sent_json == {"query": "weather in tokyo", "max_results": 5}
+
+
 async def test_get_search_sanitizes_response_surrogates(mocker):
     """Upstream search results with a lone surrogate must be cleaned before return."""
     mock_response = MagicMock()

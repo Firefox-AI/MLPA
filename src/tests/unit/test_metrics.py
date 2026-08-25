@@ -6,6 +6,7 @@ from mlpa.core.metrics import (
     record_request_country,
     record_request_with_tools,
     record_tool_metrics,
+    record_ttft,
 )
 from mlpa.core.prometheus_metrics import (
     AvailabilityReason,
@@ -15,12 +16,15 @@ from mlpa.core.prometheus_metrics import (
 from mlpa.core.utils import clamp_model
 
 
-def _chat_request(model: str = "openai/gpt-4o") -> AuthorizedChatRequest:
+def _chat_request(
+    model: str = "openai/gpt-4o", client_country: str = ""
+) -> AuthorizedChatRequest:
     return AuthorizedChatRequest(
         user="test-user:ai",
         service_type="ai",
         purpose="chat",
         model=model,
+        client_country=client_country,
         messages=[{"role": "user", "content": "hi"}],
         tools=[
             {"type": "function", "function": {"name": "first_tool"}},
@@ -212,6 +216,62 @@ def test_configured_models_keep_their_metric_label(metrics_spy):
             service_type=req.service_type,
             model=req.model,
             client_country="DE",
+        )
+        == 1
+    )
+
+
+def test_by_country_metrics_use_launch_market_bucketing(metrics_spy):
+    """AIPLAT-1266: the by-country metrics are thin (no model/service_type/purpose)
+    and bucket anything outside LAUNCH_COUNTRIES as "other", unlike clamp_country.
+    """
+    launch_market_req = _chat_request(client_country="FR")
+    other_country_req = _chat_request(client_country="BR")
+
+    record_completion_latency(launch_market_req, PrometheusResult.SUCCESS, 0.5)
+    record_completion_latency(other_country_req, PrometheusResult.SUCCESS, 0.5)
+    record_ttft(launch_market_req, 0.2)
+    record_ttft(other_country_req, 0.2)
+    record_chat_availability(launch_market_req, AvailabilityReason.VALID_RESPONSE)
+    record_chat_availability(other_country_req, AvailabilityReason.VALID_RESPONSE)
+
+    assert (
+        metrics_spy.histogram_count(
+            "chat_completion_latency_by_country",
+            result=PrometheusResult.SUCCESS,
+            client_country="FR",
+        )
+        == 1
+    )
+    assert (
+        metrics_spy.histogram_count(
+            "chat_completion_latency_by_country",
+            result=PrometheusResult.SUCCESS,
+            client_country="other",
+        )
+        == 1
+    )
+    assert (
+        metrics_spy.histogram_count(
+            "chat_completion_ttft_by_country", client_country="FR"
+        )
+        == 1
+    )
+    assert (
+        metrics_spy.histogram_count(
+            "chat_completion_ttft_by_country", client_country="other"
+        )
+        == 1
+    )
+    assert (
+        metrics_spy.value(
+            "chat_availability_by_country", outcome="success", client_country="FR"
+        )
+        == 1
+    )
+    assert (
+        metrics_spy.value(
+            "chat_availability_by_country", outcome="success", client_country="other"
         )
         == 1
     )
