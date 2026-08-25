@@ -137,7 +137,7 @@ app.include_router(health_router, prefix="/health")
 app.include_router(appattest_router, prefix="/verify")
 app.include_router(play_router, prefix="/verify")
 app.include_router(user_router, prefix="/user")
-app.include_router(filter_router, prefix="/filter")
+app.include_router(filter_router)
 app.include_router(mock_router, prefix="/mock")
 customize_openapi(app, tags_metadata)
 

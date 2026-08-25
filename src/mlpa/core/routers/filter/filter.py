@@ -50,7 +50,7 @@ FILTER_SUCCESS_RESPONSE: dict[int | str, dict[str, Any]] = {
 
 
 @router.post(
-    "/",
+    "/filter",
     tags=["Privacy Filter"],
     description="Filter sensitive information from user data",
     # response_model=PrivacyFilterResponse,
