@@ -1,29 +1,23 @@
-import asyncio
-import importlib.metadata
 import time
 from typing import Annotated, Any
 
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, Request
-from fastapi.responses import JSONResponse
 
 from mlpa.core.auth.authorize import authorize_filter_request
 from mlpa.core.classes import AuthorizedFilterRequest
 from mlpa.core.config import (
     ERROR_RESPONSES,
-    LITELLM_INFO_URL,
-    LITELLM_MASTER_AUTH_HEADERS,
-    LITELLM_READINESS_URL,
     PRIVACY_FILTER_FILTER_URL,
     PRIVACY_FILTER_MASTER_AUTH_HEADERS,
     env,
 )
 from mlpa.core.http_client import get_http_client
-from mlpa.core.pg_services.services import app_attest_pg, litellm_pg
 from mlpa.core.prometheus_metrics import (
-    AvailabilityReason,
-    PrometheusRejectionReason,
     PrometheusResult,
 )
+from mlpa.core.sanitization import sanitize_response_body
+from mlpa.core.utils import raise_and_log
 
 router = APIRouter()
 
@@ -80,15 +74,18 @@ async def filter(
             json=authorized_filter_request.model_dump(
                 exclude={"user"}, exclude_none=True
             ),
-            timeout=env.READINESS_CHECK_TIMEOUT_S,
         )
+        try:
+            response.raise_for_status()
+            data = sanitize_response_body(response.json())
+        except httpx.HTTPStatusError as e:
+            raise_and_log(e, False, e.response.status_code, "Error filtering data")
         return {
-            "results": response.json().get("results", []),
-            "model_id": response.json().get("model_id"),
-            "num_items": response.json().get("num_items", 0),
+            "results": data.get("results", []),
+            "model_id": data.get("model_id"),
+            "num_items": data.get("num_items", 0),
         }
-    except Exception:
-        result = PrometheusResult.ERROR
-        raise
+    except Exception as e:
+        raise_and_log(e, False, 502, "Failed to proxy request to Privacy Filter")
     finally:
         pass

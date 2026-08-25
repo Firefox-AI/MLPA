@@ -63,6 +63,10 @@ tags_metadata = [
         "name": "User Management",
         "description": "Endpoints for managing user blocking status and budgets.",
     },
+    {
+        "name": "Privacy Filter",
+        "description": "Endpoints for interacting with the Privacy Filter.",
+    },
 ]
 
 

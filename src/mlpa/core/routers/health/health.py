@@ -88,7 +88,7 @@ def _eval_privacy_filter(privacy_filter_http) -> tuple[bool, dict]:
     Only ready on a 200 with db connected and a healthy top-level status. A
     Privacy Filter that is up but not ready can't serve MLPA traffic.
     """
-    unreachable = {"pf_version": "N/A", "status": "unreachable"}
+    unreachable = {"version": "N/A", "status": "unreachable"}
     if (
         isinstance(privacy_filter_http, Exception)
         or privacy_filter_http.status_code != 200

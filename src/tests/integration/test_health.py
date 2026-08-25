@@ -151,7 +151,7 @@ def test_readiness_503_when_privacy_filter_non_200(
     body = response.json()
 
     assert response.status_code == 503
-    assert body["privacy_filter"] == {"pf_version": "N/A", "status": "unreachable"}
+    assert body["privacy_filter"] == {"version": "N/A", "status": "unreachable"}
 
 
 def test_readiness_503_when_litellm_times_out(mocked_client_integration, httpx_mock):
