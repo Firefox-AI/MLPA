@@ -5,8 +5,10 @@ from pydantic import ValidationError
 from mlpa.core.auth import authorize as authorize_module
 from mlpa.core.classes import (
     AuthorizedChatRequest,
+    AuthorizedFilterRequest,
     AuthorizedSearchRequest,
     ChatRequest,
+    PrivacyFilterRequest,
     SearchRequest,
 )
 
@@ -63,6 +65,33 @@ async def test_authorize_search_request_returns_authorized_search_request(mocker
     assert result.purpose == ""
     assert result.query == "latest AI developments"
     assert result.max_results == 2
+
+
+async def test_authorize_filter_request_returns_authorized_filter_request(mocker):
+    fxa_auth_mock = mocker.patch.object(
+        authorize_module,
+        "fxa_auth",
+        mocker.AsyncMock(return_value={"user": "user-789"}),
+    )
+
+    result = await authorize_module.authorize_filter_request(
+        request=_make_request("/filter/"),
+        filter_request=PrivacyFilterRequest(items=["email me at jane@example.com"]),
+        authorization="Bearer token",
+    )
+
+    assert isinstance(result, AuthorizedFilterRequest)
+    assert result.user == "user-789"
+    assert result.items == ["email me at jane@example.com"]
+    fxa_auth_mock.assert_awaited_once_with("Bearer token")
+
+
+def test_privacy_filter_request_requires_items():
+    with pytest.raises(ValidationError) as exc_info:
+        PrivacyFilterRequest()
+
+    errors = exc_info.value.errors()
+    assert errors[0]["loc"] == ("items",)
 
 
 def test_search_request_rejects_too_many_results():

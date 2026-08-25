@@ -37,6 +37,7 @@ from mlpa.core.openapi import customize_openapi
 from mlpa.core.pg_services.services import app_attest_pg, litellm_pg
 from mlpa.core.prometheus_metrics import AvailabilityReason
 from mlpa.core.routers.appattest import appattest_router
+from mlpa.core.routers.filter import filter_router
 from mlpa.core.routers.health import health_router
 from mlpa.core.routers.mock import mock_router
 from mlpa.core.routers.play import play_router
@@ -136,6 +137,7 @@ app.include_router(health_router, prefix="/health")
 app.include_router(appattest_router, prefix="/verify")
 app.include_router(play_router, prefix="/verify")
 app.include_router(user_router, prefix="/user")
+app.include_router(filter_router, prefix="/filter")
 app.include_router(mock_router, prefix="/mock")
 customize_openapi(app, tags_metadata)
 

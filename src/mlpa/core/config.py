@@ -26,15 +26,18 @@ class Env(BaseSettings):
 
     # LiteLLM
     MASTER_KEY: str = "sk-default"  # Bypasses LiteLLM.max_budget, use MLPA_VIRTUAL_KEY (virtual key) for completion requests
+    OPENAI_API_KEY: str = "sk-add-your-key"  # for local LiteLLM testing
+    EXA_API_KEY: str = "sk-add-your-key"  # for local LiteLLM testing
+    LITELLM_API_BASE: str = "http://localhost:4000"
+    CHALLENGE_EXPIRY_SECONDS: int = 300  # 5 minutes
+
+    # Privacy Filter
+    PRIVACY_FILTER_MASTER_KEY: str = "sk-default"
+    PRIVACY_FILTER_API_BASE: str = "http://localhost:5000"
+
     # Read-only admin dashboard (`/admin`) and GET /user/counts-by-service-type; not LiteLLM's master key
     MLPA_UI_ACCESS_KEY: str = "sk-ui-access-default"
     MLPA_VIRTUAL_KEY: str = "sk-virtual"  # Enforces LiteLLM.max_budget
-
-    OPENAI_API_KEY: str = "sk-add-your-key"  # for local LiteLLM testing
-    EXA_API_KEY: str = "sk-add-your-key"  # for local LiteLLM testing
-
-    LITELLM_API_BASE: str = "http://localhost:4000"
-    CHALLENGE_EXPIRY_SECONDS: int = 300  # 5 minutes
 
     # User Feature Budget - AI service type
     USER_FEATURE_BUDGET_AI_BUDGET_ID: str = "end-user-budget-ai"
@@ -474,6 +477,14 @@ LITELLM_HEADER_ATTEMPTED_FALLBACKS = "x-litellm-attempted-fallbacks"
 LITELLM_HEADER_ATTEMPTED_RETRIES = "x-litellm-attempted-retries"
 LITELLM_HEADER_RESPONSE_DURATION_MS = "x-litellm-response-duration-ms"
 LITELLM_HEADER_RESPONSE_COST = "x-litellm-response-cost"
+
+# Privacy Filter
+PRIVACY_FILTER_READINESS_URL = f"{env.PRIVACY_FILTER_API_BASE}/readyz"
+PRIVACY_FILTER_FILTER_URL = f"{env.PRIVACY_FILTER_API_BASE}/filter"
+PRIVACY_FILTER_MASTER_AUTH_HEADERS = {
+    "Content-Type": "application/json",
+    "x-pf-api-key": env.PRIVACY_FILTER_MASTER_KEY,
+}
 
 ERROR_CODE_BUDGET_LIMIT_EXCEEDED: int = 1
 ERROR_CODE_RATE_LIMIT_EXCEEDED: int = 2

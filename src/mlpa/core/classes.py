@@ -135,6 +135,14 @@ class AuthorizedSearchRequest(SearchRequest, AuthorizedRequestLogMixin):
     )
 
 
+class PrivacyFilterRequest(BaseModel):
+    items: list[str]
+
+
+class AuthorizedFilterRequest(PrivacyFilterRequest):
+    user: str
+
+
 # Dynamically create ServiceType enum from config
 ServiceType = enum.Enum("ServiceType", [(st, st) for st in env.valid_service_types])
 
