@@ -180,6 +180,9 @@ class PrometheusMetrics:
     chat_requests_with_tools: Counter
     chat_request_rejections: Counter
     chat_availability: Counter
+    chat_completion_latency_by_country: Histogram
+    chat_completion_ttft_by_country: Histogram
+    chat_availability_by_country: Counter
 
     # search
     search_latency: Histogram
@@ -352,6 +355,34 @@ def build_metrics(registry: CollectorRegistry = REGISTRY) -> PrometheusMetrics:
             "mlpa_chat_availability_total",
             "Interim availability outcomes for chat completions. outcome is success/failure/excluded/abort; reason is the bounded cause. Availability = success / (success + failure).",
             ["outcome", "reason", "model", "service_type", "purpose"],
+            registry=registry,
+        ),
+        chat_completion_latency_by_country=Histogram(
+            "mlpa_chat_completion_latency_by_country_seconds",
+            "Chat completion latency in seconds, by launch-market client country "
+            "(AIPLAT-1266). Deliberately thin (no model/service_type/purpose) to "
+            "keep cardinality bounded; client_country is one of "
+            "LAUNCH_COUNTRIES or 'other'.",
+            ["result", "client_country"],
+            buckets=BUCKETS_COMPLETION,
+            registry=registry,
+        ),
+        chat_completion_ttft_by_country=Histogram(
+            "mlpa_chat_completion_ttft_by_country_seconds",
+            "Time to first token for streaming chat completions, by launch-market "
+            "client country (AIPLAT-1266). See chat_completion_latency_by_country "
+            "for the cardinality rationale.",
+            ["client_country"],
+            buckets=BUCKETS_TTFT,
+            registry=registry,
+        ),
+        chat_availability_by_country=Counter(
+            "mlpa_chat_availability_by_country_total",
+            "Interim availability outcomes for chat completions, by launch-market "
+            "client country (AIPLAT-1266). outcome only (no reason breakdown) to "
+            "keep cardinality bounded; see chat_availability for the full reason "
+            "breakdown without country.",
+            ["outcome", "client_country"],
             registry=registry,
         ),
         search_latency=Histogram(
