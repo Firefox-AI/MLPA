@@ -7,7 +7,7 @@ import time
 from functools import lru_cache
 from typing import Any, Literal, NoReturn, cast, overload
 
-from fastapi import HTTPException
+from fastapi import HTTPException, Request
 from fxa.oauth import Client
 from jwtoxide import DecodingKey, ValidationOptions, decode, encode
 
@@ -93,6 +93,11 @@ def _clamp_to_set(
 ) -> str:
     """Bound a raw label value to a known set, else `fallback`. Caps cardinality."""
     return raw if raw in valid else fallback
+
+
+def get_client_country(request: Request) -> str:
+    """Read the raw, edge-stamped ``X-Geo-Country`` header. Clamp at metric time."""
+    return request.headers.get("X-Geo-Country") or ""
 
 
 def clamp_country(raw: str | None) -> str:

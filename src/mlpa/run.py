@@ -245,7 +245,7 @@ async def search(
     ],
 ):
     record_request_country(
-        request.headers.get("X-Geo-Country"),
+        authorized_search_request.client_country,
         service_type=authorized_search_request.service_type,
         model=SEARCH_MODEL,
     )

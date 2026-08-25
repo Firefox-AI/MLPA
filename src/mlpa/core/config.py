@@ -1,7 +1,8 @@
 from functools import cached_property
-from typing import Any
+from typing import Annotated, Any
 
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import field_validator
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 
 class Env(BaseSettings):
@@ -23,7 +24,18 @@ class Env(BaseSettings):
     # so the per-country latency/TTFT/availability metrics stay cheap.
     # Everything else clamps to "other" (see utils.clamp_launch_country).
     # Grafana's country/region dropdown reads the same values.
-    MLPA_LAUNCH_COUNTRIES: set[str] = {"US", "CA", "FR", "DE"}
+    # `NoDecode` + the validator below let ops set this as a plain
+    # comma-separated string (e.g. "US,CA,FR,DE,GB"); pydantic-settings'
+    # default complex-type decoding otherwise requires JSON syntax and would
+    # crash the app on startup for the intuitive comma-separated format.
+    MLPA_LAUNCH_COUNTRIES: Annotated[set[str], NoDecode] = {"US", "CA", "FR", "DE"}
+
+    @field_validator("MLPA_LAUNCH_COUNTRIES", mode="before")
+    @classmethod
+    def _parse_launch_countries(cls, raw: str | set[str]) -> set[str]:
+        if isinstance(raw, str):
+            return {code.strip() for code in raw.split(",") if code.strip()}
+        return raw
 
     # Purpose header enforcement/backwards-compatibility:
     # when false (default), the `purpose` header is optional for all service types.

@@ -27,7 +27,7 @@ async def _get_search(authorized_search_request: AuthorizedSearchRequest):
     start_time = time.perf_counter()
     body = sanitize_request_body(
         authorized_search_request.model_dump(
-            exclude={"client_country"},
+            exclude={"client_country", "service_type", "purpose", "user"},
             exclude_none=True,
         )
     )

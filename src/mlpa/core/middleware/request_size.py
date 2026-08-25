@@ -5,6 +5,7 @@ from mlpa.core.config import ERROR_CODE_REQUEST_TOO_LARGE, env
 from mlpa.core.logger import logger
 from mlpa.core.metrics import record_chat_availability_for
 from mlpa.core.prometheus_metrics import AvailabilityReason
+from mlpa.core.utils import get_client_country
 
 
 async def check_request_size_middleware(request: Request, call_next):
@@ -28,7 +29,7 @@ async def check_request_size_middleware(request: Request, call_next):
                         model="",
                         service_type=request.headers.get("service-type") or "",
                         purpose=request.headers.get("purpose") or "",
-                        client_country=request.headers.get("X-Geo-Country") or "",
+                        client_country=get_client_country(request),
                     )
                     return JSONResponse(
                         status_code=413,

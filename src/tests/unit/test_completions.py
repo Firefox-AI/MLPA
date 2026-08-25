@@ -139,6 +139,36 @@ def _availability_total(spy, req=SAMPLE_REQUEST) -> float:
     )
 
 
+def _country_latency_count(
+    spy, result: PrometheusResult, client_country: str = "other"
+) -> float:
+    """Count for the by-country latency histogram twin of `_latency_count`.
+
+    Unlike `_latency_count`, checks the actual `client_country` label value
+    (default "other" since SAMPLE_REQUEST.client_country is "" and clamps to
+    "other") rather than only asserting the metric name was touched.
+    """
+    return spy.histogram_count(
+        "chat_completion_latency_by_country",
+        result=result,
+        client_country=client_country,
+    )
+
+
+def _country_ttft_count(spy, client_country: str = "other") -> float:
+    return spy.histogram_count(
+        "chat_completion_ttft_by_country", client_country=client_country
+    )
+
+
+def _country_availability_count(
+    spy, outcome: AvailabilityOutcome, client_country: str = "other"
+) -> float:
+    return spy.value(
+        "chat_availability_by_country", outcome=outcome, client_country=client_country
+    )
+
+
 def _sample_litellm_response_headers(**overrides: str) -> httpx.Headers:
     base = {
         LITELLM_HEADER_MODEL_API_BASE: "https://api.together.xyz/v1",
@@ -217,6 +247,7 @@ async def test_get_completion_success(mocker, metrics_spy):
         == SUCCESSFUL_CHAT_RESPONSE["usage"]["completion_tokens"]
     )
     assert _latency_count(metrics_spy, PrometheusResult.SUCCESS) == 1
+    assert _country_latency_count(metrics_spy, PrometheusResult.SUCCESS) == 1
     assert (
         _availability_count(
             metrics_spy,
@@ -225,6 +256,7 @@ async def test_get_completion_success(mocker, metrics_spy):
         )
         == 1
     )
+    assert _country_availability_count(metrics_spy, AvailabilityOutcome.SUCCESS) == 1
 
     routing = _litellm_routing_label_base()
     assert (
@@ -443,6 +475,7 @@ async def test_stream_completion_success(
     assert metrics_spy.value("chat_tokens", type="prompt", **chat_label_base) == 10
     assert metrics_spy.value("chat_tokens", type="completion", **chat_label_base) == 25
     assert _latency_count(metrics_spy, PrometheusResult.SUCCESS) == 1
+    assert _country_latency_count(metrics_spy, PrometheusResult.SUCCESS) == 1
     assert (
         _availability_count(
             metrics_spy,
@@ -451,10 +484,12 @@ async def test_stream_completion_success(
         )
         == 1
     )
+    assert _country_availability_count(metrics_spy, AvailabilityOutcome.SUCCESS) == 1
     assert (
         metrics_spy.histogram_count("chat_completion_ttft", model=SAMPLE_REQUEST.model)
         == 1
     )
+    assert _country_ttft_count(metrics_spy) == 1
 
     routing = _litellm_routing_label_base()
     assert (
@@ -638,6 +673,7 @@ async def test_get_completion_rate_limit_exceeded(mocker, metrics_spy):
         )
         == 1
     )
+    assert _country_availability_count(metrics_spy, AvailabilityOutcome.EXCLUDED) == 1
 
     metrics_spy.assert_only(
         _expect_metrics(

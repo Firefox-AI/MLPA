@@ -73,7 +73,7 @@ def record_chat_availability_for(
     model: str,
     service_type: str,
     purpose: str,
-    client_country: str = "",  # "" (not yet authorized) clamps to "other" below
+    client_country: str,  # "" (not yet authorized) clamps to "other" below
 ) -> None:
     outcome = availability_outcome_for(reason)
     metrics.chat_availability.labels(
