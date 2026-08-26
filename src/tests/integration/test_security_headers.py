@@ -59,6 +59,16 @@ def test_security_headers_on_all_endpoints(mocked_client_integration, httpx_mock
         json={"litellm_version": "1.84.4"},
         is_optional=True,
     )
+    httpx_mock.add_response(
+        method="GET",
+        url=f"{env.PRIVACY_FILTER_API_BASE}/readyz",
+        status_code=200,
+        json={
+            "ready": True,
+            "version": "privacy-filter-test",
+            "model_id": "pii-filter",
+        },
+    )
 
     endpoints = [
         "/health/liveness",

@@ -7,8 +7,10 @@ from mlpa.core.auth.dev_auth import auth_with_key
 from mlpa.core.auth.fxa import fxa_auth
 from mlpa.core.classes import (
     AuthorizedChatRequest,
+    AuthorizedFilterRequest,
     AuthorizedSearchRequest,
     ChatRequest,
+    PrivacyFilterRequest,
     SearchRequest,
     ServiceType,
 )
@@ -241,4 +243,20 @@ async def authorize_search_request(
         use_app_attest=use_app_attest,
         use_qa_certificates=use_qa_certificates,
         use_play_integrity=use_play_integrity,
+    )
+
+
+async def authorize_filter_request(
+    request: Request,
+    filter_request: PrivacyFilterRequest,
+    authorization: Annotated[str, Header()],
+) -> AuthorizedFilterRequest:
+    if not authorization:
+        raise HTTPException(status_code=401, detail="Missing authorization header")
+
+    fxa_user_id = await fxa_auth(authorization)
+    if not fxa_user_id or fxa_user_id.get("error"):
+        raise HTTPException(status_code=401, detail=fxa_user_id["error"])
+    return AuthorizedFilterRequest(
+        user=fxa_user_id["user"], **filter_request.model_dump(exclude_unset=True)
     )
