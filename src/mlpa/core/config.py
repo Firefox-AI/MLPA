@@ -1,7 +1,8 @@
 from functools import cached_property
-from typing import Any
+from typing import Annotated, Any
 
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import field_validator
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 
 class Env(BaseSettings):
@@ -18,6 +19,24 @@ class Env(BaseSettings):
     MLPA_CAPPED_SERVICE_TYPES: set[str] = {"ai", "memories"}
     MLPA_ADMISSION_LOCK_TIMEOUT_MS: int = 5000
 
+    # Countries with their own Grafana breakout (AIPLAT-1266). Deliberately a
+    # small set, distinct from the full ISO country_codes.COUNTRY_CODES list,
+    # so the per-country latency/TTFT/availability metrics stay cheap.
+    # Everything else clamps to "other" (see utils.clamp_launch_country).
+    # Grafana's country/region dropdown reads the same values.
+    # `NoDecode` + the validator below let ops set this as a plain
+    # comma-separated string (e.g. "US,CA,FR,DE,GB"); pydantic-settings'
+    # default complex-type decoding otherwise requires JSON syntax and would
+    # crash the app on startup for the intuitive comma-separated format.
+    MLPA_LAUNCH_COUNTRIES: Annotated[set[str], NoDecode] = {"US", "CA", "FR", "DE"}
+
+    @field_validator("MLPA_LAUNCH_COUNTRIES", mode="before")
+    @classmethod
+    def _parse_launch_countries(cls, raw: str | set[str]) -> set[str]:
+        if isinstance(raw, str):
+            return {code.strip() for code in raw.split(",") if code.strip()}
+        return raw
+
     # Purpose header enforcement/backwards-compatibility:
     # when false (default), the `purpose` header is optional for all service types.
     # when true, the `purpose` header becomes mandatory for service types that
@@ -26,15 +45,18 @@ class Env(BaseSettings):
 
     # LiteLLM
     MASTER_KEY: str = "sk-default"  # Bypasses LiteLLM.max_budget, use MLPA_VIRTUAL_KEY (virtual key) for completion requests
+    OPENAI_API_KEY: str = "sk-add-your-key"  # for local LiteLLM testing
+    EXA_API_KEY: str = "sk-add-your-key"  # for local LiteLLM testing
+    LITELLM_API_BASE: str = "http://localhost:4000"
+    CHALLENGE_EXPIRY_SECONDS: int = 300  # 5 minutes
+
+    # Privacy Filter
+    PRIVACY_FILTER_MASTER_KEY: str = "sk-default"
+    PRIVACY_FILTER_API_BASE: str = "http://localhost:5000"
+
     # Read-only admin dashboard (`/admin`) and GET /user/counts-by-service-type; not LiteLLM's master key
     MLPA_UI_ACCESS_KEY: str = "sk-ui-access-default"
     MLPA_VIRTUAL_KEY: str = "sk-virtual"  # Enforces LiteLLM.max_budget
-
-    OPENAI_API_KEY: str = "sk-add-your-key"  # for local LiteLLM testing
-    EXA_API_KEY: str = "sk-add-your-key"  # for local LiteLLM testing
-
-    LITELLM_API_BASE: str = "http://localhost:4000"
-    CHALLENGE_EXPIRY_SECONDS: int = 300  # 5 minutes
 
     # User Feature Budget - AI service type
     USER_FEATURE_BUDGET_AI_BUDGET_ID: str = "end-user-budget-ai"
@@ -474,6 +496,14 @@ LITELLM_HEADER_ATTEMPTED_FALLBACKS = "x-litellm-attempted-fallbacks"
 LITELLM_HEADER_ATTEMPTED_RETRIES = "x-litellm-attempted-retries"
 LITELLM_HEADER_RESPONSE_DURATION_MS = "x-litellm-response-duration-ms"
 LITELLM_HEADER_RESPONSE_COST = "x-litellm-response-cost"
+
+# Privacy Filter
+PRIVACY_FILTER_READINESS_URL = f"{env.PRIVACY_FILTER_API_BASE}/readyz"
+PRIVACY_FILTER_FILTER_URL = f"{env.PRIVACY_FILTER_API_BASE}/filter"
+PRIVACY_FILTER_MASTER_AUTH_HEADERS = {
+    "Content-Type": "application/json",
+    "x-pf-api-key": env.PRIVACY_FILTER_MASTER_KEY,
+}
 
 ERROR_CODE_BUDGET_LIMIT_EXCEEDED: int = 1
 ERROR_CODE_RATE_LIMIT_EXCEEDED: int = 2

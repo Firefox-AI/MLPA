@@ -7,8 +7,10 @@ from mlpa.core.auth.dev_auth import auth_with_key
 from mlpa.core.auth.fxa import fxa_auth
 from mlpa.core.classes import (
     AuthorizedChatRequest,
+    AuthorizedFilterRequest,
     AuthorizedSearchRequest,
     ChatRequest,
+    PrivacyFilterRequest,
     SearchRequest,
     ServiceType,
 )
@@ -18,6 +20,7 @@ from mlpa.core.prometheus_metrics import AvailabilityReason
 from mlpa.core.routers.appattest import app_attest_auth
 from mlpa.core.utils import (
     extract_user_from_play_integrity_jwt,
+    get_client_country,
     is_valid_model_name,
     parse_app_attest_jwt,
 )
@@ -124,6 +127,8 @@ async def authorize_chat_request(
     use_qa_certificates: Annotated[bool | None, Header()] = None,
     use_play_integrity: Annotated[bool | None, Header()] = None,
 ) -> AuthorizedChatRequest:
+    client_country = get_client_country(request)
+
     # Charset/length check runs before any auth, DB, or LiteLLM work below, so
     # fuzzed/scanner model values are rejected without that cost.
     if not is_valid_model_name(chat_request.model):
@@ -132,6 +137,7 @@ async def authorize_chat_request(
             model=chat_request.model,
             service_type=service_type.value,
             purpose=purpose or "",
+            client_country=client_country,
         )
         raise HTTPException(
             status_code=400,
@@ -160,6 +166,7 @@ async def authorize_chat_request(
             model=chat_request.model,
             service_type=service_type.value,
             purpose=purpose or "",
+            client_country=client_country,
         )
         raise HTTPException(
             status_code=400,
@@ -173,6 +180,7 @@ async def authorize_chat_request(
                 user=user,
                 service_type=service_type.value,
                 purpose=purpose_value,
+                client_country=client_country,
                 **chat_request.model_dump(exclude_unset=True),
             ),
             authorization=authorization,
@@ -202,6 +210,7 @@ async def authorize_chat_request(
             model=chat_request.model,
             service_type=service_type.value,
             purpose=purpose or "",
+            client_country=client_country,
         )
         raise
 
@@ -217,12 +226,14 @@ async def authorize_search_request(
     use_qa_certificates: Annotated[bool | None, Header()] = None,
     use_play_integrity: Annotated[bool | None, Header()] = None,
 ) -> AuthorizedSearchRequest:
+    client_country = get_client_country(request)
     return await _authorize_common_request(
         request=request,
         build_authorized_request=lambda user, purpose_value: AuthorizedSearchRequest(
             user=user,
             service_type=service_type.value,
             purpose=purpose_value,
+            client_country=client_country,
             **search_request.model_dump(exclude_unset=True),
         ),
         authorization=authorization,
@@ -232,4 +243,20 @@ async def authorize_search_request(
         use_app_attest=use_app_attest,
         use_qa_certificates=use_qa_certificates,
         use_play_integrity=use_play_integrity,
+    )
+
+
+async def authorize_filter_request(
+    request: Request,
+    filter_request: PrivacyFilterRequest,
+    authorization: Annotated[str, Header()],
+) -> AuthorizedFilterRequest:
+    if not authorization:
+        raise HTTPException(status_code=401, detail="Missing authorization header")
+
+    fxa_user_id = await fxa_auth(authorization)
+    if not fxa_user_id or fxa_user_id.get("error"):
+        raise HTTPException(status_code=401, detail=fxa_user_id["error"])
+    return AuthorizedFilterRequest(
+        user=fxa_user_id["user"], **filter_request.model_dump(exclude_unset=True)
     )

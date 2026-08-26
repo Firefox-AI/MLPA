@@ -5,18 +5,22 @@ from pydantic import ValidationError
 from mlpa.core.auth import authorize as authorize_module
 from mlpa.core.classes import (
     AuthorizedChatRequest,
+    AuthorizedFilterRequest,
     AuthorizedSearchRequest,
     ChatRequest,
+    PrivacyFilterRequest,
     SearchRequest,
 )
 
 
-def _make_request(path: str = "/") -> Request:
+def _make_request(path: str = "/", headers: dict[str, str] | None = None) -> Request:
     async def receive() -> dict:
         return {"type": "http.request", "body": b"", "more_body": False}
 
+    raw_headers = [(k.lower().encode(), v.encode()) for k, v in (headers or {}).items()]
     return Request(
-        {"type": "http", "method": "POST", "path": path, "headers": []}, receive
+        {"type": "http", "method": "POST", "path": path, "headers": raw_headers},
+        receive,
     )
 
 
@@ -63,6 +67,90 @@ async def test_authorize_search_request_returns_authorized_search_request(mocker
     assert result.purpose == ""
     assert result.query == "latest AI developments"
     assert result.max_results == 2
+
+
+async def test_authorize_filter_request_returns_authorized_filter_request(mocker):
+    fxa_auth_mock = mocker.patch.object(
+        authorize_module,
+        "fxa_auth",
+        mocker.AsyncMock(return_value={"user": "user-789"}),
+    )
+
+    result = await authorize_module.authorize_filter_request(
+        request=_make_request("/filter/"),
+        filter_request=PrivacyFilterRequest(items=["email me at jane@example.com"]),
+        authorization="Bearer token",
+    )
+
+    assert isinstance(result, AuthorizedFilterRequest)
+    assert result.user == "user-789"
+    assert result.items == ["email me at jane@example.com"]
+    fxa_auth_mock.assert_awaited_once_with("Bearer token")
+
+
+def test_privacy_filter_request_requires_items():
+    with pytest.raises(ValidationError) as exc_info:
+        PrivacyFilterRequest()
+
+    errors = exc_info.value.errors()
+    assert errors[0]["loc"] == ("items",)
+
+
+async def test_authorize_chat_request_captures_client_country(mocker):
+    """AIPLAT-1266: X-Geo-Country lands on AuthorizedChatRequest.client_country."""
+    mocker.patch.object(
+        authorize_module,
+        "fxa_auth",
+        mocker.AsyncMock(return_value={"user": "user-123"}),
+    )
+
+    result = await authorize_module.authorize_chat_request(
+        request=_make_request("/v1/chat/completions", headers={"X-Geo-Country": "FR"}),
+        chat_request=ChatRequest(
+            model="gpt-oss-120b", messages=[{"role": "user", "content": "hello"}]
+        ),
+        authorization="Bearer token",
+        service_type=authorize_module.ServiceType.ai,
+        purpose="chat",
+    )
+
+    assert result.client_country == "FR"
+
+
+async def test_authorize_chat_request_missing_geo_header_defaults_to_empty(mocker):
+    mocker.patch.object(
+        authorize_module,
+        "fxa_auth",
+        mocker.AsyncMock(return_value={"user": "user-123"}),
+    )
+
+    result = await authorize_module.authorize_chat_request(
+        request=_make_request("/v1/chat/completions"),
+        chat_request=ChatRequest(
+            model="gpt-oss-120b", messages=[{"role": "user", "content": "hello"}]
+        ),
+        authorization="Bearer token",
+        service_type=authorize_module.ServiceType.ai,
+        purpose="chat",
+    )
+
+    assert result.client_country == ""
+
+
+async def test_authorize_search_request_captures_client_country(mocker):
+    mocker.patch.object(
+        authorize_module,
+        "fxa_auth",
+        mocker.AsyncMock(return_value={"user": "user-456"}),
+    )
+
+    result = await authorize_module.authorize_search_request(
+        request=_make_request("/v1/search/", headers={"X-Geo-Country": "DE"}),
+        search_request=SearchRequest(query="latest AI developments", max_results=2),
+        authorization="Bearer token",
+    )
+
+    assert result.client_country == "DE"
 
 
 def test_search_request_rejects_too_many_results():

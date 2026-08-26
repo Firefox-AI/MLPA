@@ -16,6 +16,7 @@ from mlpa.core.prometheus_metrics import (
 )
 from mlpa.core.utils import (
     clamp_country,
+    clamp_launch_country,
     clamp_model,
     clamp_purpose,
     clamp_service_type,
@@ -72,13 +73,18 @@ def record_chat_availability_for(
     model: str,
     service_type: str,
     purpose: str,
+    client_country: str,  # "" (not yet authorized) clamps to "other" below
 ) -> None:
+    outcome = availability_outcome_for(reason)
     metrics.chat_availability.labels(
-        outcome=availability_outcome_for(reason),
+        outcome=outcome,
         reason=reason,
         model=clamp_model(model),
         service_type=clamp_service_type(service_type),
         purpose=clamp_purpose(purpose),
+    ).inc()
+    metrics.chat_availability_by_country.labels(
+        outcome=outcome, client_country=clamp_launch_country(client_country)
     ).inc()
 
 
@@ -90,6 +96,7 @@ def record_chat_availability(
         model=req.model,
         service_type=req.service_type,
         purpose=req.purpose,
+        client_country=req.client_country,
     )
 
 
@@ -102,10 +109,16 @@ def record_completion_latency(
     metrics.chat_completion_latency.labels(result=result, **labels).observe(
         elapsed_seconds
     )
+    metrics.chat_completion_latency_by_country.labels(
+        result=result, client_country=clamp_launch_country(req.client_country)
+    ).observe(elapsed_seconds)
 
 
-def record_ttft(model: str, elapsed_seconds: float) -> None:
-    metrics.chat_completion_ttft.labels(model=model).observe(elapsed_seconds)
+def record_ttft(req: AuthorizedChatRequest, elapsed_seconds: float) -> None:
+    metrics.chat_completion_ttft.labels(model=req.model).observe(elapsed_seconds)
+    metrics.chat_completion_ttft_by_country.labels(
+        client_country=clamp_launch_country(req.client_country)
+    ).observe(elapsed_seconds)
 
 
 def record_search_latency(result: PrometheusResult, elapsed_seconds: float) -> None:
