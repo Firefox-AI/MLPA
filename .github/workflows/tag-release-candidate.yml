@@ -1,8 +1,11 @@
 name: Tag Release Candidate in GAR
 
 on:
-  # Automatic: every successful main build for an unreleased version gets an
-  # RC tag, so the image keeps a durable semantic label after `latest` moves on.
+  # Automatic: every successful main build gets an RC tag, so the image keeps
+  # a durable semantic label after `latest` moves on. This does not wait on
+  # project.version being bumped first: the version-bump PR sets the release
+  # version, it is not a gate on RC tagging, so if project.version still names
+  # an already-released version we roll forward to the next patch ourselves.
   # Chained off the build rather than the push itself, because the image does
   # not exist until the build lands.
   workflow_run:
@@ -130,12 +133,14 @@ jobs:
           fi
 
           echo "source_tag=${SOURCE_TAG}" >> "$GITHUB_OUTPUT"
-          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
 
           # A stable Git tag means the version name is claimed. If it points at another
-          # commit, this build can never become v${VERSION}, since promote-release.yml
-          # requires the release tag to equal v${project.version}. If it points at this
-          # commit, the release was cut mid-run and the candidate still needs its RC tag.
+          # commit, project.version hasn't been bumped for this candidate yet (the
+          # bump PR lands after the fact, not before) — a manual dispatch naming that
+          # exact version is a mistake, but an automatic build just rolls forward to
+          # the next unreleased patch itself, same rule the bump PR uses, so RC tagging
+          # never blocks on that PR merging. If it points at this commit, the release
+          # was cut mid-run and the candidate still needs its RC tag.
           STABLE_REF="refs/tags/v${VERSION}"
 
           if git rev-parse -q --verify "$STABLE_REF" >/dev/null; then
@@ -149,29 +154,30 @@ jobs:
               echo "::error::This candidate cannot become the stable v${VERSION} release."
               exit 1
             else
-              echo "skip=true" >> "$GITHUB_OUTPUT"
-              echo "Stable Git tag v${VERSION} already exists on another commit; skipping RC tagging."
-              exit 0
+              echo "Stable Git tag v${VERSION} already exists on commit ${STABLE_SHA}; project.version not bumped yet."
+              IFS=. read -r major minor patch <<< "$VERSION"
+              while git rev-parse -q --verify "refs/tags/v${major}.${minor}.${patch}" >/dev/null; do
+                patch=$(( patch + 1 ))
+              done
+              VERSION="${major}.${minor}.${patch}"
+              echo "Using computed next version v${VERSION} for RC tagging."
             fi
           fi
 
-          echo "skip=false" >> "$GITHUB_OUTPUT"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
           echo "Source tag: ${SOURCE_TAG}, version ${VERSION}"
 
       - name: Authenticate to Google Cloud
-        if: steps.version.outputs.skip != 'true'
         uses: google-github-actions/auth@v2
         with:
           service_account: artifact-writer@${{ env.GCP_PROJECT_ID }}.iam.gserviceaccount.com
           workload_identity_provider: ${{ env.GCPV2_GITHUB_WORKLOAD_IDENTITY_PROVIDER }}
 
       - name: Set up gcloud
-        if: steps.version.outputs.skip != 'true'
         uses: google-github-actions/setup-gcloud@v2
 
       - name: Tag release candidate
         id: tag
-        if: steps.version.outputs.skip != 'true'
         env:
           SOURCE_TAG: ${{ steps.version.outputs.source_tag }}
           VERSION: ${{ steps.version.outputs.version }}
@@ -294,22 +300,17 @@ jobs:
           COMMIT_SHA: ${{ steps.commit.outputs.sha }}
           SOURCE_TAG: ${{ steps.version.outputs.source_tag }}
           VERSION: ${{ steps.version.outputs.version }}
-          SKIPPED: ${{ steps.version.outputs.skip }}
           RC_TAG: ${{ steps.tag.outputs.rc_tag }}
           DIGEST: ${{ steps.tag.outputs.digest }}
           RESULT: ${{ steps.tag.outputs.result }}
         run: |
           set -euo pipefail
 
-          if [[ "$SKIPPED" == "true" ]]; then
-            STATUS="Skipped: stable Git tag v${VERSION} points to another commit, so this build has no promotion path"
-          else
-            case "${RESULT:-}" in
-              created) STATUS="Created \`${RC_TAG}\`" ;;
-              already-tagged) STATUS="No change: \`${RC_TAG}\` already points at this digest" ;;
-              *) STATUS="Did not complete, see the failing step above" ;;
-            esac
-          fi
+          case "${RESULT:-}" in
+            created) STATUS="Created \`${RC_TAG}\`" ;;
+            already-tagged) STATUS="No change: \`${RC_TAG}\` already points at this digest" ;;
+            *) STATUS="Did not complete, see the failing step above" ;;
+          esac
 
           cat >> "$GITHUB_STEP_SUMMARY" << EOF
           ## RC Tag
