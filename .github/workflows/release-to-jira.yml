@@ -41,3 +41,12 @@ jobs:
           payload: |
             channel: "${{ secrets.SLACK_CHANNEL_ID }}"
             text: ":rocket: *MLPA ${{ steps.sync.outputs.tag }}* released — <${{ steps.sync.outputs.page_url }}|View release notes>"
+
+      - name: Notify AI Platform Slack Bot
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.AIPLAT_RELEASE_SLACK_WEBHOOK_URL }}
+        run: |
+          message="🚀 MLPA ${{ steps.sync.outputs.tag }} released — ${{ steps.sync.outputs.page_url }}"
+          escaped=$(printf '%s' "$message" | sed 's/\\/\\\\/g; s/"/\\"/g')
+          payload=$(printf '{"text":"%s"}' "$escaped")
+          curl -sf -X POST -H 'Content-Type: application/json' -d "$payload" "$SLACK_WEBHOOK_URL"
