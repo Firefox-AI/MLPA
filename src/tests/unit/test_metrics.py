@@ -222,8 +222,9 @@ def test_configured_models_keep_their_metric_label(metrics_spy):
 
 
 def test_by_country_metrics_use_launch_market_bucketing(metrics_spy):
-    """AIPLAT-1266: the by-country metrics are thin (no model/service_type/purpose)
-    and bucket anything outside LAUNCH_COUNTRIES as "other", unlike clamp_country.
+    """AIPLAT-1266: the by-country metrics are thin (no model/purpose, but do
+    carry service_type) and bucket anything outside LAUNCH_COUNTRIES as
+    "other", unlike clamp_country.
     """
     launch_market_req = _chat_request(client_country="FR")
     other_country_req = _chat_request(client_country="BR")
@@ -240,6 +241,7 @@ def test_by_country_metrics_use_launch_market_bucketing(metrics_spy):
             "chat_completion_latency_by_country",
             result=PrometheusResult.SUCCESS,
             client_country="FR",
+            service_type="ai",
         )
         == 1
     )
@@ -248,30 +250,39 @@ def test_by_country_metrics_use_launch_market_bucketing(metrics_spy):
             "chat_completion_latency_by_country",
             result=PrometheusResult.SUCCESS,
             client_country="other",
+            service_type="ai",
         )
         == 1
     )
     assert (
         metrics_spy.histogram_count(
-            "chat_completion_ttft_by_country", client_country="FR"
+            "chat_completion_ttft_by_country", client_country="FR", service_type="ai"
         )
         == 1
     )
     assert (
         metrics_spy.histogram_count(
-            "chat_completion_ttft_by_country", client_country="other"
+            "chat_completion_ttft_by_country",
+            client_country="other",
+            service_type="ai",
         )
         == 1
     )
     assert (
         metrics_spy.value(
-            "chat_availability_by_country", outcome="success", client_country="FR"
+            "chat_availability_by_country",
+            outcome="success",
+            client_country="FR",
+            service_type="ai",
         )
         == 1
     )
     assert (
         metrics_spy.value(
-            "chat_availability_by_country", outcome="success", client_country="other"
+            "chat_availability_by_country",
+            outcome="success",
+            client_country="other",
+            service_type="ai",
         )
         == 1
     )

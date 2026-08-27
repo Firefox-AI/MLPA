@@ -360,29 +360,29 @@ def build_metrics(registry: CollectorRegistry = REGISTRY) -> PrometheusMetrics:
         chat_completion_latency_by_country=Histogram(
             "mlpa_chat_completion_latency_by_country_seconds",
             "Chat completion latency in seconds, by launch-market client country "
-            "(AIPLAT-1266). Deliberately thin (no model/service_type/purpose) to "
-            "keep cardinality bounded; client_country is one of "
+            "and service_type (AIPLAT-1266). Deliberately thin (no model/purpose) "
+            "to keep cardinality bounded; client_country is one of "
             "LAUNCH_COUNTRIES or 'other'.",
-            ["result", "client_country"],
+            ["result", "client_country", "service_type"],
             buckets=BUCKETS_COMPLETION,
             registry=registry,
         ),
         chat_completion_ttft_by_country=Histogram(
             "mlpa_chat_completion_ttft_by_country_seconds",
             "Time to first token for streaming chat completions, by launch-market "
-            "client country (AIPLAT-1266). See chat_completion_latency_by_country "
+            "client country and service_type. See chat_completion_latency_by_country "
             "for the cardinality rationale.",
-            ["client_country"],
+            ["client_country", "service_type"],
             buckets=BUCKETS_TTFT,
             registry=registry,
         ),
         chat_availability_by_country=Counter(
             "mlpa_chat_availability_by_country_total",
             "Interim availability outcomes for chat completions, by launch-market "
-            "client country (AIPLAT-1266). outcome only (no reason breakdown) to "
-            "keep cardinality bounded; see chat_availability for the full reason "
-            "breakdown without country.",
-            ["outcome", "client_country"],
+            "client country and service_type (AIPLAT-1266). outcome only (no reason "
+            "breakdown) to keep cardinality bounded; see chat_availability for the "
+            "full reason breakdown without country.",
+            ["outcome", "client_country", "service_type"],
             registry=registry,
         ),
         search_latency=Histogram(
