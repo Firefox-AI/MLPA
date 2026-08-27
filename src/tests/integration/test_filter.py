@@ -1,8 +1,8 @@
 import json
 
 from mlpa.core.config import (
-    PRIVACY_FILTER_FILTER_URL,
     PRIVACY_FILTER_MASTER_AUTH_HEADERS,
+    PRIVACY_FILTER_URL,
 )
 from tests.consts import TEST_FXA_TOKEN
 
@@ -28,13 +28,13 @@ def test_filter_forwards_items_to_privacy_filter(mocked_client_integration, http
     }
     httpx_mock.add_response(
         method="POST",
-        url=PRIVACY_FILTER_FILTER_URL,
+        url=PRIVACY_FILTER_URL,
         status_code=200,
         json=upstream_response,
     )
 
     response = mocked_client_integration.post(
-        "/filter/",
+        "/privacy-filter/",
         headers={"authorization": f"Bearer {TEST_FXA_TOKEN}"},
         json={"items": ["email me at jane@example.com"]},
     )
@@ -55,7 +55,7 @@ def test_filter_forwards_items_to_privacy_filter(mocked_client_integration, http
 
 def test_filter_rejects_missing_items(mocked_client_integration):
     response = mocked_client_integration.post(
-        "/filter/",
+        "/privacy-filter/",
         headers={"authorization": f"Bearer {TEST_FXA_TOKEN}"},
         json={},
     )
@@ -65,7 +65,7 @@ def test_filter_rejects_missing_items(mocked_client_integration):
 
 def test_filter_rejects_invalid_fxa_auth(mocked_client_integration):
     response = mocked_client_integration.post(
-        "/filter/",
+        "/privacy-filter/",
         headers={"authorization": f"Bearer {TEST_FXA_TOKEN}invalid"},
         json={"items": ["email me at jane@example.com"]},
     )

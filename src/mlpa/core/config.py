@@ -499,7 +499,7 @@ LITELLM_HEADER_RESPONSE_COST = "x-litellm-response-cost"
 
 # Privacy Filter
 PRIVACY_FILTER_READINESS_URL = f"{env.PRIVACY_FILTER_API_BASE}/readyz"
-PRIVACY_FILTER_FILTER_URL = f"{env.PRIVACY_FILTER_API_BASE}/filter"
+PRIVACY_FILTER_URL = f"{env.PRIVACY_FILTER_API_BASE}/privacy-filter"
 PRIVACY_FILTER_MASTER_AUTH_HEADERS = {
     "Content-Type": "application/json",
     "x-pf-api-key": env.PRIVACY_FILTER_MASTER_KEY,

@@ -8,8 +8,8 @@ from mlpa.core.auth.authorize import authorize_filter_request
 from mlpa.core.classes import AuthorizedFilterRequest
 from mlpa.core.config import (
     ERROR_RESPONSES,
-    PRIVACY_FILTER_FILTER_URL,
     PRIVACY_FILTER_MASTER_AUTH_HEADERS,
+    PRIVACY_FILTER_URL,
     env,
 )
 from mlpa.core.http_client import get_http_client
@@ -44,13 +44,13 @@ FILTER_SUCCESS_RESPONSE: dict[int | str, dict[str, Any]] = {
 
 
 @router.post(
-    "/filter",
+    "/privacy-filter",
     tags=["Privacy Filter"],
     description="Filter sensitive information from user data",
     # response_model=PrivacyFilterResponse,
     responses={**FILTER_SUCCESS_RESPONSE, **ERROR_RESPONSES},
 )
-async def filter(
+async def privacy_filter(
     request: Request,
     authorized_filter_request: Annotated[
         AuthorizedFilterRequest, Depends(authorize_filter_request)
@@ -69,7 +69,7 @@ async def filter(
 
         client = get_http_client()
         response = await client.post(
-            PRIVACY_FILTER_FILTER_URL,
+            PRIVACY_FILTER_URL,
             headers=PRIVACY_FILTER_MASTER_AUTH_HEADERS,
             json=authorized_filter_request.model_dump(
                 exclude={"user"}, exclude_none=True

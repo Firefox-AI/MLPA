@@ -77,7 +77,7 @@ async def test_authorize_filter_request_returns_authorized_filter_request(mocker
     )
 
     result = await authorize_module.authorize_filter_request(
-        request=_make_request("/filter/"),
+        request=_make_request("/privacy-filter/"),
         filter_request=PrivacyFilterRequest(items=["email me at jane@example.com"]),
         authorization="Bearer token",
     )
