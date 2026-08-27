@@ -51,7 +51,12 @@ def _build_litellm_body(req: AuthorizedChatRequest, *, stream: bool) -> dict:
     # tags would be litellm-native but spend-by-tag reporting is Enterprise-only
     # and tags are flat strings, harder to query in BQ. JSON metadata is OSS and
     # queryable as a plain key.
-    body["metadata"] = {"spend_logs_metadata": {"purpose": req.purpose}}
+    body["metadata"] = {
+        "spend_logs_metadata": {
+            "purpose": req.purpose,
+            "country_code": req.client_country,
+        }
+    }
     return sanitize_request_body(body)
 
 

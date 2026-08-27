@@ -1726,14 +1726,15 @@ def test_build_litellm_body_handles_unpaired_surrogate():
     assert encoded.decode("utf-8")
 
 
-def test_build_litellm_body_includes_purpose_in_spend_logs_metadata():
-    """`purpose` is dropped from the top-level body (not an OpenAI chat param)
-    but surfaced under metadata.spend_logs_metadata so it lands on
-    LiteLLM_SpendLogs.metadata for cost/usage analysis by business purpose."""
+def test_build_litellm_body_includes_purpose_and_country_in_spend_logs_metadata():
+    """`purpose` and `client_country` are dropped from the top-level body (not
+    OpenAI chat params) but surfaced under metadata.spend_logs_metadata so they
+    land on LiteLLM_SpendLogs.metadata for cost/usage analysis."""
     req = AuthorizedChatRequest(
         user="test-user-123:memories",
         service_type="memories",
         purpose="memory-generation",
+        client_country="DE",
         model="test-model",
         messages=[{"role": "user", "content": "hi"}],
         max_completion_tokens=150,
@@ -1741,19 +1742,23 @@ def test_build_litellm_body_includes_purpose_in_spend_logs_metadata():
 
     body = _build_litellm_body(req, stream=False)
 
-    assert body["metadata"] == {"spend_logs_metadata": {"purpose": "memory-generation"}}
+    assert body["metadata"] == {
+        "spend_logs_metadata": {"purpose": "memory-generation", "country_code": "DE"}
+    }
     assert "purpose" not in body
     assert "service_type" not in body
     assert "client_country" not in body
 
 
-def test_build_litellm_body_includes_empty_purpose_for_service_types_without_one():
-    """Service types with no configured purposes (e.g. s2s) carry purpose=""
-    rather than omitting the key, so the metadata shape stays consistent."""
+def test_build_litellm_body_includes_empty_purpose_and_country_when_unset():
+    """Service types with no configured purposes (e.g. s2s) carry purpose="",
+    and requests with no edge-stamped geo header carry client_country="" -
+    both rather than omitting the key, so the metadata shape stays consistent."""
     req = AuthorizedChatRequest(
         user="test-user-123:s2s",
         service_type="s2s",
         purpose="",
+        client_country="",
         model="test-model",
         messages=[{"role": "user", "content": "hi"}],
         max_completion_tokens=150,
@@ -1761,7 +1766,9 @@ def test_build_litellm_body_includes_empty_purpose_for_service_types_without_one
 
     body = _build_litellm_body(req, stream=False)
 
-    assert body["metadata"] == {"spend_logs_metadata": {"purpose": ""}}
+    assert body["metadata"] == {
+        "spend_logs_metadata": {"purpose": "", "country_code": ""}
+    }
 
 
 async def test_get_completion_sanitizes_response_surrogates(mocker):
