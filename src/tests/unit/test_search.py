@@ -57,8 +57,9 @@ async def test_get_search_handles_unpaired_surrogate(mocker):
 
 
 async def test_get_search_excludes_internal_fields_from_upstream_body(mocker):
-    """client_country/service_type/purpose/user are internal auth/routing fields;
-    they must never be forwarded to the Exa search backend."""
+    """client_country/service_type/purpose are internal auth/routing fields;
+    they must never be forwarded to the Exa search backend. `user` must be
+    kept: LiteLLM needs it to enforce the per-end-user search budget."""
     mock_response = MagicMock()
     mock_response.json.return_value = {"results": []}
     mock_response.raise_for_status.return_value = None
@@ -83,8 +84,11 @@ async def test_get_search_excludes_internal_fields_from_upstream_body(mocker):
     assert "client_country" not in sent_json
     assert "service_type" not in sent_json
     assert "purpose" not in sent_json
-    assert "user" not in sent_json
-    assert sent_json == {"query": "weather in tokyo", "max_results": 5}
+    assert sent_json == {
+        "user": "test-user:search",
+        "query": "weather in tokyo",
+        "max_results": 5,
+    }
 
 
 async def test_get_search_sanitizes_response_surrogates(mocker):
