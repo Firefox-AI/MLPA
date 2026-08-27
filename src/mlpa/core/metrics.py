@@ -84,7 +84,9 @@ def record_chat_availability_for(
         purpose=clamp_purpose(purpose),
     ).inc()
     metrics.chat_availability_by_country.labels(
-        outcome=outcome, client_country=clamp_launch_country(client_country)
+        outcome=outcome,
+        client_country=clamp_launch_country(client_country),
+        service_type=clamp_service_type(service_type),
     ).inc()
 
 
@@ -110,14 +112,17 @@ def record_completion_latency(
         elapsed_seconds
     )
     metrics.chat_completion_latency_by_country.labels(
-        result=result, client_country=clamp_launch_country(req.client_country)
+        result=result,
+        client_country=clamp_launch_country(req.client_country),
+        service_type=clamp_service_type(req.service_type),
     ).observe(elapsed_seconds)
 
 
 def record_ttft(req: AuthorizedChatRequest, elapsed_seconds: float) -> None:
     metrics.chat_completion_ttft.labels(model=req.model).observe(elapsed_seconds)
     metrics.chat_completion_ttft_by_country.labels(
-        client_country=clamp_launch_country(req.client_country)
+        client_country=clamp_launch_country(req.client_country),
+        service_type=clamp_service_type(req.service_type),
     ).observe(elapsed_seconds)
 
 

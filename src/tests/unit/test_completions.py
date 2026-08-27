@@ -140,7 +140,10 @@ def _availability_total(spy, req=SAMPLE_REQUEST) -> float:
 
 
 def _country_latency_count(
-    spy, result: PrometheusResult, client_country: str = "other"
+    spy,
+    result: PrometheusResult,
+    client_country: str = "other",
+    service_type: str = "ai",
 ) -> float:
     """Count for the by-country latency histogram twin of `_latency_count`.
 
@@ -152,20 +155,31 @@ def _country_latency_count(
         "chat_completion_latency_by_country",
         result=result,
         client_country=client_country,
+        service_type=service_type,
     )
 
 
-def _country_ttft_count(spy, client_country: str = "other") -> float:
+def _country_ttft_count(
+    spy, client_country: str = "other", service_type: str = "ai"
+) -> float:
     return spy.histogram_count(
-        "chat_completion_ttft_by_country", client_country=client_country
+        "chat_completion_ttft_by_country",
+        client_country=client_country,
+        service_type=service_type,
     )
 
 
 def _country_availability_count(
-    spy, outcome: AvailabilityOutcome, client_country: str = "other"
+    spy,
+    outcome: AvailabilityOutcome,
+    client_country: str = "other",
+    service_type: str = "ai",
 ) -> float:
     return spy.value(
-        "chat_availability_by_country", outcome=outcome, client_country=client_country
+        "chat_availability_by_country",
+        outcome=outcome,
+        client_country=client_country,
+        service_type=service_type,
     )
 
 
