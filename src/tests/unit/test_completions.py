@@ -1726,6 +1726,44 @@ def test_build_litellm_body_handles_unpaired_surrogate():
     assert encoded.decode("utf-8")
 
 
+def test_build_litellm_body_includes_purpose_in_spend_logs_metadata():
+    """`purpose` is dropped from the top-level body (not an OpenAI chat param)
+    but surfaced under metadata.spend_logs_metadata so it lands on
+    LiteLLM_SpendLogs.metadata for cost/usage analysis by business purpose."""
+    req = AuthorizedChatRequest(
+        user="test-user-123:memories",
+        service_type="memories",
+        purpose="memory-generation",
+        model="test-model",
+        messages=[{"role": "user", "content": "hi"}],
+        max_completion_tokens=150,
+    )
+
+    body = _build_litellm_body(req, stream=False)
+
+    assert body["metadata"] == {"spend_logs_metadata": {"purpose": "memory-generation"}}
+    assert "purpose" not in body
+    assert "service_type" not in body
+    assert "client_country" not in body
+
+
+def test_build_litellm_body_includes_empty_purpose_for_service_types_without_one():
+    """Service types with no configured purposes (e.g. s2s) carry purpose=""
+    rather than omitting the key, so the metadata shape stays consistent."""
+    req = AuthorizedChatRequest(
+        user="test-user-123:s2s",
+        service_type="s2s",
+        purpose="",
+        model="test-model",
+        messages=[{"role": "user", "content": "hi"}],
+        max_completion_tokens=150,
+    )
+
+    body = _build_litellm_body(req, stream=False)
+
+    assert body["metadata"] == {"spend_logs_metadata": {"purpose": ""}}
+
+
 async def test_get_completion_sanitizes_response_surrogates(mocker):
     """Upstream content with a lone surrogate must be cleaned before we return it,
     otherwise FastAPI's JSON encoder 500s when serializing the response."""
