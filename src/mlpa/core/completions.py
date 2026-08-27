@@ -48,8 +48,9 @@ def _build_litellm_body(req: AuthorizedChatRequest, *, stream: bool) -> dict:
     body["stream"] = stream
     if stream:
         body["stream_options"] = {"include_usage": True}
-    # Surfaces `purpose` on LiteLLM_SpendLogs.metadata for cost/usage analysis by
-    # business purpose (service_type already rides in `user`, see AIPLAT-1266).
+    # tags would be litellm-native but spend-by-tag reporting is Enterprise-only
+    # and tags are flat strings, harder to query in BQ. JSON metadata is OSS and
+    # queryable as a plain key.
     body["metadata"] = {"spend_logs_metadata": {"purpose": req.purpose}}
     return sanitize_request_body(body)
 
