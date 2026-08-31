@@ -25,6 +25,7 @@ import html
 import os
 import re
 import sys
+import time
 
 import requests
 
@@ -62,6 +63,24 @@ def jira(method, path, **kw):
         print(f"{method} {path} -> {r.status_code} {r.text}", file=sys.stderr)
     r.raise_for_status()
     return r.json() if r.text else {}
+
+
+def jira_retry(method, path, retries=4, delay=1.5, **kw):
+    """Like jira(), but retries on 404 to absorb Jira's replication lag right
+    after creating a resource (e.g. PUT to a Version immediately after POST)."""
+    for attempt in range(retries):
+        try:
+            return jira(method, path, **kw)
+        except requests.HTTPError as e:
+            if e.response.status_code != 404 or attempt == retries - 1:
+                raise
+            print(
+                f"  {method} {path} -> 404, retrying in {delay}s "
+                f"({attempt + 1}/{retries})",
+                file=sys.stderr,
+            )
+            time.sleep(delay)
+            delay *= 2
 
 
 def conf(method, path, **kw):
@@ -135,7 +154,7 @@ if version.get("released"):
     print(f"Version {TAG} already released on {today}, leaving releaseDate as-is")
 else:
     today = datetime.date.today().isoformat()
-    jira(
+    jira_retry(
         "PUT",
         f"/rest/api/3/version/{version['id']}",
         json={"released": True, "releaseDate": today},
@@ -225,7 +244,7 @@ page_url = f"{SITE}/wiki{page['_links']['webui']}"
 
 # Store the release-notes URL on the Jira version so a "Version released"
 # automation can surface it (e.g. link it in Slack) via {{version.description}}.
-jira("PUT", f"/rest/api/3/version/{version['id']}", json={"description": page_url})
+jira_retry("PUT", f"/rest/api/3/version/{version['id']}", json={"description": page_url})
 
 print(f"Confluence page: {page_url}")
 
