@@ -244,7 +244,9 @@ page_url = f"{SITE}/wiki{page['_links']['webui']}"
 
 # Store the release-notes URL on the Jira version so a "Version released"
 # automation can surface it (e.g. link it in Slack) via {{version.description}}.
-jira_retry("PUT", f"/rest/api/3/version/{version['id']}", json={"description": page_url})
+jira_retry(
+    "PUT", f"/rest/api/3/version/{version['id']}", json={"description": page_url}
+)
 
 print(f"Confluence page: {page_url}")
 
