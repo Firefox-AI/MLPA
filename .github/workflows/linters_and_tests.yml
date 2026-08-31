@@ -63,6 +63,9 @@ jobs:
           sudo apt-get update && sudo apt-get install -y postgresql-client
           bash scripts/migrate-app-attest-database-local.sh
 
+      - name: Create MLPA virtual key
+        run: uv run python scripts/create-and-set-virtual-key.py
+
       - name: Run integration tests
         env:
           MLPA_TEST_REQUIRE_REAL_BACKEND: "true"
