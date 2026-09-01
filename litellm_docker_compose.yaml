@@ -57,6 +57,16 @@ services:
       PORT: 4000
     command: ["--config", "/app/config.yaml"]
 
+  privacy_filter:
+    image: privacy-filter:local
+    container_name: privacy-filter
+    command: ["python", "-m", "privacy_filter.run"]
+    shm_size: "2gb"
+    ports:
+      - "5000:5000"
+    environment:
+      PORT: 5000
+
 volumes:
   pg_data:
   redis_data:
