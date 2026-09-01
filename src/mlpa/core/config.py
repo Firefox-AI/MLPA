@@ -47,6 +47,7 @@ class Env(BaseSettings):
     MASTER_KEY: str = "sk-default"  # Bypasses LiteLLM.max_budget, use MLPA_VIRTUAL_KEY (virtual key) for completion requests
     OPENAI_API_KEY: str = "sk-add-your-key"  # for local LiteLLM testing
     EXA_API_KEY: str = "sk-add-your-key"  # for local LiteLLM testing
+    LINER_API_KEY: str = "sk-add-your-key"  # for local LiteLLM testing
     LITELLM_API_BASE: str = "http://localhost:4000"
     CHALLENGE_EXPIRY_SECONDS: int = 300  # 5 minutes
 
@@ -97,6 +98,12 @@ class Env(BaseSettings):
     USER_FEATURE_BUDGET_ANSWER_RPM_LIMIT: int = 10
     USER_FEATURE_BUDGET_ANSWER_TPM_LIMIT: int = 2000
     USER_FEATURE_BUDGET_ANSWER_BUDGET_DURATION: str = "1d"
+
+    USER_FEATURE_BUDGET_LINER_ANSWERS_BUDGET_ID: str = "linerAnswer"
+    USER_FEATURE_BUDGET_LINER_ANSWERS_MAX_BUDGET: float = 0.06
+    USER_FEATURE_BUDGET_LINER_ANSWERS_RPM_LIMIT: int = 10
+    USER_FEATURE_BUDGET_LINER_ANSWERS_TPM_LIMIT: int = 2000
+    USER_FEATURE_BUDGET_LINER_ANSWERS_BUDGET_DURATION: str = "1d"
 
     USER_FEATURE_BUDGET_TELEMETRY_BUDGET_ID: str = "end-user-budget-telemetry"
     USER_FEATURE_BUDGET_TELEMETRY_MAX_BUDGET: float = 0.1
@@ -192,6 +199,13 @@ class Env(BaseSettings):
                 "tpm_limit": self.USER_FEATURE_BUDGET_ANSWER_TPM_LIMIT,
                 "budget_duration": self.USER_FEATURE_BUDGET_ANSWER_BUDGET_DURATION,
             },
+            "liner-answer": {
+                "budget_id": self.USER_FEATURE_BUDGET_LINER_ANSWERS_BUDGET_ID,
+                "max_budget": self.USER_FEATURE_BUDGET_LINER_ANSWERS_MAX_BUDGET,
+                "rpm_limit": self.USER_FEATURE_BUDGET_LINER_ANSWERS_RPM_LIMIT,
+                "tpm_limit": self.USER_FEATURE_BUDGET_LINER_ANSWERS_TPM_LIMIT,
+                "budget_duration": self.USER_FEATURE_BUDGET_LINER_ANSWERS_BUDGET_DURATION,
+            },
             "telemetry": {
                 "budget_id": self.USER_FEATURE_BUDGET_TELEMETRY_BUDGET_ID,
                 "max_budget": self.USER_FEATURE_BUDGET_TELEMETRY_MAX_BUDGET,
@@ -284,6 +298,7 @@ class Env(BaseSettings):
             "s2s-android": [],
             "search": [],
             "answer": [],
+            "liner-answer": [],
             "search-dev": [],
             "telemetry": ["chat"],
             "agent": ["monitor", "research"],
@@ -328,6 +343,7 @@ class Env(BaseSettings):
         return {
             "exa-search": ["search", "search-dev", "agent-search"],
             "exa": ["answer"],
+            "liner-answers": ["liner-answer"],
         }
 
     def valid_service_type_for_model(self, service_type: str, model: str) -> bool:
@@ -356,6 +372,7 @@ class Env(BaseSettings):
             "gemini-2.5-flash-lite",
             "gemini-3.1-flash-lite",
             "gpt-oss-120b",
+            "liner-answers",
             "openai/gpt-4o",
             "mistral-small-2503",
             "mistral-small-2603",

@@ -57,6 +57,39 @@ def test_user_feature_budget_memories_from_env():
         assert memories_config["budget_duration"] == "7d"
 
 
+def test_user_feature_budget_liner_answer_default_values():
+    """Test that liner-answer budget configuration has correct default values."""
+    env = Env()
+    liner_config = env.user_feature_budget["liner-answer"]
+
+    assert liner_config["budget_id"] == "linerAnswer"
+    assert liner_config["max_budget"] == 0.1
+    assert liner_config["rpm_limit"] == 10
+    assert liner_config["tpm_limit"] == 2000
+    assert liner_config["budget_duration"] == "1d"
+
+
+def test_user_feature_budget_liner_answer_from_env():
+    """Test that liner-answer budget configuration can be overridden via environment variables."""
+    env_vars = {
+        "USER_FEATURE_BUDGET_LINER_ANSWERS_BUDGET_ID": "custom-liner-budget-id",
+        "USER_FEATURE_BUDGET_LINER_ANSWERS_MAX_BUDGET": "0.5",
+        "USER_FEATURE_BUDGET_LINER_ANSWERS_RPM_LIMIT": "20",
+        "USER_FEATURE_BUDGET_LINER_ANSWERS_TPM_LIMIT": "5000",
+        "USER_FEATURE_BUDGET_LINER_ANSWERS_BUDGET_DURATION": "7d",
+    }
+
+    with patch.dict(os.environ, env_vars):
+        env = Env()
+
+        liner_config = env.user_feature_budget["liner-answer"]
+        assert liner_config["budget_id"] == "custom-liner-budget-id"
+        assert liner_config["max_budget"] == 0.5
+        assert liner_config["rpm_limit"] == 20
+        assert liner_config["tpm_limit"] == 5000
+        assert liner_config["budget_duration"] == "7d"
+
+
 def test_valid_service_types_includes_memories():
     """Test that valid_service_types property includes memories."""
     env = Env()
@@ -108,6 +141,7 @@ def test_valid_service_types_all_service_types():
     assert "memories" in service_types
     assert "search" in service_types
     assert "answer" in service_types
+    assert "liner-answer" in service_types
     assert "telemetry" in service_types
     assert "agent" in service_types
     assert "agent-search" in service_types
@@ -115,7 +149,7 @@ def test_valid_service_types_all_service_types():
     assert "memories-dev" in service_types
     assert "mochi-dev" in service_types
     assert "search-dev" in service_types
-    assert len(service_types) == 13
+    assert len(service_types) == 14
 
 
 def test_valid_service_types_set_matches_ordered_list():
@@ -154,6 +188,7 @@ def test_service_type_purposes_s2s_empty():
     assert purposes["s2s-android"] == []
     assert purposes["search"] == []
     assert purposes["answer"] == []
+    assert purposes["liner-answer"] == []
     assert purposes["search-dev"] == []
 
 
@@ -166,6 +201,7 @@ def test_service_type_requires_purpose():
     assert env.service_type_requires_purpose("s2s-android") is False
     assert env.service_type_requires_purpose("search") is False
     assert env.service_type_requires_purpose("answer") is False
+    assert env.service_type_requires_purpose("liner-answer") is False
     assert env.service_type_requires_purpose("telemetry") is True
     assert env.service_type_requires_purpose("ai-dev") is True
     assert env.service_type_requires_purpose("mochi-dev") is True
@@ -190,6 +226,7 @@ def test_valid_purposes_for_service_type():
     assert env.valid_purposes_for_service_type("s2s") == []
     assert env.valid_purposes_for_service_type("search") == []
     assert env.valid_purposes_for_service_type("answer") == []
+    assert env.valid_purposes_for_service_type("liner-answer") == []
     assert env.valid_purposes_for_service_type("telemetry") == ["chat"]
 
 
@@ -208,6 +245,7 @@ def test_valid_model_labels_are_explicit_metric_allowlist():
     assert "openai/gpt-4o" in env.valid_model_labels
     assert "exa" in env.valid_model_labels
     assert "exa-search" in env.valid_model_labels
+    assert "liner-answers" in env.valid_model_labels
     assert "not-a-configured-model" not in env.valid_model_labels
 
 
@@ -227,6 +265,7 @@ def test_user_feature_budget_structure_consistency():
         "memories",
         "search",
         "answer",
+        "liner-answer",
         "telemetry",
         "ai-dev",
         "memories-dev",
@@ -259,6 +298,7 @@ def test_forced_model_service_type_pairs_defaults():
     assert env.forced_model_service_type_pairs == {
         "exa-search": ["search", "search-dev", "agent-search"],
         "exa": ["answer"],
+        "liner-answers": ["liner-answer"],
     }
 
 
@@ -272,6 +312,9 @@ def test_valid_service_type_for_model_forced_pair():
     assert env.valid_service_type_for_model("answer", "exa") is True
     assert env.valid_service_type_for_model("ai", "exa") is False
     assert env.valid_service_type_for_model("search", "exa") is False
+    assert env.valid_service_type_for_model("liner-answer", "liner-answers") is True
+    assert env.valid_service_type_for_model("answer", "liner-answers") is False
+    assert env.valid_service_type_for_model("liner-answer", "exa") is False
 
 
 def test_valid_service_type_for_model_unconfigured_model():
@@ -280,5 +323,6 @@ def test_valid_service_type_for_model_unconfigured_model():
 
     assert env.valid_service_type_for_model("ai", "gpt-oss-120b") is True
     assert env.valid_service_type_for_model("answer", "gpt-oss-120b") is False
+    assert env.valid_service_type_for_model("liner-answer", "gpt-oss-120b") is False
     assert env.valid_service_type_for_model("search", "gpt-oss-120b") is False
     assert env.valid_service_type_for_model("search-dev", "gpt-oss-120b") is False
