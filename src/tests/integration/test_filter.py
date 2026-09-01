@@ -3,6 +3,7 @@ import json
 from mlpa.core.config import (
     PRIVACY_FILTER_MASTER_AUTH_HEADERS,
     PRIVACY_FILTER_URL,
+    env,
 )
 from tests.consts import TEST_FXA_TOKEN
 
@@ -51,6 +52,20 @@ def test_filter_forwards_items_to_privacy_filter(mocked_client_integration, http
         request.headers["x-pf-api-key"]
         == PRIVACY_FILTER_MASTER_AUTH_HEADERS["x-pf-api-key"]
     )
+
+
+def test_filter_returns_503_when_privacy_filter_disabled(
+    mocked_client_integration, mocker
+):
+    mocker.patch.object(env, "PRIVACY_FILTER_ENABLED", False)
+    response = mocked_client_integration.post(
+        "/privacy-filter/",
+        headers={"authorization": f"Bearer {TEST_FXA_TOKEN}"},
+        json={"items": ["email me at jane@example.com"]},
+    )
+
+    assert response.status_code == 503
+    assert response.json()["detail"] == {"error": "Privacy Filter is disabled."}
 
 
 def test_filter_rejects_missing_items(mocked_client_integration):

@@ -50,6 +50,20 @@ def test_health_liveness(mocked_client_integration, httpx_mock):
     assert liveness_response.json() == {"status": "alive"}
 
 
+def test_readiness_200_when_privacy_filter_disabled(
+    mocked_client_integration, httpx_mock, mocker
+):
+    mocker.patch.object(env, "PRIVACY_FILTER_ENABLED", False)
+    _mock_litellm_ready(httpx_mock)
+
+    response = mocked_client_integration.get("/health/readiness")
+    body = response.json()
+
+    assert response.status_code == 200
+    assert body["status"] == "connected"
+    assert body["privacy_filter"] == {"status": "disabled"}
+
+
 def test_readiness_200_when_all_healthy(mocked_client_integration, httpx_mock):
     mlpa_version = importlib.metadata.version("mlpa")
     _mock_dependencies_ready(httpx_mock)

@@ -56,6 +56,12 @@ async def privacy_filter(
         AuthorizedFilterRequest, Depends(authorize_filter_request)
     ],
 ):
+    if not env.PRIVACY_FILTER_ENABLED:
+        raise HTTPException(
+            status_code=503,
+            detail={"error": "Privacy Filter is disabled."},
+        )
+
     user_id = authorized_filter_request.user
     if not user_id:
         raise HTTPException(

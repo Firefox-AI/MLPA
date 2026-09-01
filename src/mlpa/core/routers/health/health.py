@@ -113,20 +113,17 @@ async def readiness_probe():
     # Run the checks concurrently. return_exceptions keeps one failure from
     # cancelling the rest, and folding the version fetch in here avoids a
     # separate serial round-trip.
-    (
-        litellm_ok,
-        app_attest_ok,
-        litellm_http,
-        litellm_version,
-        privacy_filter_http,
-    ) = await asyncio.gather(
+    checks = [
         litellm_pg.ping(),
         app_attest_pg.ping(),
         _fetch_litellm_readiness(client),
         get_litellm_version(client),
-        _fetch_privacy_filter_readiness(client),
-        return_exceptions=True,
-    )
+    ]
+    if env.PRIVACY_FILTER_ENABLED:
+        checks.append(_fetch_privacy_filter_readiness(client))
+
+    results = await asyncio.gather(*checks, return_exceptions=True)
+    litellm_ok, app_attest_ok, litellm_http, litellm_version = results[:4]
 
     # ping() never raises, but gather could still hand back an exception.
     postgres_connected = litellm_ok is True
@@ -136,9 +133,10 @@ async def readiness_probe():
     if isinstance(litellm_version, Exception):
         litellm_version = "N/A"
     litellm_ready, litellm_body = _eval_litellm(litellm_http, litellm_version)
-    privacy_filter_ready, privacy_filter_body = _eval_privacy_filter(
-        privacy_filter_http
-    )
+    privacy_filter_ready = True
+    privacy_filter_body = {"status": "disabled"}
+    if env.PRIVACY_FILTER_ENABLED:
+        privacy_filter_ready, privacy_filter_body = _eval_privacy_filter(results[4])
 
     ready = (
         postgres_connected
