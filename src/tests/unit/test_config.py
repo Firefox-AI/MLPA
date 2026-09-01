@@ -298,7 +298,7 @@ def test_forced_model_service_type_pairs_defaults():
     assert env.forced_model_service_type_pairs == {
         "exa-search": ["search", "search-dev", "agent-search"],
         "exa": ["answer"],
-        "liner-answers": ["liner-answer"],
+        "liner": ["liner-answer"],
     }
 
 
@@ -312,9 +312,9 @@ def test_valid_service_type_for_model_forced_pair():
     assert env.valid_service_type_for_model("answer", "exa") is True
     assert env.valid_service_type_for_model("ai", "exa") is False
     assert env.valid_service_type_for_model("search", "exa") is False
-    assert env.valid_service_type_for_model("liner-answer", "liner-answers") is True
+    assert env.valid_service_type_for_model("liner", "liner-answers") is True
     assert env.valid_service_type_for_model("answer", "liner-answers") is False
-    assert env.valid_service_type_for_model("liner-answer", "exa") is False
+    assert env.valid_service_type_for_model("liner", "exa") is False
 
 
 def test_valid_service_type_for_model_unconfigured_model():

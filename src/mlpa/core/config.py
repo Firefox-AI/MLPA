@@ -343,7 +343,7 @@ class Env(BaseSettings):
         return {
             "exa-search": ["search", "search-dev", "agent-search"],
             "exa": ["answer"],
-            "liner-answers": ["liner-answer"],
+            "liner": ["liner-answer"],
         }
 
     def valid_service_type_for_model(self, service_type: str, model: str) -> bool:
