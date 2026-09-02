@@ -8,7 +8,10 @@ from mlpa.core.config import (
 from tests.consts import TEST_FXA_TOKEN
 
 
-def test_filter_forwards_items_to_privacy_filter(mocked_client_integration, httpx_mock):
+def test_filter_forwards_items_to_privacy_filter(
+    mocked_client_integration, httpx_mock, mocker
+):
+    mocker.patch.object(env, "PRIVACY_FILTER_ENABLED", True)
     upstream_response = {
         "results": [
             {

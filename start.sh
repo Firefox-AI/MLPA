@@ -9,8 +9,9 @@ if [ -f .env ]; then
 fi
 
 compose_profiles="${COMPOSE_PROFILES:-}"
-case "${PRIVACY_FILTER_ENABLED:-true}" in
-    true | TRUE | True | 1 | yes | YES | Yes)
+privacy_filter_enabled="$(printf '%s' "${PRIVACY_FILTER_ENABLED:-false}" | tr '[:upper:]' '[:lower:]')"
+case "${privacy_filter_enabled}" in
+    true | 1 | yes | on | y | t)
         case ",${compose_profiles}," in
             *,privacy-filter,*) ;;
             *)
@@ -20,7 +21,7 @@ case "${PRIVACY_FILTER_ENABLED:-true}" in
         ;;
 esac
 
-COMPOSE_PROFILES=privacy-filter docker compose \
+COMPOSE_PROFILES="${compose_profiles}" docker compose \
     -f litellm_docker_compose.yaml \
     down --volumes --remove-orphans
 COMPOSE_PROFILES="${compose_profiles}" docker compose \

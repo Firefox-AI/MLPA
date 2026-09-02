@@ -113,30 +113,40 @@ async def readiness_probe():
     # Run the checks concurrently. return_exceptions keeps one failure from
     # cancelling the rest, and folding the version fetch in here avoids a
     # separate serial round-trip.
-    checks = [
-        litellm_pg.ping(),
-        app_attest_pg.ping(),
-        _fetch_litellm_readiness(client),
-        get_litellm_version(client),
-    ]
+    checks = {
+        "litellm_pg": litellm_pg.ping(),
+        "app_attest_pg": app_attest_pg.ping(),
+        "litellm_http": _fetch_litellm_readiness(client),
+        "litellm_version": get_litellm_version(client),
+    }
     if env.PRIVACY_FILTER_ENABLED:
-        checks.append(_fetch_privacy_filter_readiness(client))
+        checks["privacy_filter_http"] = _fetch_privacy_filter_readiness(client)
 
-    results = await asyncio.gather(*checks, return_exceptions=True)
-    litellm_ok, app_attest_ok, litellm_http, litellm_version = results[:4]
+    results_by_check = dict(
+        zip(
+            checks,
+            await asyncio.gather(*checks.values(), return_exceptions=True),
+            strict=True,
+        )
+    )
 
     # ping() never raises, but gather could still hand back an exception.
-    postgres_connected = litellm_ok is True
-    app_attest_connected = app_attest_ok is True
+    postgres_connected = results_by_check["litellm_pg"] is True
+    app_attest_connected = results_by_check["app_attest_pg"] is True
 
     # get_litellm_version() handles its own errors, but gather could still return one.
+    litellm_version = results_by_check["litellm_version"]
     if isinstance(litellm_version, Exception):
         litellm_version = "N/A"
-    litellm_ready, litellm_body = _eval_litellm(litellm_http, litellm_version)
+    litellm_ready, litellm_body = _eval_litellm(
+        results_by_check["litellm_http"], litellm_version
+    )
     privacy_filter_ready = True
     privacy_filter_body = {"status": "disabled"}
     if env.PRIVACY_FILTER_ENABLED:
-        privacy_filter_ready, privacy_filter_body = _eval_privacy_filter(results[4])
+        privacy_filter_ready, privacy_filter_body = _eval_privacy_filter(
+            results_by_check["privacy_filter_http"]
+        )
 
     ready = (
         postgres_connected

@@ -24,12 +24,12 @@ This creates a virtual environment in `.venv/`, installs dependencies, and insta
 
     (`docker compose -f litellm_docker_compose.yaml down --volumes --remove-orphans` to remove all)
 
-    Privacy Filter is enabled by default in MLPA. If you use `start.sh`, it reads
-    `.env` and enables the Docker Compose `privacy-filter` profile automatically.
+    Privacy Filter is disabled by default in MLPA. To run it locally, set
+    `PRIVACY_FILTER_ENABLED=true` in `.env`; `start.sh` reads this and enables
+    the Docker Compose `privacy-filter` profile automatically.
     For this you'll need to first build the [privacy-filter](https://github.com/Firefox-AI/privacy-filter) image yourself.
 
-    To run MLPA without Privacy Filter locally, set `PRIVACY_FILTER_ENABLED=false`
-    in `.env`. This also skips the Privacy Filter dependency in `/health/readiness`.
+    When disabled, MLPA also skips the Privacy Filter dependency in `/health/readiness`.
 
 ### Create and migrate appattest database
 
