@@ -1,5 +1,3 @@
-version: "3.8"
-
 services:
   postgres:
     image: postgres:15
@@ -49,7 +47,8 @@ services:
       - ./litellm_config.yaml:/app/config.yaml
       - ./service_account.json:/app/service_account.json
     env_file:
-      - .env
+      - path: .env
+        required: false
     environment:
       PG_DB_URL: postgresql://litellm:litellm@postgres:5432/litellm
       REDIS_HOST: redis
