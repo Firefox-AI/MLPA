@@ -88,4 +88,17 @@ def test_filter_rejects_invalid_fxa_auth(mocked_client_integration):
         json={"items": ["email me at jane@example.com"]},
     )
 
+    assert response.status_code == 503  # privacy filter is disabled
+
+
+def test_filter_rejects_invalid_fxa_auth_when_enabled(
+    mocked_client_integration, mocker
+):
+    mocker.patch.object(env, "PRIVACY_FILTER_ENABLED", True)
+    response = mocked_client_integration.post(
+        "/privacy-filter/",
+        headers={"authorization": f"Bearer {TEST_FXA_TOKEN}invalid"},
+        json={"items": ["email me at jane@example.com"]},
+    )
+
     assert response.status_code == 401
