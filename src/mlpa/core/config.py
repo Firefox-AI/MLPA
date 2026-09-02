@@ -51,6 +51,7 @@ class Env(BaseSettings):
     CHALLENGE_EXPIRY_SECONDS: int = 300  # 5 minutes
 
     # Privacy Filter
+    PRIVACY_FILTER_ENABLED: bool = False
     PRIVACY_FILTER_MASTER_KEY: str = "sk-default"
     PRIVACY_FILTER_API_BASE: str = "http://localhost:5000"
 
@@ -97,7 +98,6 @@ class Env(BaseSettings):
     USER_FEATURE_BUDGET_ANSWER_RPM_LIMIT: int = 10
     USER_FEATURE_BUDGET_ANSWER_TPM_LIMIT: int = 2000
     USER_FEATURE_BUDGET_ANSWER_BUDGET_DURATION: str = "1d"
-
     USER_FEATURE_BUDGET_TELEMETRY_BUDGET_ID: str = "end-user-budget-telemetry"
     USER_FEATURE_BUDGET_TELEMETRY_MAX_BUDGET: float = 0.1
     USER_FEATURE_BUDGET_TELEMETRY_RPM_LIMIT: int = 10

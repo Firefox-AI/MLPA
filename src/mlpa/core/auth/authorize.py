@@ -251,6 +251,12 @@ async def authorize_filter_request(
     filter_request: PrivacyFilterRequest,
     authorization: Annotated[str, Header()],
 ) -> AuthorizedFilterRequest:
+    if not env.PRIVACY_FILTER_ENABLED:
+        raise HTTPException(
+            status_code=503,
+            detail={"error": "Privacy Filter is disabled."},
+        )
+
     if not authorization:
         raise HTTPException(status_code=401, detail="Missing authorization header")
 
