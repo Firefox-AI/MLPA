@@ -28,6 +28,7 @@ data = {
     "user_id": "default_user_id",
     "key_alias": "test-api",
     "models": ["all-team-models"],
+    "metadata": {"allow_client_mock_response": True},
 }
 
 response = requests.post(url, headers=headers, json=data)
