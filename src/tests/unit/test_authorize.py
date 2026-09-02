@@ -11,6 +11,7 @@ from mlpa.core.classes import (
     PrivacyFilterRequest,
     SearchRequest,
 )
+from mlpa.core.config import env
 
 
 def _make_request(path: str = "/", headers: dict[str, str] | None = None) -> Request:
@@ -70,6 +71,7 @@ async def test_authorize_search_request_returns_authorized_search_request(mocker
 
 
 async def test_authorize_filter_request_returns_authorized_filter_request(mocker):
+    mocker.patch.object(env, "PRIVACY_FILTER_ENABLED", True)
     fxa_auth_mock = mocker.patch.object(
         authorize_module,
         "fxa_auth",

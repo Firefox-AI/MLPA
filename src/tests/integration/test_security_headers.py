@@ -44,8 +44,11 @@ def test_hsts_header_includes_subdomains(mocked_client_integration):
         assert "includeSubDomains" in response.headers["Strict-Transport-Security"]
 
 
-def test_security_headers_on_all_endpoints(mocked_client_integration, httpx_mock):
+def test_security_headers_on_all_endpoints(
+    mocked_client_integration, httpx_mock, mocker
+):
     """Test that security headers are present on all API endpoints."""
+    mocker.patch.object(env, "PRIVACY_FILTER_ENABLED", False)
     httpx_mock.add_response(
         method="GET",
         url=f"{env.LITELLM_API_BASE}/health/readiness",
@@ -59,17 +62,6 @@ def test_security_headers_on_all_endpoints(mocked_client_integration, httpx_mock
         json={"litellm_version": "1.84.4"},
         is_optional=True,
     )
-    httpx_mock.add_response(
-        method="GET",
-        url=f"{env.PRIVACY_FILTER_API_BASE}/readyz",
-        status_code=200,
-        json={
-            "ready": True,
-            "version": "privacy-filter-test",
-            "model_id": "pii-filter",
-        },
-    )
-
     endpoints = [
         "/health/liveness",
         "/health/readiness",

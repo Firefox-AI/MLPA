@@ -52,6 +52,7 @@ class Env(BaseSettings):
     CHALLENGE_EXPIRY_SECONDS: int = 300  # 5 minutes
 
     # Privacy Filter
+    PRIVACY_FILTER_ENABLED: bool = False
     PRIVACY_FILTER_MASTER_KEY: str = "sk-default"
     PRIVACY_FILTER_API_BASE: str = "http://localhost:5000"
 
