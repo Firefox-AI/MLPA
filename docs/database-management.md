@@ -206,6 +206,35 @@ The `mlpa_user_capacity*` tables are created by migration, then reconciled on
 every startup via `ensure_capacity_state()`. Deploy runs
 `scripts/migrate-app-attest-database.sh` with `-x sqlalchemy.url=...`.
 
+### Rollback procedure
+
+[AIPLAT-1189](https://mozilla-hub.atlassian.net/browse/AIPLAT-1189) covers the
+full context. `migrate-app-attest-database.sh` is forward-only, it runs
+`upgrade head` and aborts on any error, there's no downgrade path in that
+script. If a deploy needs to be rolled back and it included an app_attest
+migration:
+
+1. Revert the code on `main` (git revert + Argo sync), same as any other
+   rollback.
+2. Check whether the migration actually applied before the deploy failed:
+   `alembic -c alembic.ini -x sqlalchemy.url=... current`. If it's still on
+   the old revision, there's nothing to undo, stop here.
+3. If it did apply, run `scripts/rollback-app-attest-database.sh` against the
+   same DB, with `TARGET` set to the revision the deploy started from
+   (defaults to `-1`, one step back).
+4. Confirm the app comes up healthy against the downgraded schema before
+   considering the rollback done.
+
+This only covers `app_attest` (the DB MLPA's Alembic manages). `litellm` runs
+its own Prisma-based migration job, owned by LiteLLM, not this repo. Don't
+assume this script touches it, check with the LiteLLM side separately.
+
+Every migration in `alembic/versions/` should stay additive (expand/contract:
+add a nullable column, backfill, only drop/rename in a later migration once
+nothing reads the old shape). That's what makes step 3 above safe to run. See
+`5b4ed32c7b2b_add_counter_to_public_keys.py` for an example, and
+CONTRIBUTING.md for the full checklist.
+
 ## Startup work
 
 The `lifespan` in `run.py` does two DB things on boot:

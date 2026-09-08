@@ -146,6 +146,21 @@ fxa_token: str = get_bearer_token(
 )
 ```
 
+## Writing a database migration
+
+Alembic manages the `app_attest` DB (see `docs/database-management.md`).
+Deploys only run `alembic upgrade head`, prod has no automatic downgrade, so
+a migration has to stay safe even if the code around it gets rolled back
+later.
+
+- Add, don't remove. New nullable column (or one with a `server_default`),
+  new table, backfill after. Don't drop or rename anything the previous
+  code version still reads.
+- Dropping a column for real takes two deploys: stop reading/writing it in
+  code first, drop it in a migration once nothing depends on it.
+- Write a real `downgrade()`, not `pass`. It's the rollback mechanism now.
+  See `scripts/rollback-app-attest-database.sh`.
+
 ## How to update static docs/index.html from redoc
 
 Ensure Node is installed.
