@@ -219,10 +219,15 @@ migration:
 2. Check whether the migration actually applied before the deploy failed:
    `alembic -c alembic.ini -x sqlalchemy.url=... current`. If it's still on
    the old revision, there's nothing to undo, stop here.
-3. If it did apply, run `scripts/rollback-app-attest-database.sh` against the
-   same DB, with `TARGET` set to the revision the deploy started from
-   (defaults to `-1`, one step back).
-4. Confirm the app comes up healthy against the downgraded schema before
+3. If it did apply, this runs as a direct `kubectl apply` against the cluster,
+   bypassing ArgoCD (see `mlpa-rollback` in `dataservices-infra`), not
+   something your standing access should cover. Get temporary access first
+   with `mzcld jit elevate "AIPLAT-1189 rollback"` rather than reaching for a
+   standing admin grant.
+4. Run `scripts/rollback-app-attest-database.sh` against the same DB, with
+   `TARGET` set to the revision the deploy started from (defaults to `-1`,
+   one step back).
+5. Confirm the app comes up healthy against the downgraded schema before
    considering the rollback done.
 
 This only covers `app_attest` (the DB MLPA's Alembic manages). `litellm` runs
