@@ -298,7 +298,7 @@ class Env(BaseSettings):
             "s2s": [],
             "s2s-android": [],
             "search": [],
-            "answer": [],
+            "answer": ["smart-window-assistant"],
             "liner-answer": [],
             "search-dev": [],
             "telemetry": ["chat"],
