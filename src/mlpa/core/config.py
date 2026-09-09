@@ -298,7 +298,7 @@ class Env(BaseSettings):
             "s2s": [],
             "s2s-android": [],
             "search": [],
-            "answer": ["smart-window-assistant"],
+            "answer": [],
             "liner-answer": [],
             "search-dev": [],
             "telemetry": ["chat"],
@@ -343,7 +343,7 @@ class Env(BaseSettings):
         # Force certain models to use certain service types
         return {
             "exa-search": ["search", "search-dev", "agent-search"],
-            "exa": ["answer"],
+            "exa": ["answer", "search"],
             "liner": ["liner-answer"],
         }
 

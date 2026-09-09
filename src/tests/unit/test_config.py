@@ -187,7 +187,7 @@ def test_service_type_purposes_s2s_empty():
     assert purposes["s2s"] == []
     assert purposes["s2s-android"] == []
     assert purposes["search"] == []
-    assert purposes["answer"] == ["smart-window-assistant"]
+    assert purposes["answer"] == []
     assert purposes["liner-answer"] == []
     assert purposes["search-dev"] == []
 
@@ -200,7 +200,7 @@ def test_service_type_requires_purpose():
     assert env.service_type_requires_purpose("s2s") is False
     assert env.service_type_requires_purpose("s2s-android") is False
     assert env.service_type_requires_purpose("search") is False
-    assert env.service_type_requires_purpose("answer") is True
+    assert env.service_type_requires_purpose("answer") is False
     assert env.service_type_requires_purpose("liner-answer") is False
     assert env.service_type_requires_purpose("telemetry") is True
     assert env.service_type_requires_purpose("ai-dev") is True
@@ -225,9 +225,7 @@ def test_valid_purposes_for_service_type():
     assert env.valid_purposes_for_service_type("memories") == ["memory-generation"]
     assert env.valid_purposes_for_service_type("s2s") == []
     assert env.valid_purposes_for_service_type("search") == []
-    assert env.valid_purposes_for_service_type("answer") == [
-        "smart-window-assistant",
-    ]
+    assert env.valid_purposes_for_service_type("answer") == []
     assert env.valid_purposes_for_service_type("liner-answer") == []
     assert env.valid_purposes_for_service_type("telemetry") == ["chat"]
 
@@ -299,7 +297,7 @@ def test_forced_model_service_type_pairs_defaults():
 
     assert env.forced_model_service_type_pairs == {
         "exa-search": ["search", "search-dev", "agent-search"],
-        "exa": ["answer"],
+        "exa": ["answer", "search"],
         "liner": ["liner-answer"],
     }
 
@@ -313,7 +311,7 @@ def test_valid_service_type_for_model_forced_pair():
     assert env.valid_service_type_for_model("answer", "exa-search") is False
     assert env.valid_service_type_for_model("answer", "exa") is True
     assert env.valid_service_type_for_model("ai", "exa") is False
-    assert env.valid_service_type_for_model("search", "exa") is False
+    assert env.valid_service_type_for_model("search", "exa") is True
     assert env.valid_service_type_for_model("liner", "liner-answers") is True
     assert env.valid_service_type_for_model("answer", "liner-answers") is False
     assert env.valid_service_type_for_model("liner", "exa") is False
