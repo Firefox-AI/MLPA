@@ -113,7 +113,6 @@ class RedisService:
         key_prefix: str,
         feature: str,
         feature_rpm_limit: int,
-        basket_rpm_limit: int,
         window_seconds: int = 60,
         ttl_seconds: int = 120,
         now: int | None = None,
@@ -136,7 +135,7 @@ class RedisService:
             feature,
             TRAFFIC_CONTRACT_BASKET_FIELD,
             feature_rpm_limit,
-            basket_rpm_limit,
+            env.TOTAL_TRAFFIC_CONTRACT_RPM_LIMIT,
             ttl_seconds,
             1,
         )

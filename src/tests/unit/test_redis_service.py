@@ -1,3 +1,4 @@
+from mlpa.core.config import env
 from mlpa.core.services.redis_service import (
     TRAFFIC_CONTRACT_BASKET_FIELD,
     RedisService,
@@ -60,7 +61,8 @@ class FakeRedis:
         return self.hashes.get(key, {}).get(field)
 
 
-async def test_check_and_increment_feature_rpm_records_minute_bucket():
+async def test_check_and_increment_feature_rpm_records_minute_bucket(mocker):
+    mocker.patch.object(env, "TOTAL_TRAFFIC_CONTRACT_RPM_LIMIT", 20)
     redis = FakeRedis()
     service = RedisService()
     service.redis = redis
@@ -69,7 +71,6 @@ async def test_check_and_increment_feature_rpm_records_minute_bucket():
         key_prefix="mlpa:traffic_contract",
         feature="smart-window",
         feature_rpm_limit=10,
-        basket_rpm_limit=20,
         ttl_seconds=120,
         now=125,
     )
@@ -95,7 +96,10 @@ async def test_check_and_increment_feature_rpm_records_minute_bucket():
     )
 
 
-async def test_check_and_increment_feature_rpm_marks_borrowed_over_feature_limit():
+async def test_check_and_increment_feature_rpm_marks_borrowed_over_feature_limit(
+    mocker,
+):
+    mocker.patch.object(env, "TOTAL_TRAFFIC_CONTRACT_RPM_LIMIT", 10)
     service = RedisService()
     service.redis = FakeRedis()
 
@@ -103,14 +107,12 @@ async def test_check_and_increment_feature_rpm_marks_borrowed_over_feature_limit
         key_prefix="mlpa:traffic_contract",
         feature="smart-window",
         feature_rpm_limit=1,
-        basket_rpm_limit=10,
         now=125,
     )
     rejected = await service.check_and_increment_feature_rpm(
         key_prefix="mlpa:traffic_contract",
         feature="smart-window",
         feature_rpm_limit=1,
-        basket_rpm_limit=10,
         now=125,
     )
 
@@ -123,7 +125,8 @@ async def test_check_and_increment_feature_rpm_marks_borrowed_over_feature_limit
     assert rejected.basket_count == 2
 
 
-async def test_check_and_increment_feature_rpm_marks_degraded_over_basket_limit():
+async def test_check_and_increment_feature_rpm_marks_degraded_over_basket_limit(mocker):
+    mocker.patch.object(env, "TOTAL_TRAFFIC_CONTRACT_RPM_LIMIT", 1)
     service = RedisService()
     service.redis = FakeRedis()
 
@@ -131,14 +134,12 @@ async def test_check_and_increment_feature_rpm_marks_degraded_over_basket_limit(
         key_prefix="mlpa:traffic_contract",
         feature="smart-window",
         feature_rpm_limit=10,
-        basket_rpm_limit=1,
         now=125,
     )
     rejected = await service.check_and_increment_feature_rpm(
         key_prefix="mlpa:traffic_contract",
         feature="memories",
         feature_rpm_limit=10,
-        basket_rpm_limit=1,
         now=125,
     )
 

@@ -42,7 +42,6 @@ async def test_chat_traffic_contract_increments_feature_rpm_when_enabled(mocker)
         key_prefix=env.TRAFFIC_CONTRACT_REDIS_KEY_PREFIX,
         feature=contract["feature"],
         feature_rpm_limit=contract["rpm_limit"],
-        basket_rpm_limit=contract["basket_rpm_limit"],
         window_seconds=env.TRAFFIC_CONTRACT_RPM_WINDOW_SECONDS,
         ttl_seconds=env.TRAFFIC_CONTRACT_COUNTER_TTL_SECONDS,
     )

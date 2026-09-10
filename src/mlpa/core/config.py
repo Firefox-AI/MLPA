@@ -9,8 +9,6 @@ class TrafficContractConfig(TypedDict):
     feature: str
     rpm_limit: int
     tpm_limit: int
-    basket_rpm_limit: int
-    basket_tpm_limit: int
 
 
 class Env(BaseSettings):
@@ -331,8 +329,6 @@ class Env(BaseSettings):
                 "feature": budget["feature"],
                 "rpm_limit": TRAFFIC_CONTRACT_CONFIG[budget["feature"]]["rpm_limit"],
                 "tpm_limit": TRAFFIC_CONTRACT_CONFIG[budget["feature"]]["tpm_limit"],
-                "basket_rpm_limit": self.TOTAL_TRAFFIC_CONTRACT_RPM_LIMIT,
-                "basket_tpm_limit": self.TOTAL_TRAFFIC_CONTRACT_TPM_LIMIT,
             }
             for service_type, budget in self.service_type_config.items()
         }
