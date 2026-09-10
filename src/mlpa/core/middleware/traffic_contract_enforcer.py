@@ -21,7 +21,6 @@ async def _enforce_traffic_contract(service_type: str) -> None:
     contract = _traffic_contract_for_service_type(service_type)
     if contract is None:
         return
-    logger.info(contract)
 
     try:
         rpm_decision = await redis_service.check_and_increment_feature_rpm(
