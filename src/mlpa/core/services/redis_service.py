@@ -47,9 +47,7 @@ class TrafficContractDecision:
     # borrowed = feature is over limit, basket has room
     # degraded = basket is over limit
     mode: TrafficContractMode = "normal"
-    ratio_over: float | None = (
-        None  # ratio of feature_count / feature_limit if limited_by == "feature"
-    )
+    ratio_over: float | None = None  # ratio of count / limit if mode != "normal"
 
 
 class RedisService:
