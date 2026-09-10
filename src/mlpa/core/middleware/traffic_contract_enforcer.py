@@ -60,8 +60,6 @@ async def enforce_chat_traffic_contract(req: AuthorizedChatRequest) -> None:
     try:
         await _enforce_traffic_contract(req.service_type)
     except HTTPException as exc:
-        if exc.status_code >= 500:
-            record_chat_availability(req, AvailabilityReason.PROVISIONING_FAILURE)
         raise
 
 
