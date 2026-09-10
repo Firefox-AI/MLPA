@@ -8,7 +8,7 @@ from mlpa.core.utils import get_or_create_user
 
 _USER_ID = "user123:ai"
 _BASE_IDENTITY, _, _ = _USER_ID.partition(":")
-_BUDGET_ID = env.user_feature_budget["ai"]["budget_id"]
+_BUDGET_ID = env.service_type_config["ai"]["budget_id"]
 _DB_USER = {"user_id": _USER_ID, "blocked": False, "budget_id": _BUDGET_ID}
 
 

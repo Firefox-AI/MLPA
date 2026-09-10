@@ -33,8 +33,11 @@ from mlpa.core.metrics import (
     record_request_country,
 )
 from mlpa.core.middleware import register_middleware
+from mlpa.core.middleware.traffic_contract_enforcer import (
+    enforce_chat_traffic_contract,
+    enforce_search_traffic_contract,
+)
 from mlpa.core.openapi import customize_openapi
-from mlpa.core.pg_services.services import app_attest_pg, litellm_pg
 from mlpa.core.prometheus_metrics import AvailabilityReason
 from mlpa.core.routers.appattest import appattest_router
 from mlpa.core.routers.filter import filter_router
@@ -43,6 +46,7 @@ from mlpa.core.routers.mock import mock_router
 from mlpa.core.routers.play import play_router
 from mlpa.core.routers.user import user_router
 from mlpa.core.search import get_search
+from mlpa.core.services.services import app_attest_pg, litellm_pg, redis_service
 
 tags_metadata = [
     {"name": "Health", "description": "Health check endpoints."},
@@ -74,6 +78,7 @@ tags_metadata = [
 async def lifespan(app: FastAPI):
     litellm_connected = False
     app_attest_connected = False
+    redis_connected = False
     try:
         get_http_client()
         await litellm_pg.connect()
@@ -81,6 +86,10 @@ async def lifespan(app: FastAPI):
 
         await app_attest_pg.connect()
         app_attest_connected = True
+
+        if env.ENABLE_TRAFFIC_CONTRACT_ENFORCEMENT:
+            await redis_service.connect()
+            redis_connected = True
 
         await litellm_pg.create_budget()
         await app_attest_pg.ensure_capacity_state()
@@ -91,6 +100,8 @@ async def lifespan(app: FastAPI):
             await app_attest_pg.disconnect()
         if litellm_connected:
             await litellm_pg.disconnect()
+        if redis_connected:
+            await redis_service.close()
         await close_http_client()
 
 
@@ -218,6 +229,7 @@ async def chat_completion(
         service_type=authorized_chat_request.service_type,
         model=authorized_chat_request.model,
     )
+    await enforce_chat_traffic_contract(authorized_chat_request)
     user_id = authorized_chat_request.user
     if not user_id:
         raise HTTPException(
@@ -262,6 +274,9 @@ async def search(
             status_code=400,
             detail=f"service-type header must be one of {env.forced_model_service_type_pairs.get(SEARCH_MODEL)}",
         )
+    await enforce_search_traffic_contract(
+        authorized_search_request,
+    )
     user_id = authorized_search_request.user
     if not user_id:
         raise HTTPException(

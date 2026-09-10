@@ -12,7 +12,7 @@ from mlpa.core.config import (
     env,
 )
 from mlpa.core.http_client import get_http_client
-from mlpa.core.pg_services.services import app_attest_pg, litellm_pg
+from mlpa.core.services.services import app_attest_pg, litellm_pg
 
 mlpa_version = importlib.metadata.version("mlpa")
 litellm_version = "N/A"
