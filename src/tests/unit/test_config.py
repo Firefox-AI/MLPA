@@ -64,7 +64,7 @@ def test_user_feature_budget_liner_answer_default_values():
 
     assert liner_config["budget_id"] == "end-user-budget-liner-answer"
     assert liner_config["max_budget"] == 0.06
-    assert liner_config["rpm_limit"] == 10
+    assert liner_config["rpm_limit"] == 50
     assert liner_config["tpm_limit"] == 2000
     assert liner_config["budget_duration"] == "1d"
 
