@@ -19,8 +19,8 @@ and `_sum`. A histogram with 12 buckets costs about 12x what a counter with
 the same labels costs.
 
 Multiplying declared label sets together gives you a ceiling, not reality.
-Labels usually correlate. MLPA's `purpose` header is only non-empty for 5 of
-13 service types, so `service_type × purpose` never hits its full cross
+Labels usually correlate. MLPA's `purpose` header is only non-empty for a
+subset of service types, so `service_type × purpose` never hits its full cross
 product. Don't call something "too expensive" or "safe" until you've checked
 the real numbers.
 
