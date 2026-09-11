@@ -3,6 +3,7 @@ from dataclasses import dataclass
 
 from mlpa.core.config import (
     ERROR_CODE_BUDGET_LIMIT_EXCEEDED,
+    ERROR_CODE_GLOBAL_BUDGET_LIMIT_EXCEEDED,
     ERROR_CODE_INVALID_MODEL_NAME,
     ERROR_CODE_INVALID_REQUEST,
     ERROR_CODE_RATE_LIMIT_EXCEEDED,
@@ -22,6 +23,7 @@ _REJECTION_TO_AVAILABILITY_REASON: dict[
     PrometheusRejectionReason, AvailabilityReason
 ] = {
     PrometheusRejectionReason.BUDGET_EXCEEDED: AvailabilityReason.BUDGET_EXCEEDED,
+    PrometheusRejectionReason.GLOBAL_BUDGET_EXCEEDED: AvailabilityReason.GLOBAL_BUDGET_EXCEEDED,
     PrometheusRejectionReason.PAYLOAD_TOO_LARGE: AvailabilityReason.PAYLOAD_TOO_LARGE,
     PrometheusRejectionReason.INVALID_MODEL_NAME: AvailabilityReason.INVALID_MODEL_NAME,
     PrometheusRejectionReason.INVALID_REQUEST: AvailabilityReason.INVALID_REQUEST,
@@ -46,29 +48,43 @@ class RejectionMatch:
         return _REJECTION_TO_AVAILABILITY_REASON[self.reason]
 
 
-_RATE_LIMIT_REJECTION: dict[int, tuple[PrometheusRejectionReason, str, str]] = {
+_RATE_LIMIT_REJECTION: dict[int, tuple[int, PrometheusRejectionReason, str, str]] = {
     ERROR_CODE_BUDGET_LIMIT_EXCEEDED: (
+        429,
         PrometheusRejectionReason.BUDGET_EXCEEDED,
         "86400",
         "Budget limit exceeded",
     ),
+    ERROR_CODE_GLOBAL_BUDGET_LIMIT_EXCEEDED: (
+        500,
+        PrometheusRejectionReason.GLOBAL_BUDGET_EXCEEDED,
+        "300",
+        "Global budget limit exceeded",
+    ),
     ERROR_CODE_RATE_LIMIT_EXCEEDED: (
+        429,
         PrometheusRejectionReason.RATE_LIMITED,
         "60",
         "Rate limit exceeded",
     ),
     ERROR_CODE_UPSTREAM_RATE_LIMIT_EXCEEDED: (
+        429,
         PrometheusRejectionReason.RATE_LIMITED,
         "60",
         "Upstream rate limit exceeded",
     ),
 }
 
+_LITELLM_GLOBAL_BUDGET_ERROR = "ExceededBudget: User=default_user_id over budget"
+
 
 def _parse_rate_limit_error(error_text: str) -> int | None:
     if not error_text:
         return None
     try:
+        if _LITELLM_GLOBAL_BUDGET_ERROR in error_text:
+            return ERROR_CODE_GLOBAL_BUDGET_LIMIT_EXCEEDED
+
         error_data = json.loads(error_text)
         if is_rate_limit_error(error_data, ["budget"]):
             return ERROR_CODE_BUDGET_LIMIT_EXCEEDED
@@ -90,11 +106,13 @@ def classify_upstream_error(
     if status_code in {400, 429}:
         error_code = _parse_rate_limit_error(error_text)
         if error_code is not None and error_code in _RATE_LIMIT_REJECTION:
-            reason, retry_after, log_prefix = _RATE_LIMIT_REJECTION[error_code]
+            http_status, reason, retry_after, log_prefix = _RATE_LIMIT_REJECTION[
+                error_code
+            ]
             return RejectionMatch(
                 reason=reason,
                 error_code=error_code,
-                http_status=429,
+                http_status=http_status,
                 retry_after=retry_after,
                 log_message=f"{log_prefix} for user {user}: {error_text}",
             )

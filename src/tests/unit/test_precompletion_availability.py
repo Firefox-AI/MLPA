@@ -7,6 +7,7 @@ the statuses that are intentionally not recorded) and the route-body sites
 dependency, so the wrapper behavior is only exercised here.
 """
 
+import httpx
 import pytest
 from fastapi import HTTPException, Request
 
@@ -17,11 +18,15 @@ from mlpa.core.classes import (
     AuthorizedSearchRequest,
     ChatRequest,
 )
-from mlpa.core.completions import get_or_create_user_for_completion
-from mlpa.core.config import ERROR_CODE_MAX_USERS_REACHED
+from mlpa.core.completions import get_completion, get_or_create_user_for_completion
+from mlpa.core.config import (
+    ERROR_CODE_GLOBAL_BUDGET_LIMIT_EXCEEDED,
+    ERROR_CODE_MAX_USERS_REACHED,
+)
 from mlpa.core.prometheus_metrics import (
     AvailabilityOutcome,
     AvailabilityReason,
+    PrometheusRejectionReason,
 )
 from mlpa.core.utils import clamp_model, clamp_purpose, clamp_service_type
 from tests.consts import SAMPLE_REQUEST
@@ -76,6 +81,23 @@ def _rejection_total(spy) -> float:
         s.value
         for s in spy.samples("chat_request_rejections")
         if s.name.endswith("_total")
+    )
+
+
+def _rejection(
+    spy,
+    reason: PrometheusRejectionReason,
+    *,
+    model: str,
+    service_type: str,
+    purpose: str = "",
+) -> float:
+    return spy.value(
+        "chat_request_rejections",
+        reason=reason,
+        model=clamp_model(model),
+        service_type=clamp_service_type(service_type),
+        purpose=clamp_purpose(purpose),
     )
 
 
@@ -323,6 +345,53 @@ async def test_provisioning_failure_records_failure(mocker, metrics_spy):
             metrics_spy,
             AvailabilityOutcome.FAILURE,
             AvailabilityReason.PROVISIONING_FAILURE,
+            model=SAMPLE_REQUEST.model,
+            service_type=SAMPLE_REQUEST.service_type,
+            purpose=SAMPLE_REQUEST.purpose,
+        )
+        == 1
+    )
+    assert _availability_total(metrics_spy) == 1
+
+
+async def test_global_budget_exceeded_records_failure(mocker, metrics_spy):
+    mock_response = mocker.MagicMock()
+    mock_response.text = (
+        '{"error": {"message": "ExceededBudget: User=default_user_id over budget. '
+        'Spend=9.1e-05, Budget=1e-05", "type": "budget_exceeded", "code": "400"}}'
+    )
+    mock_response.status_code = 400
+    mock_response.raise_for_status.side_effect = httpx.HTTPStatusError(
+        "Bad Request",
+        request=mocker.MagicMock(),
+        response=mock_response,
+    )
+
+    mock_client = mocker.AsyncMock()
+    mock_client.post.return_value = mock_response
+    mocker.patch("mlpa.core.completions.get_http_client", return_value=mock_client)
+
+    with pytest.raises(HTTPException) as exc_info:
+        await get_completion(SAMPLE_REQUEST)
+
+    assert exc_info.value.status_code == 500
+    assert exc_info.value.detail == {"error": ERROR_CODE_GLOBAL_BUDGET_LIMIT_EXCEEDED}
+    assert exc_info.value.headers == {"Retry-After": "300"}
+    assert (
+        _rejection(
+            metrics_spy,
+            PrometheusRejectionReason.GLOBAL_BUDGET_EXCEEDED,
+            model=SAMPLE_REQUEST.model,
+            service_type=SAMPLE_REQUEST.service_type,
+            purpose=SAMPLE_REQUEST.purpose,
+        )
+        == 1
+    )
+    assert (
+        _availability(
+            metrics_spy,
+            AvailabilityOutcome.FAILURE,
+            AvailabilityReason.GLOBAL_BUDGET_EXCEEDED,
             model=SAMPLE_REQUEST.model,
             service_type=SAMPLE_REQUEST.service_type,
             purpose=SAMPLE_REQUEST.purpose,
