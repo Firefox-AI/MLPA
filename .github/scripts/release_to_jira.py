@@ -46,6 +46,11 @@ PROJ = os.environ["JIRA_PROJECT_KEY"]  # AIPLAT
 AUTH = (os.environ["JIRA_EMAIL"], os.environ["JIRA_API_TOKEN"])
 PARENT_ID = os.environ["CONFLUENCE_PARENT_ID"]  # 2885845046
 
+# DRY_RUN=1 reads from GitHub/Jira and generates the narrative, but writes
+# nothing to Jira or Confluence — it prints the page HTML instead. For
+# iterating on the narrative prompt locally.
+DRY_RUN = os.environ.get("DRY_RUN", "").lower() in ("1", "true", "yes")
+
 # Service-account gateway bases (NOT the site URL).
 JIRA_API = f"https://api.atlassian.com/ex/jira/{CLOUD_ID}"
 CONF_API = f"https://api.atlassian.com/ex/confluence/{CLOUD_ID}"
@@ -132,7 +137,10 @@ print(f"Tickets found: {tickets}")
 proj = jira("GET", f"/rest/api/3/project/{PROJ}")
 versions = jira("GET", f"/rest/api/3/project/{PROJ}/versions")
 version = next((v for v in versions if v["name"] == TAG), None)
-if not version:
+if DRY_RUN:
+    version = version or {"id": "dry-run", "released": False}
+    print(f"[dry run] would create/reuse version {TAG}")
+elif not version:
     version = jira(
         "POST",
         "/rest/api/3/version",
@@ -150,6 +158,9 @@ else:
 # 4. Attach fixVersion to each ticket (skip missing / no-permission).
 attached = []
 for key in tickets:
+    if DRY_RUN:
+        attached.append(key)
+        continue
     try:
         jira(
             "PUT",
@@ -161,7 +172,10 @@ for key in tickets:
         print(f"  ! could not update {key} (missing/no-permission), skipping")
 print(f"Attached fixVersion to: {attached}")
 
-if version.get("released"):
+if DRY_RUN:
+    today = datetime.date.today().isoformat()
+    print(f"[dry run] would release version {TAG} on {today}")
+elif version.get("released"):
     today = version.get("releaseDate") or datetime.date.today().isoformat()
     print(f"Version {TAG} already released on {today}, leaving releaseDate as-is")
 else:
@@ -275,6 +289,11 @@ page_html = (
     + f"<h3>Jira tickets</h3><ul>{ticket_html}</ul>"
     f"<h3>Pull requests</h3><ul>{pr_html}</ul>"
 )
+
+if DRY_RUN:
+    print(f"\n[dry run] page HTML for 'MLPA Release {TAG}':\n")
+    print(page_html)
+    sys.exit(0)
 
 # Parent page tells us which space to create in (via the service-account gateway).
 space_id = conf("GET", f"/wiki/api/v2/pages/{PARENT_ID}")["spaceId"]
