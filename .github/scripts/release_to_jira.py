@@ -29,9 +29,8 @@ import re
 import sys
 import time
 
-import requests
-
 import release_narrative
+import requests
 
 GH_API = "https://api.github.com"
 GH_REPO = os.environ["GH_REPO"]
@@ -188,7 +187,6 @@ else:
     print(f"Released version {TAG}")
 
 
-
 # 5b. Pull each ticket's context (summary, description, epic) and ask Claude for
 # a narrative: what was delivered, why it mattered, what theme/epic it supports.
 def epic_link_field():
@@ -273,8 +271,7 @@ pr_html = li(
         f"#{p['number']} {esc(p['title'])} "
         + (
             " ".join(
-                f'<a href="{esc(SITE)}/browse/{esc(k)}">{esc(k)}</a>'
-                for k in p["keys"]
+                f'<a href="{esc(SITE)}/browse/{esc(k)}">{esc(k)}</a>' for k in p["keys"]
             )
             or "(no ticket)"
         )

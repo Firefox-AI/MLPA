@@ -177,10 +177,13 @@ def build_narrative(tag, tickets, prs):
             max_tokens=16000,
             system=SYSTEM,
             thinking={"type": "adaptive"},
-            output_config={"effort": "high", "format": {
-                "type": "json_schema",
-                "schema": SCHEMA,
-            }},
+            output_config={
+                "effort": "high",
+                "format": {
+                    "type": "json_schema",
+                    "schema": SCHEMA,
+                },
+            },
             messages=[
                 {
                     "role": "user",
