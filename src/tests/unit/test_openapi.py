@@ -18,6 +18,7 @@ def test_chat_service_type_header_docs_exclude_search_types():
             "s2s-android",
             "memories",
             "answer",
+            "sw-answer",
             "liner-answer",
             "telemetry",
             "agent",

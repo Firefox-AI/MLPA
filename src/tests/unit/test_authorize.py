@@ -176,7 +176,7 @@ async def test_authorize_chat_request_rejects_invalid_service_type_for_model():
     assert exc_info.value.status_code == 400
     assert (
         exc_info.value.detail
-        == "Invalid service-type value for model exa. Should be one of ['answer']"
+        == "Invalid service-type value for model exa. Should be one of ['answer', 'sw-answer']"
     )
 
 
@@ -195,6 +195,45 @@ async def test_authorize_chat_request_rejects_answer_for_non_exa_model():
         exc_info.value.detail
         == "Invalid service-type value answer for model gpt-oss-120b. "
         "Service type answer is only valid for models ['exa']"
+    )
+
+
+async def test_authorize_chat_request_accepts_sw_answer_for_exa_model(mocker):
+    mocker.patch.object(
+        authorize_module,
+        "fxa_auth",
+        mocker.AsyncMock(return_value={"user": "user-123"}),
+    )
+
+    result = await authorize_module.authorize_chat_request(
+        request=_make_request("/v1/chat/completions"),
+        chat_request=ChatRequest(model="exa", messages=[]),
+        authorization="Bearer token",
+        service_type=authorize_module.ServiceType("sw-answer"),
+        purpose=None,
+    )
+
+    assert isinstance(result, AuthorizedChatRequest)
+    assert result.user == "user-123:sw-answer"
+    assert result.service_type == "sw-answer"
+    assert result.purpose == ""
+
+
+async def test_authorize_chat_request_rejects_sw_answer_for_non_exa_model():
+    with pytest.raises(HTTPException) as exc_info:
+        await authorize_module.authorize_chat_request(
+            request=_make_request("/v1/chat/completions"),
+            chat_request=ChatRequest(model="gpt-oss-120b", messages=[]),
+            authorization="Bearer token",
+            service_type=authorize_module.ServiceType("sw-answer"),
+            purpose=None,
+        )
+
+    assert exc_info.value.status_code == 400
+    assert (
+        exc_info.value.detail
+        == "Invalid service-type value sw-answer for model gpt-oss-120b. "
+        "Service type sw-answer is only valid for models ['exa']"
     )
 
 
