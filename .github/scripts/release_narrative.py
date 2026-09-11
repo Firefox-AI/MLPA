@@ -203,8 +203,17 @@ def build_narrative(tag, tickets, prs):
         )
         return data
     except Exception as e:  # fail open — notes publish without the narrative
-        print(f"  ! narrative generation failed ({type(e).__name__}: {e})",
-              file=sys.stderr)
+        # APIConnectionError stringifies to a bare "Connection error." — the
+        # actionable detail (bad proxy, stale certs, a base_url override
+        # pointing somewhere dead) is only in the wrapped cause.
+        detail, cause = f"{type(e).__name__}: {e}", e.__cause__
+        while cause is not None:
+            detail += f" <- {type(cause).__name__}: {cause}"
+            cause = cause.__cause__
+        base = os.environ.get("ANTHROPIC_BASE_URL")
+        if base:
+            detail += f" [ANTHROPIC_BASE_URL={base}]"
+        print(f"  ! narrative generation failed ({detail})", file=sys.stderr)
         return None
 
 
