@@ -19,3 +19,13 @@ updates:
     # Limit the number of concurrent version-update PRs.
     # This does not limit dependencies per grouped PR.
     open-pull-requests-limit: 5
+
+  # Keeps the pinned LiteLLM image tag in litellm_docker_compose.yaml current.
+  # A bump PR is what actually exercises the LiteLLM upgrade contract test
+  # (src/tests/integration/test_litellm_contract.py, AIPLAT-910) -- it runs
+  # like any other PR via linters_and_tests.yml.
+  - package-ecosystem: "docker-compose"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
