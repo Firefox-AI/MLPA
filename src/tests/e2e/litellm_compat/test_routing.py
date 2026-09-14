@@ -22,7 +22,7 @@ from mlpa.core.config import (
     env,
 )
 from mlpa.core.litellm_routing import parse_litellm_routing_headers
-from tests.e2e.litellm_compat.helpers import (
+from tests.helpers import (
     CHAT_COMPLETIONS_PATH,
     MOCK_MODEL,
     MOCK_RESPONSE_TEXT,

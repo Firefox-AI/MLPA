@@ -7,7 +7,7 @@ on any of the other fields MLPA forwards (tools, response_format, seed,
 logit_bias, ...) would only show up here, as a 422/400.
 """
 
-from tests.e2e.litellm_compat.helpers import CHAT_COMPLETIONS_PATH, mlpa_headers
+from tests.helpers import CHAT_COMPLETIONS_PATH, mlpa_headers
 
 FULL_FIELD_BODY = {
     "model": "mock",

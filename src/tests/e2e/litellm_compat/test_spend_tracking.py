@@ -15,7 +15,7 @@ import asyncio
 import json
 import time
 
-from tests.e2e.litellm_compat.helpers import (
+from tests.helpers import (
     CHAT_COMPLETIONS_PATH,
     SERVICE_TYPE,
     chat_request,

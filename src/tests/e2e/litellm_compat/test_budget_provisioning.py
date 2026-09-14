@@ -20,7 +20,7 @@ process memory.
 import pytest
 
 from mlpa.core.config import env
-from tests.e2e.litellm_compat.helpers import (
+from tests.helpers import (
     CHAT_COMPLETIONS_PATH,
     SERVICE_TYPE,
     chat_request,

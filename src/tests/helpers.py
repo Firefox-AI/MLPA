@@ -1,5 +1,5 @@
 """
-Shared helpers for the LiteLLM compatibility suite.
+Shared helpers for MLPA test suite
 """
 
 import asyncio

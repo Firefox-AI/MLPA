@@ -5,7 +5,7 @@ MLPA -> LiteLLM authentication, against a real proxy.
 from unittest.mock import patch
 
 from mlpa.core.config import env
-from tests.e2e.litellm_compat.helpers import (
+from tests.helpers import (
     CHAT_COMPLETIONS_PATH,
     MOCK_RESPONSE_TEXT,
     chat_request,
