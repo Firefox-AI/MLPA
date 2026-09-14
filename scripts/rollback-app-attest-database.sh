@@ -14,7 +14,9 @@
 #
 # Confirmation: several downgrade() functions in this repo do a real
 # DROP TABLE, so this refuses to run unless CONFIRM=yes is set (non-interactive,
-# e.g. the mlpa-rollback Job) or you answer the interactive prompt (a TTY).
+# e.g. the mlpa-rollback Job) or you answer the interactive prompt (a TTY). The
+# interactive prompt shows the current revision first, so you can confirm
+# there's actually something to undo before typing "yes".
 set -euo pipefail
 
 : "${DB_HOST:?DB_HOST is required}"
@@ -23,19 +25,6 @@ set -euo pipefail
 : "${DB_PASSWORD:?DB_PASSWORD is required}"
 : "${APP_ATTEST_DB_NAME:?APP_ATTEST_DB_NAME is required}"
 TARGET="${TARGET:--1}"
-
-if [ "${CONFIRM:-}" != "yes" ]; then
-  if [ -t 0 ]; then
-    read -r -p "This will run 'alembic downgrade ${TARGET}' against ${APP_ATTEST_DB_NAME} on ${DB_HOST}. Some migrations DROP TABLE. Type 'yes' to continue: " reply
-    if [ "${reply}" != "yes" ]; then
-      echo "[mlpa-appattest-rollback] Aborted." >&2
-      exit 1
-    fi
-  else
-    echo "[mlpa-appattest-rollback] Refusing to run non-interactively without CONFIRM=yes." >&2
-    exit 1
-  fi
-fi
 
 export PGHOST="${DB_HOST}"
 export PGPORT="${DB_PORT}"
@@ -59,8 +48,21 @@ export PGOPTIONS="-c statement_timeout=0 -c lock_timeout=30000 -c idle_in_transa
 
 echo "[mlpa-appattest-rollback] Starting (host=${DB_HOST} port=${DB_PORT} database=${APP_ATTEST_DB_NAME} user=${DB_USERNAME} target=${TARGET})"
 
-echo "[mlpa-appattest-rollback] Current revision before downgrade:"
+echo "[mlpa-appattest-rollback] Current revision:"
 alembic -c alembic.ini -x sqlalchemy.url="${APP_ATTEST_DATABASE_URL}" current
+
+if [ "${CONFIRM:-}" != "yes" ]; then
+  if [ -t 0 ]; then
+    read -r -p "This will run 'alembic downgrade ${TARGET}' against ${APP_ATTEST_DB_NAME} on ${DB_HOST}, from the revision printed above. Some migrations DROP TABLE. Type 'yes' to continue: " reply
+    if [ "${reply}" != "yes" ]; then
+      echo "[mlpa-appattest-rollback] Aborted." >&2
+      exit 1
+    fi
+  else
+    echo "[mlpa-appattest-rollback] Refusing to run non-interactively without CONFIRM=yes." >&2
+    exit 1
+  fi
+fi
 
 echo "[mlpa-appattest-rollback] Running Alembic downgrade to ${TARGET} (Alembic messages follow)..."
 alembic --raiseerr -c alembic.ini -x sqlalchemy.url="${APP_ATTEST_DATABASE_URL}" downgrade "${TARGET}" 2>&1

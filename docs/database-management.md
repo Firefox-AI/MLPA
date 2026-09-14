@@ -218,10 +218,12 @@ migration:
    rollback.
 2. Check whether the migration actually applied before the deploy failed:
    `alembic -c alembic.ini -x sqlalchemy.url=... current`. If it's still on
-   the old revision, there's nothing to undo, stop here.
-3. If it did apply, get temporary access first, this bypasses ArgoCD:
-   `mzcld jit elevate "AIPLAT-1189 rollback"` rather than reaching for a
-   standing admin grant.
+   the old revision, there's nothing to undo, stop here. The rollback script
+   also prints the current revision again before it asks you to confirm.
+3. If it did apply, step 4 runs `kubectl apply` directly against the
+   cluster, bypassing ArgoCD. If you get a permissions error, run
+   `mzcld jit elevate "AIPLAT-1189 rollback"` for temporary access
+   (`mzcld jit state` / `mzcld jit revoke` to check/drop it).
 4. Render and apply the `mlpa-rollback` job (`dataservices-infra`) directly
    against the cluster. `TARGET` defaults to `-1`, one revision back, set it
    to a specific revision if you need to go further:
