@@ -37,4 +37,10 @@ until curl -fsS http://localhost:4000/health/readiness >/dev/null; do
 done
 
 uv run python scripts/create-and-set-virtual-key.py
+
+# Reset env
+set -a
+. ./.env
+set +a
+
 mlpa
