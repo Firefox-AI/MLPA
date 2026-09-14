@@ -39,7 +39,11 @@ from mlpa.core.prometheus_metrics import (
     PrometheusResult,
 )
 from mlpa.core.utils import clamp_model
-from tests.consts import SAMPLE_REQUEST, SUCCESSFUL_CHAT_RESPONSE
+from tests.consts import (
+    MOCK_LITELLM_GLOBAL_BUDGET_ERROR_TEXT,
+    SAMPLE_REQUEST,
+    SUCCESSFUL_CHAT_RESPONSE,
+)
 
 
 @contextlib.contextmanager
@@ -654,15 +658,7 @@ async def test_get_completion_budget_limit_exceeded_400(mocker, metrics_spy):
 
 async def test_get_completion_global_budget_limit_exceeded(mocker, metrics_spy):
     mock_response = MagicMock()
-    mock_response.text = json.dumps(
-        {
-            "error": {
-                "message": "ExceededBudget: User=default_user_id over budget. Spend=9.1e-05, Budget=1e-05",
-                "type": "budget_exceeded",
-                "code": "400",
-            }
-        }
-    )
+    mock_response.text = MOCK_LITELLM_GLOBAL_BUDGET_ERROR_TEXT
     mock_response.status_code = 400
 
     mock_http_status_error = httpx.HTTPStatusError(

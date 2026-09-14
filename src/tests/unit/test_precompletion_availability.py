@@ -29,7 +29,7 @@ from mlpa.core.prometheus_metrics import (
     PrometheusRejectionReason,
 )
 from mlpa.core.utils import clamp_model, clamp_purpose, clamp_service_type
-from tests.consts import SAMPLE_REQUEST
+from tests.consts import MOCK_LITELLM_GLOBAL_BUDGET_ERROR_TEXT, SAMPLE_REQUEST
 
 # A model/service-type pair that is valid together, so the wrapper passes its own
 # check and reaches the shared auth call.
@@ -356,10 +356,7 @@ async def test_provisioning_failure_records_failure(mocker, metrics_spy):
 
 async def test_global_budget_exceeded_records_failure(mocker, metrics_spy):
     mock_response = mocker.MagicMock()
-    mock_response.text = (
-        '{"error": {"message": "ExceededBudget: User=default_user_id over budget. '
-        'Spend=9.1e-05, Budget=1e-05", "type": "budget_exceeded", "code": "400"}}'
-    )
+    mock_response.text = MOCK_LITELLM_GLOBAL_BUDGET_ERROR_TEXT
     mock_response.status_code = 400
     mock_response.raise_for_status.side_effect = httpx.HTTPStatusError(
         "Bad Request",

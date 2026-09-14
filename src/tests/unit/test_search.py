@@ -14,6 +14,7 @@ from mlpa.core.config import (
 from mlpa.core.metrics import SEARCH_MODEL
 from mlpa.core.prometheus_metrics import PrometheusRejectionReason, PrometheusResult
 from mlpa.core.search import get_search
+from tests.consts import MOCK_LITELLM_GLOBAL_BUDGET_ERROR_TEXT
 
 
 def _httpx_encode_json(body: dict) -> bytes:
@@ -190,14 +191,7 @@ async def test_get_search_global_budget_limit_exceeded_records_rejection(
     )
 
     mock_response = MagicMock()
-    mock_response.text = json.dumps(
-        {
-            "error": {
-                "type": "budget_exceeded",
-                "message": "ExceededBudget: User=default_user_id over budget. Spend=9.1e-05, Budget=1e-05",
-            }
-        }
-    )
+    mock_response.text = MOCK_LITELLM_GLOBAL_BUDGET_ERROR_TEXT
     mock_response.status_code = 400
     mock_response.raise_for_status.side_effect = httpx.HTTPStatusError(
         "Bad Request",
