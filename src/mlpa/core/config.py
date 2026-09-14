@@ -548,6 +548,7 @@ ERROR_CODE_FASTLY_WAF_RATE_LIMIT: int = 6
 
 ERROR_CODE_INVALID_MODEL_NAME: int = 8
 ERROR_CODE_INVALID_REQUEST: int = 9
+ERROR_CODE_GLOBAL_BUDGET_LIMIT_EXCEEDED: int = 10
 
 ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
     429: {
@@ -564,7 +565,8 @@ ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
                             "type": "integer",
                             "description": (
                                 "Error code: 1 budget limit exceeded, 2 rate limit (TPM/RPM), "
-                                "5 upstream provider rate limit, 6 Fastly WAF rate limit (edge; not from MLPA)"
+                                "5 upstream provider rate limit, 6 Fastly WAF rate limit (edge; not from MLPA), "
+                                "10 global budget limit exceeded"
                             ),
                         }
                     },
@@ -706,6 +708,30 @@ ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
                         "value": {"error": ERROR_CODE_MAX_USERS_REACHED},
                         "description": "New sign-ins for cap-managed service types are rejected because capacity is full.",
                     }
+                },
+            }
+        },
+    },
+    500: {
+        "description": "Internal Server Error",
+        "content": {
+            "application/json": {
+                "schema": {
+                    "type": "object",
+                    "properties": {
+                        "error": {
+                            "type": "integer",
+                            "description": "Error code: 10 for global budget exceeded",
+                        }
+                    },
+                    "required": ["error"],
+                },
+                "examples": {
+                    "global_budget_exceeded": {
+                        "summary": "Global budget limit exceeded",
+                        "value": {"error": ERROR_CODE_GLOBAL_BUDGET_LIMIT_EXCEEDED},
+                        "description": "Global LiteLLM virtual-key budget limit exceeded. Check Retry-After header (300 seconds = 5 minutes).",
+                    },
                 },
             }
         },
