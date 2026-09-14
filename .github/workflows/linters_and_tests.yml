@@ -71,12 +71,10 @@ jobs:
           MLPA_TEST_REQUIRE_REAL_BACKEND: "true"
         run: uv run pytest src/tests/integration -v
 
-      # Continue to run the chat_completions_budget_enforcement
-      # in this suite
       - name: Run e2e tests
         env:
           MLPA_TEST_REQUIRE_REAL_BACKEND: "true"
-        run: uv run pytest src/tests/e2e/litellm_compat/test_budget_enforcement.py -v
+        run: uv run pytest src/tests/e2e/litellm_compat -v
 
       - name: Stop LiteLLM + Postgres + Redis
         if: always()
