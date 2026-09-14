@@ -219,14 +219,26 @@ migration:
 2. Check whether the migration actually applied before the deploy failed:
    `alembic -c alembic.ini -x sqlalchemy.url=... current`. If it's still on
    the old revision, there's nothing to undo, stop here.
-3. If it did apply, this runs as a direct `kubectl apply` against the cluster,
-   bypassing ArgoCD (see `mlpa-rollback` in `dataservices-infra`), not
-   something your standing access should cover. Get temporary access first
-   with `mzcld jit elevate "AIPLAT-1189 rollback"` rather than reaching for a
+3. If it did apply, get temporary access first, this bypasses ArgoCD:
+   `mzcld jit elevate "AIPLAT-1189 rollback"` rather than reaching for a
    standing admin grant.
-4. Run `scripts/rollback-app-attest-database.sh` against the same DB, with
-   `TARGET` set to the revision the deploy started from (defaults to `-1`,
-   one step back).
+4. Render and apply the `mlpa-rollback` job (`dataservices-infra`) directly
+   against the cluster. `TARGET` defaults to `-1`, one revision back, set it
+   to a specific revision if you need to go further:
+
+   ```
+   helm template k8s/llm-proxy -f k8s/llm-proxy/values-<env>.yaml \
+     --set mozcloud.tasks.jobs.mlpa-rollback.enabled=true \
+     --set-string mozcloud.tasks.jobs.mlpa-rollback.containers.mlpa-appattest-rollback.envVars.TARGET=-1 \
+     | kubectl apply -f -
+   ```
+
+   The job runs `scripts/rollback-app-attest-database.sh` under whatever
+   image tag is currently configured, that's fine: Alembic migration files
+   are append-only, nobody edits a merged migration's `downgrade()` after the
+   fact, so any image build that shipped the migration you're rolling back
+   contains the identical downgrade code. What matters is `TARGET` (the
+   revision), not which image tag runs it.
 5. Confirm the app comes up healthy against the downgraded schema before
    considering the rollback done.
 
