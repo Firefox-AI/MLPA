@@ -13,7 +13,10 @@ Both are asserted against the real proxy. test_mock_router_integration.py
 in src/tests/integration mocks the router and cannot see either.
 """
 
+import uuid
+
 from mlpa.core.config import (
+    ERROR_CODE_BUDGET_LIMIT_EXCEEDED,
     ERROR_CODE_INVALID_MODEL_NAME,
     LITELLM_HEADER_RESPONSE_DURATION_MS,
     env,
@@ -23,6 +26,7 @@ from tests.e2e.litellm_compat.helpers import (
     CHAT_COMPLETIONS_PATH,
     MOCK_MODEL,
     MOCK_RESPONSE_TEXT,
+    SERVICE_TYPE,
     chat_request,
     mlpa_headers,
 )
@@ -87,6 +91,52 @@ class TestRouting:
         assert snapshot.response_duration_ms is not None
         assert snapshot.attempted_fallbacks is not None
         assert snapshot.attempted_retries is not None
+
+
+class TestBudgetErrorClassification:
+    """Complements test_mlpa_maps_an_unknown_model_to_its_own_error_code
+    above: same classify_upstream_error module, different error path
+    (LiteLLM's per-user "ExceededBudget" text -> MLPA's error code 1).
+    Seeded directly in Postgres, with spend already over budget, so
+    there's no earlier zero-spend cache state to race against."""
+
+    async def test_user_budget_exceeded_maps_to_error_code_1(
+        self, real_backend_client, litellm_db
+    ):
+        client, token, base_identity = real_backend_client
+        user_id = f"{base_identity}:{SERVICE_TYPE}"
+        budget_id = f"e2e-exhausted-{uuid.uuid4().hex[:12]}"
+
+        await litellm_db.execute(
+            """
+            INSERT INTO "LiteLLM_BudgetTable"
+            (budget_id, max_budget, budget_duration, created_at,
+             updated_at, created_by, updated_by)
+            VALUES ($1, $2, $3, NOW(), NOW(), $4, $4)
+            """,
+            budget_id,
+            0.001,
+            "1d",
+            "e2e-test",
+        )
+        await litellm_db.execute(
+            """
+            INSERT INTO "LiteLLM_EndUserTable" (user_id, spend, budget_id, blocked)
+            VALUES ($1, $2, $3, false)
+            """,
+            user_id,
+            1.0,
+            budget_id,
+        )
+
+        response = client.post(
+            CHAT_COMPLETIONS_PATH,
+            headers=mlpa_headers(token),
+            json=chat_request(),
+        )
+        assert response.status_code == 429, response.text
+        assert response.json()["detail"]["error"] == ERROR_CODE_BUDGET_LIMIT_EXCEEDED
+        assert response.headers.get("Retry-After") == "86400"
 
 
 class TestRedisCache:

@@ -84,6 +84,50 @@ class TestBudgetProvisioningInPostgres:
         )
 
 
+class TestUserManagementAdminEndpoints:
+    """litellm_pg_service.py's block_user/update_user_budget are also
+    reachable through MLPA's own /user/{id}/block and /user/{id}/budget
+    admin endpoints (master_key auth), separate from the
+    get_or_create_user path test_completion_links_the_end_user_to_its_
+    budget covers above."""
+
+    async def test_block_and_budget_update_persist_to_real_table(
+        self, real_backend_client, litellm_db
+    ):
+        client, token, base_identity = real_backend_client
+        user_id = f"{base_identity}:{SERVICE_TYPE}"
+
+        response = client.post(
+            CHAT_COMPLETIONS_PATH,
+            headers=mlpa_headers(token),
+            json=chat_request(),
+        )
+        assert response.status_code == 200, response.text
+
+        block_response = client.post(
+            f"/user/{user_id}/block",
+            headers={"master_key": f"Bearer {env.MASTER_KEY}"},
+        )
+        assert block_response.status_code == 200, block_response.text
+
+        new_budget_id = env.user_feature_budget["memories-dev"]["budget_id"]
+        budget_response = client.post(
+            f"/user/{user_id}/budget",
+            headers={"master_key": f"Bearer {env.MASTER_KEY}"},
+            json={"service_type": "memories-dev"},
+        )
+        assert budget_response.status_code == 200, budget_response.text
+        assert budget_response.json()["budget_id"] == new_budget_id
+
+        row = await litellm_db.fetchrow(
+            f'SELECT blocked, budget_id FROM "{END_USER_TABLE}" WHERE user_id = $1',
+            user_id,
+        )
+        assert row is not None, f"{user_id!r} not found in {END_USER_TABLE}"
+        assert row["blocked"] is True
+        assert row["budget_id"] == new_budget_id
+
+
 class TestRateLimitStateInRedis:
     async def test_per_user_limits_are_tracked_in_redis(
         self, real_backend_client, redis_client
