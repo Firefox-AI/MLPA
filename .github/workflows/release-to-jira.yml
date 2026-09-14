@@ -15,7 +15,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: pip install requests
+      - run: pip install requests anthropic
       - name: Create Jira release from GitHub release
         id: sync
         env:
@@ -31,6 +31,9 @@ jobs:
           JIRA_API_TOKEN:      ${{ secrets.JIRA_API_TOKEN }}
           JIRA_PROJECT_KEY:    AIPLAT
           CONFLUENCE_PARENT_ID: "2885845046"   # "Release Notes Folder" in FAAMT
+          # Narrative release notes. If unset, the page still publishes with
+          # just the ticket and PR lists.
+          ANTHROPIC_API_KEY:   ${{ secrets.ANTHROPIC_API_KEY }}
         run: python .github/scripts/release_to_jira.py
 
       - name: Notify Slack
@@ -40,13 +43,24 @@ jobs:
           token: ${{ secrets.SLACK_BOT_TOKEN }}
           payload: |
             channel: "${{ secrets.SLACK_CHANNEL_ID }}"
-            text: ":rocket: *MLPA ${{ steps.sync.outputs.tag }}* released — <${{ steps.sync.outputs.page_url }}|View release notes>"
+            text: ":rocket: *MLPA ${{ steps.sync.outputs.tag }}* released\n${{ steps.sync.outputs.summary }}\n<${{ steps.sync.outputs.page_url }}|View release notes>"
 
       - name: Notify AI Platform Slack Bot
         env:
           SLACK_WEBHOOK_URL: ${{ secrets.AIPLAT_RELEASE_SLACK_WEBHOOK_URL }}
+          # Passed as env rather than interpolated into the script, so quotes
+          # and backticks in the summary can't break (or escape) the shell.
+          TAG: ${{ steps.sync.outputs.tag }}
+          SUMMARY: ${{ steps.sync.outputs.summary }}
+          PAGE_URL: ${{ steps.sync.outputs.page_url }}
         run: |
-          message="🚀 MLPA ${{ steps.sync.outputs.tag }} released — ${{ steps.sync.outputs.page_url }}"
-          escaped=$(printf '%s' "$message" | sed 's/\\/\\\\/g; s/"/\\"/g')
-          payload=$(printf '{"text":"%s"}' "$escaped")
-          curl -sf -X POST -H 'Content-Type: application/json' -d "$payload" "$SLACK_WEBHOOK_URL"
+          python - <<'PY' > payload.json
+          import json, os
+          lines = [f"🚀 MLPA {os.environ['TAG']} released"]
+          if os.environ.get("SUMMARY"):
+              lines.append(os.environ["SUMMARY"])
+          lines.append(f"<{os.environ['PAGE_URL']}|View release notes>")
+          print(json.dumps({"text": "\n".join(lines)}))
+          PY
+          curl -sf -X POST -H 'Content-Type: application/json' \
+            -d @payload.json "$SLACK_WEBHOOK_URL"
