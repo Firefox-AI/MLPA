@@ -216,7 +216,7 @@ migration:
 
 1. Revert the code on `main` (git revert + Argo sync), same as any other
    rollback.
-2. Check whether the migration actually applied before the deploy failed:
+2. Check whether the migration applied before the deploy failed:
    `alembic -c alembic.ini -x sqlalchemy.url=... current`. If it's still on
    the old revision, there's nothing to undo, stop here. The rollback script
    also prints the current revision again before it asks you to confirm.
