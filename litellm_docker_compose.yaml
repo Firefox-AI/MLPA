@@ -5,7 +5,7 @@
 # review the diff on that PR like any other version bump.
 services:
   postgres:
-    image: postgres:15
+    image: postgres:18
     container_name: litellm_postgres
     restart: always
     environment:
