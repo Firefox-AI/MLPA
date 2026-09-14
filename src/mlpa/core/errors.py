@@ -82,16 +82,17 @@ def _parse_rate_limit_error(error_text: str) -> int | None:
     if not error_text:
         return None
     try:
-        if _LITELLM_GLOBAL_BUDGET_ERROR in error_text:
-            return ERROR_CODE_GLOBAL_BUDGET_LIMIT_EXCEEDED
-
         error_data = json.loads(error_text)
+        if is_rate_limit_error(error_data, [_LITELLM_GLOBAL_BUDGET_ERROR]):
+            return ERROR_CODE_GLOBAL_BUDGET_LIMIT_EXCEEDED
         if is_rate_limit_error(error_data, ["budget"]):
             return ERROR_CODE_BUDGET_LIMIT_EXCEEDED
         if is_rate_limit_error(error_data, ["rate"]):
             return ERROR_CODE_RATE_LIMIT_EXCEEDED
     except (json.JSONDecodeError, AttributeError, UnicodeDecodeError):
         pass
+    if _LITELLM_GLOBAL_BUDGET_ERROR in error_text:
+        return ERROR_CODE_GLOBAL_BUDGET_LIMIT_EXCEEDED
     if is_litellm_upstream_rate_limit(error_text):
         return ERROR_CODE_UPSTREAM_RATE_LIMIT_EXCEEDED
     return None

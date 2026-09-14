@@ -578,11 +578,6 @@ ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
                         "value": {"error": ERROR_CODE_BUDGET_LIMIT_EXCEEDED},
                         "description": "Budget limit exceeded. Check Retry-After header (86400 seconds = 1 day).",
                     },
-                    "global_budget_exceeded": {
-                        "summary": "Global budget limit exceeded",
-                        "value": {"error": ERROR_CODE_GLOBAL_BUDGET_LIMIT_EXCEEDED},
-                        "description": "Global LiteLLM virtual-key budget limit exceeded. Check Retry-After header (86400 seconds = 1 day).",
-                    },
                     "rate_limit_exceeded": {
                         "summary": "Rate limit exceeded",
                         "value": {"error": ERROR_CODE_RATE_LIMIT_EXCEEDED},
@@ -713,6 +708,30 @@ ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
                         "value": {"error": ERROR_CODE_MAX_USERS_REACHED},
                         "description": "New sign-ins for cap-managed service types are rejected because capacity is full.",
                     }
+                },
+            }
+        },
+    },
+    500: {
+        "description": "Internal Server Error",
+        "content": {
+            "application/json": {
+                "schema": {
+                    "type": "object",
+                    "properties": {
+                        "error": {
+                            "type": "integer",
+                            "description": "Error code: 10 for global budget exceeded",
+                        }
+                    },
+                    "required": ["error"],
+                },
+                "examples": {
+                    "global_budget_exceeded": {
+                        "summary": "Global budget limit exceeded",
+                        "value": {"error": ERROR_CODE_GLOBAL_BUDGET_LIMIT_EXCEEDED},
+                        "description": "Global LiteLLM virtual-key budget limit exceeded. Check Retry-After header (300 seconds = 5 minutes).",
+                    },
                 },
             }
         },
