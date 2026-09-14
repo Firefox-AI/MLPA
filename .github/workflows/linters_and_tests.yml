@@ -42,7 +42,7 @@ jobs:
       - name: Configure LiteLLM env
         run: echo "MASTER_KEY=sk-default" > .env
 
-      - name: Start LiteLLM + Postgres
+      - name: Start LiteLLM + Postgres + Redis
         run: docker compose -f litellm_docker_compose.yaml up -d
 
       - name: Wait for LiteLLM to be ready
@@ -71,7 +71,14 @@ jobs:
           MLPA_TEST_REQUIRE_REAL_BACKEND: "true"
         run: uv run pytest src/tests/integration -v
 
-      - name: Stop LiteLLM + Postgres
+      # Continue to run the chat_completions_budget_enforcement
+      # in this suite
+      - name: Run e2e tests
+        env:
+          MLPA_TEST_REQUIRE_REAL_BACKEND: "true"
+        run: uv run pytest src/tests/e2e/litellm_compat/test_budget_enforcement.py -v
+
+      - name: Stop LiteLLM + Postgres + Redis
         if: always()
         run: docker compose -f litellm_docker_compose.yaml down -v
 
