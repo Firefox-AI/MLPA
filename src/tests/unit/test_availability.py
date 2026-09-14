@@ -2,6 +2,7 @@ import pytest
 
 from mlpa.core.config import (
     ERROR_CODE_BUDGET_LIMIT_EXCEEDED,
+    ERROR_CODE_GLOBAL_BUDGET_LIMIT_EXCEEDED,
     ERROR_CODE_INVALID_MODEL_NAME,
     ERROR_CODE_INVALID_REQUEST,
     ERROR_CODE_RATE_LIMIT_EXCEEDED,
@@ -30,11 +31,14 @@ def test_every_availability_reason_maps_to_an_outcome():
 # SIGNUP_CAP_EXCEEDED is recorded pre-completion, not by classify_upstream_error,
 # so it is intentionally outside the completion-stage availability mapping.
 _PRE_COMPLETION_REJECTION_REASONS = {PrometheusRejectionReason.SIGNUP_CAP_EXCEEDED}
+_COMPLETION_STAGE_REJECTION_OUTCOME_OVERRIDES = {
+    PrometheusRejectionReason.GLOBAL_BUDGET_EXCEEDED: AvailabilityOutcome.FAILURE
+}
 
 
-def test_every_completion_stage_rejection_reason_maps_to_excluded():
+def test_every_completion_stage_rejection_reason_maps_to_expected_outcome():
     """Guard: every rejection reason classify_upstream_error can produce must
-    resolve through availability_reason() to an excluded outcome.
+    resolve through availability_reason() to its expected outcome.
 
     Iterating the enum (minus the pre-completion reasons) means a newly added
     completion-stage rejection reason fails loudly here until it is mapped, or is
@@ -44,10 +48,10 @@ def test_every_completion_stage_rejection_reason_maps_to_excluded():
         if reason in _PRE_COMPLETION_REJECTION_REASONS:
             continue
         match = RejectionMatch(reason=reason, error_code=0, http_status=400)
-        assert (
-            availability_outcome_for(match.availability_reason())
-            == AvailabilityOutcome.EXCLUDED
+        expected_outcome = _COMPLETION_STAGE_REJECTION_OUTCOME_OVERRIDES.get(
+            reason, AvailabilityOutcome.EXCLUDED
         )
+        assert availability_outcome_for(match.availability_reason()) == expected_outcome
 
 
 # Pins the expected availability reason for each completion-stage rejection,
@@ -61,6 +65,11 @@ def test_every_completion_stage_rejection_reason_maps_to_excluded():
             PrometheusRejectionReason.BUDGET_EXCEEDED,
             ERROR_CODE_BUDGET_LIMIT_EXCEEDED,
             AvailabilityReason.BUDGET_EXCEEDED,
+        ),
+        (
+            PrometheusRejectionReason.GLOBAL_BUDGET_EXCEEDED,
+            ERROR_CODE_GLOBAL_BUDGET_LIMIT_EXCEEDED,
+            AvailabilityReason.GLOBAL_BUDGET_EXCEEDED,
         ),
         (
             PrometheusRejectionReason.RATE_LIMITED,
@@ -92,5 +101,7 @@ def test_every_completion_stage_rejection_reason_maps_to_excluded():
 def test_rejection_match_availability_reason(reason, error_code, expected):
     match = RejectionMatch(reason=reason, error_code=error_code, http_status=400)
     assert match.availability_reason() == expected
-    # All policy rejections are excluded from the availability ratio.
-    assert availability_outcome_for(expected) == AvailabilityOutcome.EXCLUDED
+    expected_outcome = _COMPLETION_STAGE_REJECTION_OUTCOME_OVERRIDES.get(
+        reason, AvailabilityOutcome.EXCLUDED
+    )
+    assert availability_outcome_for(expected) == expected_outcome

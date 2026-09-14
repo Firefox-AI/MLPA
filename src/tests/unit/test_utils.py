@@ -199,6 +199,7 @@ def test_is_rate_limit_error_case_insensitive():
         "error": {"message": "BUDGET exceeded", "type": "ERROR", "code": "400"}
     }
     assert is_rate_limit_error(error_response, ["budget"]) is True
+    assert is_rate_limit_error(error_response, ["Budget"]) is True
 
 
 def test_is_rate_limit_error_no_match():

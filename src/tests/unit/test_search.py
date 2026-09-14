@@ -8,11 +8,13 @@ from fastapi import HTTPException
 from mlpa.core.classes import AuthorizedSearchRequest
 from mlpa.core.config import (
     ERROR_CODE_BUDGET_LIMIT_EXCEEDED,
+    ERROR_CODE_GLOBAL_BUDGET_LIMIT_EXCEEDED,
     ERROR_CODE_REQUEST_TOO_LARGE,
 )
 from mlpa.core.metrics import SEARCH_MODEL
 from mlpa.core.prometheus_metrics import PrometheusRejectionReason, PrometheusResult
 from mlpa.core.search import get_search
+from tests.consts import MOCK_LITELLM_GLOBAL_BUDGET_ERROR_TEXT
 
 
 def _httpx_encode_json(body: dict) -> bytes:
@@ -171,6 +173,46 @@ async def test_get_search_budget_limit_exceeded_records_rejection(mocker, metric
     assert (
         _search_rejection_count(
             metrics_spy, PrometheusRejectionReason.BUDGET_EXCEEDED, req
+        )
+        == 1
+    )
+    assert _search_latency_count(metrics_spy, PrometheusResult.ERROR) == 1
+
+
+async def test_get_search_global_budget_limit_exceeded_records_rejection(
+    mocker, metrics_spy
+):
+    req = AuthorizedSearchRequest(
+        user="test-user:search",
+        service_type="search",
+        purpose="",
+        query="weather in tokyo",
+        max_results=5,
+    )
+
+    mock_response = MagicMock()
+    mock_response.text = MOCK_LITELLM_GLOBAL_BUDGET_ERROR_TEXT
+    mock_response.status_code = 400
+    mock_response.raise_for_status.side_effect = httpx.HTTPStatusError(
+        "Bad Request",
+        request=MagicMock(),
+        response=mock_response,
+    )
+
+    mock_client = AsyncMock()
+    mock_client.post.return_value = mock_response
+    mocker.patch("mlpa.core.search.get_http_client", return_value=mock_client)
+
+    with pytest.raises(HTTPException) as exc_info:
+        await get_search(req)
+
+    assert exc_info.value.status_code == 500
+    assert exc_info.value.detail == {"error": ERROR_CODE_GLOBAL_BUDGET_LIMIT_EXCEEDED}
+    assert exc_info.value.headers == {"Retry-After": "300"}
+    metrics_spy.assert_only({"search_request_rejections", "search_latency"})
+    assert (
+        _search_rejection_count(
+            metrics_spy, PrometheusRejectionReason.GLOBAL_BUDGET_EXCEEDED, req
         )
         == 1
     )
