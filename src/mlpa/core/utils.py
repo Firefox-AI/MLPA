@@ -17,11 +17,11 @@ from mlpa.core.config import (
     LITELLM_MASTER_AUTH_HEADERS,
     env,
 )
-from mlpa.core.country_codes import COUNTRY_CODES
+from mlpa.core.consts.country_codes import COUNTRY_CODES
 from mlpa.core.http_client import get_http_client
 from mlpa.core.logger import logger
-from mlpa.core.pg_services.services import app_attest_pg, litellm_pg
 from mlpa.core.prometheus_metrics import PrometheusResult, metrics
+from mlpa.core.services.services import app_attest_pg, litellm_pg
 
 KNOWN_HTTP_METHODS = frozenset(
     {
@@ -137,7 +137,7 @@ async def get_or_create_user(user_id: str):
         raise HTTPException(status_code=400, detail={"error": "Invalid user_id format"})
 
     # Get the appropriate budget_id from config based on service_type
-    user_feature_budgets = env.user_feature_budget
+    user_feature_budgets = env.service_type_config
     budget_id = user_feature_budgets[service_type]["budget_id"]
 
     client = get_http_client()

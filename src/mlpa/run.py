@@ -24,6 +24,14 @@ from mlpa.core.config import (
     SENSITIVE_FIELDS_TO_SCRUB_FROM_SENTRY,
     env,
 )
+from mlpa.core.consts.openapi import (
+    CHAT_COMPLETION_DESCRIPTION,
+    CHAT_COMPLETION_SUCCESS_RESPONSE,
+    SEARCH_DESCRIPTION,
+    SEARCH_SUCCESS_RESPONSE,
+    TAGS_METADATA,
+    customize_openapi,
+)
 from mlpa.core.http_client import close_http_client, get_http_client
 from mlpa.core.logger import logger, setup_logger
 from mlpa.core.metrics import (
@@ -33,8 +41,9 @@ from mlpa.core.metrics import (
     record_request_country,
 )
 from mlpa.core.middleware import register_middleware
-from mlpa.core.openapi import customize_openapi
-from mlpa.core.pg_services.services import app_attest_pg, litellm_pg
+from mlpa.core.middleware.traffic_contract_enforcer import (
+    enforce_traffic_contract,
+)
 from mlpa.core.prometheus_metrics import AvailabilityReason
 from mlpa.core.routers.appattest import appattest_router
 from mlpa.core.routers.filter import filter_router
@@ -43,37 +52,14 @@ from mlpa.core.routers.mock import mock_router
 from mlpa.core.routers.play import play_router
 from mlpa.core.routers.user import user_router
 from mlpa.core.search import get_search
-
-tags_metadata = [
-    {"name": "Health", "description": "Health check endpoints."},
-    {"name": "Metrics", "description": "Prometheus metrics endpoints."},
-    {
-        "name": "App Attest",
-        "description": "iOS App Attest verification flow: (1) GET /verify/challenge to obtain a challenge, "
-        "(2) POST /verify/attest with a JWT containing the attestation object. "
-        "Use the attested key for subsequent requests to /v1/chat/completions with use-app-attest header.",
-    },
-    {
-        "name": "Play Integrity",
-        "description": "Endpoints for verifying Play Integrity payloads.",
-    },
-    {"name": "LiteLLM", "description": "Endpoints for interacting with LiteLLM."},
-    {"name": "Mock", "description": "Mock endpoints for testing purposes."},
-    {
-        "name": "User Management",
-        "description": "Endpoints for managing user blocking status and budgets.",
-    },
-    {
-        "name": "Privacy Filter",
-        "description": "Endpoints for interacting with the Privacy Filter.",
-    },
-]
+from mlpa.core.services.services import app_attest_pg, litellm_pg, redis_service
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     litellm_connected = False
     app_attest_connected = False
+    redis_connected = False
     try:
         get_http_client()
         await litellm_pg.connect()
@@ -81,6 +67,10 @@ async def lifespan(app: FastAPI):
 
         await app_attest_pg.connect()
         app_attest_connected = True
+
+        if env.ENABLE_TRAFFIC_CONTRACT_ENFORCEMENT:
+            await redis_service.connect()
+            redis_connected = True
 
         await litellm_pg.create_budget()
         await app_attest_pg.ensure_capacity_state()
@@ -91,6 +81,8 @@ async def lifespan(app: FastAPI):
             await app_attest_pg.disconnect()
         if litellm_connected:
             await litellm_pg.disconnect()
+        if redis_connected:
+            await redis_service.close()
         await close_http_client()
 
 
@@ -123,7 +115,7 @@ app = FastAPI(
     description="Authenticates and proxies LLM requests through LiteLLM to enact budgets and per-user management.",
     version=importlib.metadata.version("mlpa"),
     docs_url="/api/docs",
-    openapi_tags=tags_metadata,
+    openapi_tags=TAGS_METADATA,
     lifespan=lifespan,
 )
 
@@ -143,62 +135,13 @@ app.include_router(play_router, prefix="/verify")
 app.include_router(user_router, prefix="/user")
 app.include_router(filter_router)
 app.include_router(mock_router, prefix="/mock")
-customize_openapi(app, tags_metadata)
+customize_openapi(app, TAGS_METADATA)
 
 app.mount(
     "/admin",
     StaticFiles(directory=Path(__file__).parent / "admin", html=True),
     name="admin",
 )
-
-
-CHAT_COMPLETION_DESCRIPTION = """
-Authorize first using App Attest, Play Integrity, FxA, or dev tier.
-
-**Headers:**
-
-- **Authorization** (required): Bearer token — FxA OAuth token, Play Integrity MLPA token, or App Attest JWT.
-- **service-type** (required): One of the keys in env.user_feature_budget — used for tracking and budget.
-- **purpose** (required for ai/ai-dev/mochi-dev/memories/memories-dev): One of `chat`, `title-generation`, `convo-starters-sidebar` for AI; `memory-generation` for memories; omit for s2s.
-- **x-dev-authorization** (required for ai-dev/memories-dev/mochi-dev): Experimentation token; also requires FxA in Authorization. Dev service types return 401 without it.
-- **use-app-attest**: Set to `true` for iOS App Attest.
-- **use-play-integrity**: Set to `true` for Android Play Integrity.
-"""
-
-
-SEARCH_DESCRIPTION = """
-Web search proxied to Exa via LiteLLM. Authorize the same way as /v1/chat/completions.
-
-**Headers:**
-
-- **Authorization** (required): Bearer token — FxA OAuth token, Play Integrity MLPA token, or App Attest JWT.
-- **service-type**: `search` by default; use `search-dev` for experiments. Search has its own budget pool and no `purpose` header.
-- **x-dev-authorization** (required for search-dev): Experimentation token; also requires FxA in Authorization.
-
-**Body:** `{"query": str, "max_results": int (1-10)}`.
-"""
-
-# Success (200) response docs for the proxied LiteLLM endpoints. The chat endpoint
-# returns either a JSON chat completion or an SSE stream depending on `stream`.
-CHAT_COMPLETION_SUCCESS_RESPONSE: dict[int | str, dict[str, Any]] = {
-    200: {
-        "description": (
-            "OpenAI-compatible chat completion. Returns a JSON completion object, or "
-            "a `text/event-stream` of SSE chunks when `stream` is `true`."
-        ),
-        "content": {
-            "application/json": {},
-            "text/event-stream": {},
-        },
-    }
-}
-
-SEARCH_SUCCESS_RESPONSE: dict[int | str, dict[str, Any]] = {
-    200: {
-        "description": "Search results returned from the Exa search backend.",
-        "content": {"application/json": {}},
-    }
-}
 
 
 @app.post(
@@ -218,6 +161,7 @@ async def chat_completion(
         service_type=authorized_chat_request.service_type,
         model=authorized_chat_request.model,
     )
+    await enforce_traffic_contract(request, authorized_chat_request.service_type)
     user_id = authorized_chat_request.user
     if not user_id:
         raise HTTPException(
@@ -262,6 +206,7 @@ async def search(
             status_code=400,
             detail=f"service-type header must be one of {env.forced_model_service_type_pairs.get(SEARCH_MODEL)}",
         )
+    await enforce_traffic_contract(request, authorized_search_request.service_type)
     user_id = authorized_search_request.user
     if not user_id:
         raise HTTPException(

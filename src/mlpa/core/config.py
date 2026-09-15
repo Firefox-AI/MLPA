@@ -1,8 +1,14 @@
 from functools import cached_property
-from typing import Annotated, Any
+from typing import Annotated, Any, TypedDict
 
 from pydantic import field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
+
+
+class TrafficContractConfig(TypedDict):
+    feature: str
+    rpm_limit: int
+    tpm_limit: int
 
 
 class Env(BaseSettings):
@@ -62,43 +68,43 @@ class Env(BaseSettings):
 
     # User Feature Budget - AI service type
     USER_FEATURE_BUDGET_AI_BUDGET_ID: str = "end-user-budget-ai"
+    USER_FEATURE_BUDGET_AI_BUDGET_DURATION: str = "1d"
     USER_FEATURE_BUDGET_AI_MAX_BUDGET: float = 0.1
     USER_FEATURE_BUDGET_AI_RPM_LIMIT: int = 40
     USER_FEATURE_BUDGET_AI_TPM_LIMIT: int = 2000
-    USER_FEATURE_BUDGET_AI_BUDGET_DURATION: str = "1d"
 
     # User Feature Budget - S2S service type
     USER_FEATURE_BUDGET_S2S_BUDGET_ID: str = "end-user-budget-s2s"
+    USER_FEATURE_BUDGET_S2S_BUDGET_DURATION: str = "1d"
     USER_FEATURE_BUDGET_S2S_MAX_BUDGET: float = 0.1
     USER_FEATURE_BUDGET_S2S_RPM_LIMIT: int = 40
     USER_FEATURE_BUDGET_S2S_TPM_LIMIT: int = 2000
-    USER_FEATURE_BUDGET_S2S_BUDGET_DURATION: str = "1d"
 
     # User Feature Budget - S2S Android service type (same values as s2s)
     USER_FEATURE_BUDGET_S2S_ANDROID_BUDGET_ID: str = "end-user-budget-s2s-android"
+    USER_FEATURE_BUDGET_S2S_ANDROID_BUDGET_DURATION: str = "1d"
     USER_FEATURE_BUDGET_S2S_ANDROID_MAX_BUDGET: float = 0.1
     USER_FEATURE_BUDGET_S2S_ANDROID_RPM_LIMIT: int = 40
     USER_FEATURE_BUDGET_S2S_ANDROID_TPM_LIMIT: int = 2000
-    USER_FEATURE_BUDGET_S2S_ANDROID_BUDGET_DURATION: str = "1d"
 
     # User Feature Budget - memories service type
     USER_FEATURE_BUDGET_MEMORIES_BUDGET_ID: str = "end-user-budget-memories"
+    USER_FEATURE_BUDGET_MEMORIES_BUDGET_DURATION: str = "1d"
     USER_FEATURE_BUDGET_MEMORIES_MAX_BUDGET: float = 0.1
     USER_FEATURE_BUDGET_MEMORIES_RPM_LIMIT: int = 10
     USER_FEATURE_BUDGET_MEMORIES_TPM_LIMIT: int = 2000
-    USER_FEATURE_BUDGET_MEMORIES_BUDGET_DURATION: str = "1d"
 
     USER_FEATURE_BUDGET_SEARCH_BUDGET_ID: str = "end-user-budget-search"
+    USER_FEATURE_BUDGET_SEARCH_BUDGET_DURATION: str = "1d"
     USER_FEATURE_BUDGET_SEARCH_MAX_BUDGET: float = 0.01
     USER_FEATURE_BUDGET_SEARCH_RPM_LIMIT: int = 10
     USER_FEATURE_BUDGET_SEARCH_TPM_LIMIT: int = 2000
-    USER_FEATURE_BUDGET_SEARCH_BUDGET_DURATION: str = "1d"
 
     USER_FEATURE_BUDGET_ANSWER_BUDGET_ID: str = "end-user-budget-answer"
+    USER_FEATURE_BUDGET_ANSWER_BUDGET_DURATION: str = "1d"
     USER_FEATURE_BUDGET_ANSWER_MAX_BUDGET: float = 0.1
     USER_FEATURE_BUDGET_ANSWER_RPM_LIMIT: int = 10
     USER_FEATURE_BUDGET_ANSWER_TPM_LIMIT: int = 2000
-    USER_FEATURE_BUDGET_ANSWER_BUDGET_DURATION: str = "1d"
 
     USER_FEATURE_BUDGET_SW_ANSWER_BUDGET_ID: str = "end-user-budget-sw-answer"
     USER_FEATURE_BUDGET_SW_ANSWER_MAX_BUDGET: float = 0.1
@@ -107,57 +113,81 @@ class Env(BaseSettings):
     USER_FEATURE_BUDGET_SW_ANSWER_BUDGET_DURATION: str = "1d"
 
     USER_FEATURE_BUDGET_LINER_ANSWERS_BUDGET_ID: str = "end-user-budget-liner-answer"
+    USER_FEATURE_BUDGET_LINER_ANSWERS_BUDGET_DURATION: str = "1d"
     USER_FEATURE_BUDGET_LINER_ANSWERS_MAX_BUDGET: float = 0.06
     USER_FEATURE_BUDGET_LINER_ANSWERS_RPM_LIMIT: int = 10
     USER_FEATURE_BUDGET_LINER_ANSWERS_TPM_LIMIT: int = 2000
-    USER_FEATURE_BUDGET_LINER_ANSWERS_BUDGET_DURATION: str = "1d"
 
     USER_FEATURE_BUDGET_TELEMETRY_BUDGET_ID: str = "end-user-budget-telemetry"
+    USER_FEATURE_BUDGET_TELEMETRY_BUDGET_DURATION: str = "1d"
     USER_FEATURE_BUDGET_TELEMETRY_MAX_BUDGET: float = 0.1
     USER_FEATURE_BUDGET_TELEMETRY_RPM_LIMIT: int = 10
     USER_FEATURE_BUDGET_TELEMETRY_TPM_LIMIT: int = 2000
-    USER_FEATURE_BUDGET_TELEMETRY_BUDGET_DURATION: str = "1d"
 
     USER_FEATURE_BUDGET_AGENT_BUDGET_ID: str = "end-user-budget-agent"
+    USER_FEATURE_BUDGET_AGENT_BUDGET_DURATION: str = "7d"
     USER_FEATURE_BUDGET_AGENT_MAX_BUDGET: float = 0.1
     USER_FEATURE_BUDGET_AGENT_RPM_LIMIT: int = 10
     USER_FEATURE_BUDGET_AGENT_TPM_LIMIT: int = 2000
-    USER_FEATURE_BUDGET_AGENT_BUDGET_DURATION: str = "7d"
 
     USER_FEATURE_BUDGET_AGENT_SEARCH_BUDGET_ID: str = "end-user-budget-agent-search"
+    USER_FEATURE_BUDGET_AGENT_SEARCH_BUDGET_DURATION: str = "7d"
     USER_FEATURE_BUDGET_AGENT_SEARCH_MAX_BUDGET: float = 0.1
     USER_FEATURE_BUDGET_AGENT_SEARCH_RPM_LIMIT: int = 10
     USER_FEATURE_BUDGET_AGENT_SEARCH_TPM_LIMIT: int = 2000
-    USER_FEATURE_BUDGET_AGENT_SEARCH_BUDGET_DURATION: str = "7d"
 
     # User Feature Budget - ai-dev service type (experimentation, batch predictions)
     USER_FEATURE_BUDGET_AI_DEV_BUDGET_ID: str = "end-user-budget-ai-dev"
+    USER_FEATURE_BUDGET_AI_DEV_BUDGET_DURATION: str = "1d"
     USER_FEATURE_BUDGET_AI_DEV_MAX_BUDGET: float = 1.0
     USER_FEATURE_BUDGET_AI_DEV_RPM_LIMIT: int = 200
     USER_FEATURE_BUDGET_AI_DEV_TPM_LIMIT: int = 10000
-    USER_FEATURE_BUDGET_AI_DEV_BUDGET_DURATION: str = "1d"
 
     # User Feature Budget - memories-dev service type (experimentation)
     USER_FEATURE_BUDGET_MEMORIES_DEV_BUDGET_ID: str = "end-user-budget-memories-dev"
+    USER_FEATURE_BUDGET_MEMORIES_DEV_BUDGET_DURATION: str = "1d"
     USER_FEATURE_BUDGET_MEMORIES_DEV_MAX_BUDGET: float = 1.0
     USER_FEATURE_BUDGET_MEMORIES_DEV_RPM_LIMIT: int = 50
     USER_FEATURE_BUDGET_MEMORIES_DEV_TPM_LIMIT: int = 5000
-    USER_FEATURE_BUDGET_MEMORIES_DEV_BUDGET_DURATION: str = "1d"
 
     USER_FEATURE_BUDGET_MOCHI_DEV_BUDGET_ID: str = "end-user-budget-mochi-dev"
+    USER_FEATURE_BUDGET_MOCHI_DEV_BUDGET_DURATION: str = "1d"
     USER_FEATURE_BUDGET_MOCHI_DEV_MAX_BUDGET: float = 1.0
     USER_FEATURE_BUDGET_MOCHI_DEV_RPM_LIMIT: int = 200
     USER_FEATURE_BUDGET_MOCHI_DEV_TPM_LIMIT: int = 10000
-    USER_FEATURE_BUDGET_MOCHI_DEV_BUDGET_DURATION: str = "1d"
 
     USER_FEATURE_BUDGET_SEARCH_DEV_BUDGET_ID: str = "end-user-budget-search-dev"
+    USER_FEATURE_BUDGET_SEARCH_DEV_BUDGET_DURATION: str = "1d"
     USER_FEATURE_BUDGET_SEARCH_DEV_MAX_BUDGET: float = 1.0
     USER_FEATURE_BUDGET_SEARCH_DEV_RPM_LIMIT: int = 200
     USER_FEATURE_BUDGET_SEARCH_DEV_TPM_LIMIT: int = 10000
-    USER_FEATURE_BUDGET_SEARCH_DEV_BUDGET_DURATION: str = "1d"
+
+    # Feature Traffic Contracts
+    ENABLE_TRAFFIC_CONTRACT_ENFORCEMENT: bool = False
+    TRAFFIC_CONTRACT_REDIS_KEY_PREFIX: str = "mlpa:traffic_contract"
+    TRAFFIC_CONTRACT_RPM_WINDOW_SECONDS: int = 60
+    TRAFFIC_CONTRACT_TPM_WINDOW_SECONDS: int = 60
+    TRAFFIC_CONTRACT_COUNTER_TTL_SECONDS: int = 120
+    TRAFFIC_CONTRACT_FAIL_OPEN_ON_REDIS_ERROR: bool = True
+
+    # Global RPM/TPM limit (0 means no limit)
+    TOTAL_TRAFFIC_CONTRACT_RPM_LIMIT: int = 0
+    TOTAL_TRAFFIC_CONTRACT_TPM_LIMIT: int = 0
+
+    FEATURE_SMART_WINDOW: str = "smart-window"
+    SMART_WINDOW_TRAFFIC_CONTRACT_RPM_LIMIT: int = 0
+    SMART_WINDOW_TRAFFIC_CONTRACT_TPM_LIMIT: int = 0
+
+    FEATURE_S2S: str = "s2s"
+    S2S_TRAFFIC_CONTRACT_RPM_LIMIT: int = 0
+    S2S_TRAFFIC_CONTRACT_TPM_LIMIT: int = 0
+
+    FEATURE_S2S_ANDROID: str = "s2s-android"
+    S2S_ANDROID_TRAFFIC_CONTRACT_RPM_LIMIT: int = 0
+    S2S_ANDROID_TRAFFIC_CONTRACT_TPM_LIMIT: int = 0
 
     @cached_property
-    def user_feature_budget(self) -> dict[str, dict]:
+    def service_type_config(self) -> dict[str, dict]:
         """
         User feature budget configuration by service type.
         Returns a nested dictionary keyed by service type.
@@ -165,46 +195,52 @@ class Env(BaseSettings):
         """
         return {
             "ai": {
+                "feature": self.FEATURE_SMART_WINDOW,
                 "budget_id": self.USER_FEATURE_BUDGET_AI_BUDGET_ID,
+                "budget_duration": self.USER_FEATURE_BUDGET_AI_BUDGET_DURATION,
                 "max_budget": self.USER_FEATURE_BUDGET_AI_MAX_BUDGET,
                 "rpm_limit": self.USER_FEATURE_BUDGET_AI_RPM_LIMIT,
                 "tpm_limit": self.USER_FEATURE_BUDGET_AI_TPM_LIMIT,
-                "budget_duration": self.USER_FEATURE_BUDGET_AI_BUDGET_DURATION,
             },
             "s2s": {
+                "feature": self.FEATURE_S2S,
                 "budget_id": self.USER_FEATURE_BUDGET_S2S_BUDGET_ID,
+                "budget_duration": self.USER_FEATURE_BUDGET_S2S_BUDGET_DURATION,
                 "max_budget": self.USER_FEATURE_BUDGET_S2S_MAX_BUDGET,
                 "rpm_limit": self.USER_FEATURE_BUDGET_S2S_RPM_LIMIT,
                 "tpm_limit": self.USER_FEATURE_BUDGET_S2S_TPM_LIMIT,
-                "budget_duration": self.USER_FEATURE_BUDGET_S2S_BUDGET_DURATION,
             },
             "s2s-android": {
+                "feature": self.FEATURE_S2S_ANDROID,
                 "budget_id": self.USER_FEATURE_BUDGET_S2S_ANDROID_BUDGET_ID,
+                "budget_duration": self.USER_FEATURE_BUDGET_S2S_ANDROID_BUDGET_DURATION,
                 "max_budget": self.USER_FEATURE_BUDGET_S2S_ANDROID_MAX_BUDGET,
                 "rpm_limit": self.USER_FEATURE_BUDGET_S2S_ANDROID_RPM_LIMIT,
                 "tpm_limit": self.USER_FEATURE_BUDGET_S2S_ANDROID_TPM_LIMIT,
-                "budget_duration": self.USER_FEATURE_BUDGET_S2S_ANDROID_BUDGET_DURATION,
             },
             "memories": {
+                "feature": self.FEATURE_SMART_WINDOW,
                 "budget_id": self.USER_FEATURE_BUDGET_MEMORIES_BUDGET_ID,
+                "budget_duration": self.USER_FEATURE_BUDGET_MEMORIES_BUDGET_DURATION,
                 "max_budget": self.USER_FEATURE_BUDGET_MEMORIES_MAX_BUDGET,
                 "rpm_limit": self.USER_FEATURE_BUDGET_MEMORIES_RPM_LIMIT,
                 "tpm_limit": self.USER_FEATURE_BUDGET_MEMORIES_TPM_LIMIT,
-                "budget_duration": self.USER_FEATURE_BUDGET_MEMORIES_BUDGET_DURATION,
             },
             "search": {
+                "feature": self.FEATURE_SMART_WINDOW,
                 "budget_id": self.USER_FEATURE_BUDGET_SEARCH_BUDGET_ID,
+                "budget_duration": self.USER_FEATURE_BUDGET_SEARCH_BUDGET_DURATION,
                 "max_budget": self.USER_FEATURE_BUDGET_SEARCH_MAX_BUDGET,
                 "rpm_limit": self.USER_FEATURE_BUDGET_SEARCH_RPM_LIMIT,
                 "tpm_limit": self.USER_FEATURE_BUDGET_SEARCH_TPM_LIMIT,
-                "budget_duration": self.USER_FEATURE_BUDGET_SEARCH_BUDGET_DURATION,
             },
             "answer": {
+                "feature": self.FEATURE_SMART_WINDOW,
                 "budget_id": self.USER_FEATURE_BUDGET_ANSWER_BUDGET_ID,
+                "budget_duration": self.USER_FEATURE_BUDGET_ANSWER_BUDGET_DURATION,
                 "max_budget": self.USER_FEATURE_BUDGET_ANSWER_MAX_BUDGET,
                 "rpm_limit": self.USER_FEATURE_BUDGET_ANSWER_RPM_LIMIT,
                 "tpm_limit": self.USER_FEATURE_BUDGET_ANSWER_TPM_LIMIT,
-                "budget_duration": self.USER_FEATURE_BUDGET_ANSWER_BUDGET_DURATION,
             },
             "sw-answer": {
                 "budget_id": self.USER_FEATURE_BUDGET_SW_ANSWER_BUDGET_ID,
@@ -214,61 +250,101 @@ class Env(BaseSettings):
                 "budget_duration": self.USER_FEATURE_BUDGET_SW_ANSWER_BUDGET_DURATION,
             },
             "liner-answer": {
+                "feature": self.FEATURE_SMART_WINDOW,
                 "budget_id": self.USER_FEATURE_BUDGET_LINER_ANSWERS_BUDGET_ID,
+                "budget_duration": self.USER_FEATURE_BUDGET_LINER_ANSWERS_BUDGET_DURATION,
                 "max_budget": self.USER_FEATURE_BUDGET_LINER_ANSWERS_MAX_BUDGET,
                 "rpm_limit": self.USER_FEATURE_BUDGET_LINER_ANSWERS_RPM_LIMIT,
                 "tpm_limit": self.USER_FEATURE_BUDGET_LINER_ANSWERS_TPM_LIMIT,
-                "budget_duration": self.USER_FEATURE_BUDGET_LINER_ANSWERS_BUDGET_DURATION,
             },
             "telemetry": {
+                "feature": self.FEATURE_SMART_WINDOW,
                 "budget_id": self.USER_FEATURE_BUDGET_TELEMETRY_BUDGET_ID,
+                "budget_duration": self.USER_FEATURE_BUDGET_TELEMETRY_BUDGET_DURATION,
                 "max_budget": self.USER_FEATURE_BUDGET_TELEMETRY_MAX_BUDGET,
                 "rpm_limit": self.USER_FEATURE_BUDGET_TELEMETRY_RPM_LIMIT,
                 "tpm_limit": self.USER_FEATURE_BUDGET_TELEMETRY_TPM_LIMIT,
-                "budget_duration": self.USER_FEATURE_BUDGET_TELEMETRY_BUDGET_DURATION,
             },
             "agent": {
+                "feature": self.FEATURE_SMART_WINDOW,
                 "budget_id": self.USER_FEATURE_BUDGET_AGENT_BUDGET_ID,
+                "budget_duration": self.USER_FEATURE_BUDGET_AGENT_BUDGET_DURATION,
                 "max_budget": self.USER_FEATURE_BUDGET_AGENT_MAX_BUDGET,
                 "rpm_limit": self.USER_FEATURE_BUDGET_AGENT_RPM_LIMIT,
                 "tpm_limit": self.USER_FEATURE_BUDGET_AGENT_TPM_LIMIT,
-                "budget_duration": self.USER_FEATURE_BUDGET_AGENT_BUDGET_DURATION,
             },
             "agent-search": {
+                "feature": self.FEATURE_SMART_WINDOW,
                 "budget_id": self.USER_FEATURE_BUDGET_AGENT_SEARCH_BUDGET_ID,
+                "budget_duration": self.USER_FEATURE_BUDGET_AGENT_SEARCH_BUDGET_DURATION,
                 "max_budget": self.USER_FEATURE_BUDGET_AGENT_SEARCH_MAX_BUDGET,
                 "rpm_limit": self.USER_FEATURE_BUDGET_AGENT_SEARCH_RPM_LIMIT,
                 "tpm_limit": self.USER_FEATURE_BUDGET_AGENT_SEARCH_TPM_LIMIT,
-                "budget_duration": self.USER_FEATURE_BUDGET_AGENT_SEARCH_BUDGET_DURATION,
             },
             "ai-dev": {
+                "feature": self.FEATURE_SMART_WINDOW,
                 "budget_id": self.USER_FEATURE_BUDGET_AI_DEV_BUDGET_ID,
+                "budget_duration": self.USER_FEATURE_BUDGET_AI_DEV_BUDGET_DURATION,
                 "max_budget": self.USER_FEATURE_BUDGET_AI_DEV_MAX_BUDGET,
                 "rpm_limit": self.USER_FEATURE_BUDGET_AI_DEV_RPM_LIMIT,
                 "tpm_limit": self.USER_FEATURE_BUDGET_AI_DEV_TPM_LIMIT,
-                "budget_duration": self.USER_FEATURE_BUDGET_AI_DEV_BUDGET_DURATION,
             },
             "memories-dev": {
+                "feature": self.FEATURE_SMART_WINDOW,
                 "budget_id": self.USER_FEATURE_BUDGET_MEMORIES_DEV_BUDGET_ID,
+                "budget_duration": self.USER_FEATURE_BUDGET_MEMORIES_DEV_BUDGET_DURATION,
                 "max_budget": self.USER_FEATURE_BUDGET_MEMORIES_DEV_MAX_BUDGET,
                 "rpm_limit": self.USER_FEATURE_BUDGET_MEMORIES_DEV_RPM_LIMIT,
                 "tpm_limit": self.USER_FEATURE_BUDGET_MEMORIES_DEV_TPM_LIMIT,
-                "budget_duration": self.USER_FEATURE_BUDGET_MEMORIES_DEV_BUDGET_DURATION,
             },
             "mochi-dev": {
+                "feature": self.FEATURE_SMART_WINDOW,
                 "budget_id": self.USER_FEATURE_BUDGET_MOCHI_DEV_BUDGET_ID,
+                "budget_duration": self.USER_FEATURE_BUDGET_MOCHI_DEV_BUDGET_DURATION,
                 "max_budget": self.USER_FEATURE_BUDGET_MOCHI_DEV_MAX_BUDGET,
                 "rpm_limit": self.USER_FEATURE_BUDGET_MOCHI_DEV_RPM_LIMIT,
                 "tpm_limit": self.USER_FEATURE_BUDGET_MOCHI_DEV_TPM_LIMIT,
-                "budget_duration": self.USER_FEATURE_BUDGET_MOCHI_DEV_BUDGET_DURATION,
             },
             "search-dev": {
+                "feature": self.FEATURE_SMART_WINDOW,
                 "budget_id": self.USER_FEATURE_BUDGET_SEARCH_DEV_BUDGET_ID,
+                "budget_duration": self.USER_FEATURE_BUDGET_SEARCH_DEV_BUDGET_DURATION,
                 "max_budget": self.USER_FEATURE_BUDGET_SEARCH_DEV_MAX_BUDGET,
                 "rpm_limit": self.USER_FEATURE_BUDGET_SEARCH_DEV_RPM_LIMIT,
                 "tpm_limit": self.USER_FEATURE_BUDGET_SEARCH_DEV_TPM_LIMIT,
-                "budget_duration": self.USER_FEATURE_BUDGET_SEARCH_DEV_BUDGET_DURATION,
             },
+        }
+
+    @cached_property
+    def traffic_contract_config(self) -> dict[str, TrafficContractConfig]:
+        """
+        Per-feature traffic contracts keyed by service type.
+
+        Redis stores live counters by the feature name so the
+        same service-type contract protects each model's basket independently.
+        """
+
+        TRAFFIC_CONTRACT_CONFIG = {
+            "smart-window": {
+                "rpm_limit": self.SMART_WINDOW_TRAFFIC_CONTRACT_RPM_LIMIT,
+                "tpm_limit": self.SMART_WINDOW_TRAFFIC_CONTRACT_TPM_LIMIT,
+            },
+            "s2s": {
+                "rpm_limit": self.S2S_TRAFFIC_CONTRACT_RPM_LIMIT,
+                "tpm_limit": self.S2S_TRAFFIC_CONTRACT_TPM_LIMIT,
+            },
+            "s2s-android": {
+                "rpm_limit": self.S2S_ANDROID_TRAFFIC_CONTRACT_RPM_LIMIT,
+                "tpm_limit": self.S2S_ANDROID_TRAFFIC_CONTRACT_TPM_LIMIT,
+            },
+        }
+        return {
+            service_type: {
+                "feature": budget["feature"],
+                "rpm_limit": TRAFFIC_CONTRACT_CONFIG[budget["feature"]]["rpm_limit"],
+                "tpm_limit": TRAFFIC_CONTRACT_CONFIG[budget["feature"]]["tpm_limit"],
+            }
+            for service_type, budget in self.service_type_config.items()
         }
 
     @cached_property
@@ -276,7 +352,7 @@ class Env(BaseSettings):
         """
         Returns a list of valid service types from user_feature_budget configuration.
         """
-        return list(self.user_feature_budget.keys())
+        return list(self.service_type_config.keys())
 
     @cached_property
     def valid_service_types_set(self) -> set[str]:
@@ -465,6 +541,10 @@ class Env(BaseSettings):
     # LOCAL budgets above, this one isn't relaxed by them, so keep it above
     # PG_MAINTENANCE_STATEMENT_TIMEOUT_MS or it'll cancel those queries.
     PG_COMMAND_TIMEOUT_S: float | None = None
+
+    # Redis
+    REDIS_HOST: str = "localhost"
+    REDIS_PORT: int = 6379
 
     # LLM request default values
     TEMPERATURE: float = 0.1

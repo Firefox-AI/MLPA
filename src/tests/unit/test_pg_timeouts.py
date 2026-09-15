@@ -2,8 +2,8 @@ import os
 from unittest.mock import AsyncMock, MagicMock, patch
 
 from mlpa.core.config import Env, env
-from mlpa.core.pg_services.app_attest_pg_service import AppAttestPGService
-from mlpa.core.pg_services.pg_service import PGService
+from mlpa.core.services.app_attest_pg_service import AppAttestPGService
+from mlpa.core.services.pg_service import PGService
 
 
 def test_pg_timeout_config_from_env():
@@ -38,7 +38,7 @@ def test_pg_timeout_defaults():
 async def test_connect_passes_timeout_server_settings(mocker):
     """The pool is created with server-enforced statement / idle-in-tx timeouts."""
     create_pool = mocker.patch(
-        "mlpa.core.pg_services.pg_service.asyncpg.create_pool",
+        "mlpa.core.services.pg_service.asyncpg.create_pool",
         new=AsyncMock(return_value=MagicMock()),
     )
 
@@ -58,7 +58,7 @@ async def test_connect_passes_timeout_server_settings(mocker):
 async def test_connect_respects_per_pool_statement_timeout_override(mocker):
     """A subclass/per-pool override flows into server_settings."""
     create_pool = mocker.patch(
-        "mlpa.core.pg_services.pg_service.asyncpg.create_pool",
+        "mlpa.core.services.pg_service.asyncpg.create_pool",
         new=AsyncMock(return_value=MagicMock()),
     )
 
@@ -140,7 +140,7 @@ async def test_statement_timeout_lifts_statement_and_idle_in_tx(mocker):
 
 async def test_count_users_by_service_type_uses_admin_read_timeout(mocker):
     """The unindexable full-table GROUP BY runs under the admin-read timeout, not 3s."""
-    from mlpa.core.pg_services.litellm_pg_service import LiteLLMPGService
+    from mlpa.core.services.litellm_pg_service import LiteLLMPGService
 
     conn = _mock_maintenance_conn()
     mocker.patch.object(PGService, "pool", new=_mock_pool(conn))
@@ -156,7 +156,7 @@ async def test_count_users_by_service_type_uses_admin_read_timeout(mocker):
 
 async def test_list_users_uses_admin_read_timeout(mocker):
     """The full-table COUNT(*) + deep OFFSET page run under the admin-read timeout."""
-    from mlpa.core.pg_services.litellm_pg_service import LiteLLMPGService
+    from mlpa.core.services.litellm_pg_service import LiteLLMPGService
 
     conn = _mock_maintenance_conn()
     mocker.patch.object(PGService, "pool", new=_mock_pool(conn))
@@ -171,7 +171,7 @@ async def test_list_users_uses_admin_read_timeout(mocker):
 
 async def test_list_managed_base_identities_uses_maintenance_timeout(mocker):
     """The heavy reconciliation read runs under the maintenance timeout, not the 3s default."""
-    from mlpa.core.pg_services.litellm_pg_service import LiteLLMPGService
+    from mlpa.core.services.litellm_pg_service import LiteLLMPGService
 
     conn = _mock_maintenance_conn()
     mocker.patch.object(PGService, "pool", new=_mock_pool(conn))
@@ -277,7 +277,7 @@ async def test_ensure_capacity_state_reconcile_failure_is_best_effort(mocker):
 
     conn = _mock_maintenance_conn()
     mocker.patch.object(PGService, "pool", new=_mock_pool(conn))
-    log_error = mocker.patch("mlpa.core.pg_services.app_attest_pg_service.logger.error")
+    log_error = mocker.patch("mlpa.core.services.app_attest_pg_service.logger.error")
 
     # Must not raise despite reconciliation failing.
     await service.ensure_capacity_state()
