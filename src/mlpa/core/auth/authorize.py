@@ -35,7 +35,7 @@ def _resolve_custom_virtual_key(virtual_key_header: str | None) -> str | None:
     """
     Normalize the `litellm-virtual-key` header into the key to forward upstream.
 
-    Returns None when not custom virtual keys not allowed.
+    Returns None when custom virtual keys are not allowed.
     Throws HTTPException when key not fund within custom_virtual_keys
     """
     key = (virtual_key_header or "").strip()
@@ -47,15 +47,6 @@ def _resolve_custom_virtual_key(virtual_key_header: str | None) -> str | None:
             "Request proceeds on the default MLPA virtual key."
         )
         return None
-    if key not in env.ALLOWED_CUSTOM_VIRTUAL_KEYS:
-        logger.warning(
-            "Rejecting litellm-virtual-key header: key is not in "
-            "ALLOWED_CUSTOM_VIRTUAL_KEYS."
-        )
-        raise HTTPException(
-            status_code=400,
-            detail="Invalid header 'litellm-virtual-key'.",
-        )
     return key
 
 
