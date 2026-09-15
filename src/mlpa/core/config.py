@@ -55,16 +55,6 @@ class Env(BaseSettings):
     # token in place of MLPA_VIRTUAL_KEY. That selects a LiteLLM key with its own
     # budget / rate-limit / model configuration instead configured values.
     ALLOW_CUSTOM_VIRTUAL_KEY: bool = False
-    # Keys the header is allowed to name; anything else is rejected. Set as a plain
-    # comma-separated string ("sk-load-test,sk-mock-responses")
-    ALLOWED_CUSTOM_VIRTUAL_KEYS: Annotated[set[str], NoDecode] = set()
-
-    @field_validator("ALLOWED_CUSTOM_VIRTUAL_KEYS", mode="before")
-    @classmethod
-    def _parse_allowed_custom_virtual_keys(cls, raw: str | set[str]) -> set[str]:
-        if isinstance(raw, str):
-            return {key.strip() for key in raw.split(",") if key.strip()}
-        return raw
 
     # Privacy Filter
     PRIVACY_FILTER_ENABLED: bool = False
@@ -543,8 +533,6 @@ def litellm_virtual_auth_headers(virtual_key: str | None = None) -> dict[str, st
     """
     if virtual_key is None:
         return LITELLM_VIRTUAL_AUTH_HEADERS
-    elif virtual_key not in env.ALLOWED_CUSTOM_VIRTUAL_KEYS:
-        raise ValueError("Virtual key not in allowed list!")
     return {
         "Content-Type": "application/json",
         "Authorization": f"Bearer {virtual_key}",

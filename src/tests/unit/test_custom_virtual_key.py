@@ -33,11 +33,6 @@ CUSTOM_KEY = "sk-custom-config"
 UNKNOWN_KEY = "sk-not-provisioned"
 
 
-@pytest.fixture(autouse=True)
-def allowlist_custom_key(mocker):
-    mocker.patch.object(env, "ALLOWED_CUSTOM_VIRTUAL_KEYS", {CUSTOM_KEY})
-
-
 @pytest.fixture
 def allow_custom_virtual_key(mocker):
     mocker.patch.object(env, "ALLOW_CUSTOM_VIRTUAL_KEY", True)
@@ -69,11 +64,6 @@ def test_key_outside_the_allowlist_raises():
     with pytest.raises(ValueError) as excinfo:
         litellm_virtual_auth_headers(UNKNOWN_KEY)
     assert UNKNOWN_KEY not in str(excinfo.value)
-
-
-def test_allowlist_accepts_the_comma_separated_form(monkeypatch):
-    monkeypatch.setenv("ALLOWED_CUSTOM_VIRTUAL_KEYS", " sk-one , sk-two ")
-    assert Env().ALLOWED_CUSTOM_VIRTUAL_KEYS == {"sk-one", "sk-two"}
 
 
 def test_header_ignored_while_feature_disabled(mocker):
