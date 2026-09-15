@@ -1,26 +1,30 @@
+import asyncio
 import time
-from dataclasses import dataclass
-from typing import Any, Literal, cast
+from typing import Any
 
 import redis.asyncio as aioredis
 
+from mlpa.core.classes import TrafficContractCounters, TrafficContractDecision
 from mlpa.core.config import env
+from mlpa.core.consts import TrafficContractKeyType, TrafficContractMode
 from mlpa.core.logger import logger
 
 TRAFFIC_CONTRACT_BASKET_FIELD = "__basket__"
 
-_CHECK_AND_INCREMENT_SCRIPT = """
+_CHECK_TRAFFIC_CONTRACT_SCRIPT = """
 local key = KEYS[1]
 local feature_field = ARGV[1]
 local basket_field = ARGV[2]
 local feature_limit = tonumber(ARGV[3])
 local basket_limit = tonumber(ARGV[4])
-local ttl_seconds = tonumber(ARGV[5])
-local inc_amount = tonumber(ARGV[6])
+local inc_amount = tonumber(ARGV[5])
 
-local feature_count = redis.call("HINCRBY", key, feature_field, inc_amount)
-local basket_count = redis.call("HINCRBY", key, basket_field, inc_amount)
-redis.call("EXPIRE", key, ttl_seconds)
+if basket_limit == 0 and feature_limit == 0 then
+    return {1, 0, 0, "", "normal", ""}
+end
+
+local feature_count = tonumber(redis.call("HGET", key, feature_field) or "0") + inc_amount
+local basket_count = tonumber(redis.call("HGET", key, basket_field) or "0") + inc_amount
 
 if basket_limit > 0 and basket_count > basket_limit then
     return {0, feature_count, basket_count, "basket", "degraded", tostring(basket_count/basket_limit)}
@@ -33,21 +37,25 @@ end
 return {1, feature_count, basket_count, "", "normal", ""}
 """
 
-TrafficContractMode = Literal["normal", "borrowed", "degraded"]
+_INCREMENT_TRAFFIC_CONTRACT_SCRIPT = """
+local key = KEYS[1]
+local feature_field = ARGV[1]
+local basket_field = ARGV[2]
+local ttl_seconds = tonumber(ARGV[3])
+local inc_amount = tonumber(ARGV[4])
 
+if inc_amount <= 0 then
+    local feature_count = tonumber(redis.call("HGET", key, feature_field) or "0")
+    local basket_count = tonumber(redis.call("HGET", key, basket_field) or "0")
+    return {feature_count, basket_count}
+end
 
-@dataclass(frozen=True)
-class TrafficContractDecision:
-    allowed: bool
-    feature_count: int
-    basket_count: int
-    retry_after_seconds: int
-    limited_by: str | None = None
+local feature_count = redis.call("HINCRBY", key, feature_field, inc_amount)
+local basket_count = redis.call("HINCRBY", key, basket_field, inc_amount)
+redis.call("EXPIRE", key, ttl_seconds)
 
-    # borrowed = feature is over limit, basket has room
-    # degraded = basket is over limit
-    mode: TrafficContractMode = "normal"
-    ratio_over: float | None = None  # ratio of count / limit if mode != "normal"
+return {feature_count, basket_count}
+"""
 
 
 class RedisService:
@@ -90,7 +98,7 @@ class RedisService:
         cls,
         *,
         key_prefix: str,
-        key_type: Literal["rpm", "tpm"],
+        key_type: TrafficContractKeyType,
         now: int | None = None,
         window_seconds: int = 60,
     ) -> str:
@@ -105,19 +113,21 @@ class RedisService:
         elapsed_in_bucket = current_time % window_seconds
         return window_seconds - elapsed_in_bucket
 
-    async def check_and_increment_feature_rpm(
+    async def check_feature_traffic_contract(
         self,
         *,
         key_prefix: str,
+        key_type: TrafficContractKeyType,
         feature: str,
-        feature_rpm_limit: int,
+        feature_limit: int,
+        basket_limit: int,
+        increment_amount: int,
         window_seconds: int = 60,
-        ttl_seconds: int = 120,
         now: int | None = None,
     ) -> TrafficContractDecision:
         key = self.traffic_contract_key(
             key_prefix=key_prefix,
-            key_type="rpm",
+            key_type=key_type,
             now=now,
             window_seconds=window_seconds,
         )
@@ -127,15 +137,14 @@ class RedisService:
         )
 
         result = await self.client.eval(
-            _CHECK_AND_INCREMENT_SCRIPT,
+            _CHECK_TRAFFIC_CONTRACT_SCRIPT,
             1,
             key,
             feature,
             TRAFFIC_CONTRACT_BASKET_FIELD,
-            feature_rpm_limit,
-            env.TOTAL_TRAFFIC_CONTRACT_RPM_LIMIT,
-            ttl_seconds,
-            1,
+            feature_limit,
+            basket_limit,
+            increment_amount,
         )
 
         return TrafficContractDecision(
@@ -144,23 +153,168 @@ class RedisService:
             basket_count=int(result[2]),
             retry_after_seconds=retry_after,
             limited_by=str(result[3]) or None,
-            mode=cast(TrafficContractMode, result[4]),
+            mode=TrafficContractMode(result[4]),
             ratio_over=float(result[5]) if result[5] not in (None, "") else None,
         )
 
-    async def get_current_feature_rpm(
+    async def increment_feature_traffic_contract(
+        self,
+        *,
+        key_prefix: str,
+        key_type: TrafficContractKeyType,
+        feature: str,
+        increment_amount: int,
+        window_seconds: int = 60,
+        ttl_seconds: int = 120,
+        now: int | None = None,
+    ) -> TrafficContractCounters:
+        key = self.traffic_contract_key(
+            key_prefix=key_prefix,
+            key_type=key_type,
+            now=now,
+            window_seconds=window_seconds,
+        )
+        result = await self.client.eval(
+            _INCREMENT_TRAFFIC_CONTRACT_SCRIPT,
+            1,
+            key,
+            feature,
+            TRAFFIC_CONTRACT_BASKET_FIELD,
+            ttl_seconds,
+            increment_amount,
+        )
+
+        return TrafficContractCounters(
+            feature_count=int(result[0]),
+            basket_count=int(result[1]),
+        )
+
+    async def check_feature_rpm(
+        self,
+        *,
+        key_prefix: str,
+        feature: str,
+        feature_rpm_limit: int,
+        window_seconds: int = 60,
+        now: int | None = None,
+    ) -> TrafficContractDecision:
+        return await self.check_feature_traffic_contract(
+            key_prefix=key_prefix,
+            key_type=TrafficContractKeyType.RPM,
+            feature=feature,
+            feature_limit=feature_rpm_limit,
+            basket_limit=env.TOTAL_TRAFFIC_CONTRACT_RPM_LIMIT,
+            increment_amount=1,
+            window_seconds=window_seconds,
+            now=now,
+        )
+
+    async def increment_feature_rpm(
         self,
         *,
         key_prefix: str,
         feature: str,
         window_seconds: int = 60,
+        ttl_seconds: int = 120,
         now: int | None = None,
-    ) -> int:
-        key = self.traffic_contract_key(
+    ) -> TrafficContractCounters:
+        return await self.increment_feature_traffic_contract(
             key_prefix=key_prefix,
-            key_type="rpm",
-            now=now,
+            key_type=TrafficContractKeyType.RPM,
+            feature=feature,
+            increment_amount=1,
             window_seconds=window_seconds,
+            ttl_seconds=ttl_seconds,
+            now=now,
         )
-        traffic_count = await self.client.hget(key, feature)
-        return int(traffic_count) if traffic_count else 0
+
+    async def check_feature_tpm(
+        self,
+        *,
+        key_prefix: str,
+        feature: str,
+        feature_tpm_limit: int,
+        token_count: int = 0,
+        window_seconds: int = 60,
+        now: int | None = None,
+    ) -> TrafficContractDecision:
+        return await self.check_feature_traffic_contract(
+            key_prefix=key_prefix,
+            key_type=TrafficContractKeyType.TPM,
+            feature=feature,
+            feature_limit=feature_tpm_limit,
+            basket_limit=env.TOTAL_TRAFFIC_CONTRACT_TPM_LIMIT,
+            increment_amount=token_count,
+            window_seconds=window_seconds,
+            now=now,
+        )
+
+    async def increment_feature_tpm(
+        self,
+        *,
+        key_prefix: str,
+        feature: str,
+        token_count: int,
+        window_seconds: int = 60,
+        ttl_seconds: int = 120,
+        now: int | None = None,
+    ) -> TrafficContractCounters:
+        return await self.increment_feature_traffic_contract(
+            key_prefix=key_prefix,
+            key_type=TrafficContractKeyType.TPM,
+            feature=feature,
+            increment_amount=token_count,
+            window_seconds=window_seconds,
+            ttl_seconds=ttl_seconds,
+            now=now,
+        )
+
+    async def inc_traffic_contract(
+        self,
+        *,
+        key_type: TrafficContractKeyType,
+        service_type: str,
+        increment_amount: int,
+    ) -> TrafficContractCounters | None:
+        if not env.ENABLE_TRAFFIC_CONTRACT_ENFORCEMENT or increment_amount <= 0:
+            return None
+
+        contract = env.traffic_contract_config.get(service_type)
+        if contract is None:
+            return None
+
+        window_seconds = (
+            env.TRAFFIC_CONTRACT_RPM_WINDOW_SECONDS
+            if key_type == TrafficContractKeyType.RPM
+            else env.TRAFFIC_CONTRACT_TPM_WINDOW_SECONDS
+        )
+        return await self.increment_feature_traffic_contract(
+            key_prefix=env.TRAFFIC_CONTRACT_REDIS_KEY_PREFIX,
+            key_type=key_type,
+            feature=contract["feature"],
+            increment_amount=increment_amount,
+            window_seconds=window_seconds,
+            ttl_seconds=env.TRAFFIC_CONTRACT_COUNTER_TTL_SECONDS,
+        )
+
+    async def update_contracts(self, *, service_type: str, usage: dict | None):
+        if not env.ENABLE_TRAFFIC_CONTRACT_ENFORCEMENT:
+            return
+
+        updates = [
+            self.inc_traffic_contract(
+                key_type=TrafficContractKeyType.RPM,
+                service_type=service_type,
+                increment_amount=1,
+            )
+        ]
+        if usage and usage.get("total_tokens"):
+            updates.append(
+                self.inc_traffic_contract(
+                    key_type=TrafficContractKeyType.TPM,
+                    service_type=service_type,
+                    increment_amount=usage["total_tokens"],
+                )
+            )
+
+        await asyncio.gather(*updates)

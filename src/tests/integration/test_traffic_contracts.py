@@ -11,7 +11,7 @@ def test_chat_completion_continues_when_traffic_contract_exceeded(
     mocker.patch.object(env, "ENABLE_TRAFFIC_CONTRACT_ENFORCEMENT", True)
     mocker.patch.object(
         traffic_contract_enforcer.redis_service,
-        "check_and_increment_feature_rpm",
+        "check_feature_traffic_contract",
         mocker.AsyncMock(
             return_value=TrafficContractDecision(
                 allowed=False,
@@ -23,6 +23,11 @@ def test_chat_completion_continues_when_traffic_contract_exceeded(
                 ratio_over=1.1,
             )
         ),
+    )
+    mocker.patch.object(
+        traffic_contract_enforcer.redis_service,
+        "inc_traffic_contract",
+        mocker.AsyncMock(),
     )
     get_completion = mocker.patch(
         "mlpa.run.get_completion",

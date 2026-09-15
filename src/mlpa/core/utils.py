@@ -17,7 +17,7 @@ from mlpa.core.config import (
     LITELLM_MASTER_AUTH_HEADERS,
     env,
 )
-from mlpa.core.country_codes import COUNTRY_CODES
+from mlpa.core.consts.country_codes import COUNTRY_CODES
 from mlpa.core.http_client import get_http_client
 from mlpa.core.logger import logger
 from mlpa.core.prometheus_metrics import PrometheusResult, metrics

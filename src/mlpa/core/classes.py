@@ -5,6 +5,7 @@ from typing import Optional
 from pydantic import BaseModel, Field
 
 from mlpa.core.config import env
+from mlpa.core.consts import TrafficContractMode
 
 
 class ChatRequest(BaseModel):
@@ -159,3 +160,23 @@ class LitellmRoutingSnapshot:
     attempted_retries: int
     response_duration_ms: float | None
     response_cost_usd: float | None
+
+
+@dataclass(frozen=True)
+class TrafficContractDecision:
+    allowed: bool
+    feature_count: int
+    basket_count: int
+    retry_after_seconds: int
+    limited_by: str | None = None
+
+    # borrowed = feature is over limit, basket has room
+    # degraded = basket is over limit
+    mode: TrafficContractMode = TrafficContractMode.NORMAL
+    ratio_over: float | None = None  # ratio of count / limit if mode != "normal"
+
+
+@dataclass(frozen=True)
+class TrafficContractCounters:
+    feature_count: int
+    basket_count: int

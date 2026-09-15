@@ -9,6 +9,79 @@ from mlpa.core.config import env
 SEARCH_SERVICE_TYPES = ("search", "search-dev", "agent-search")
 SEARCH_SERVICE_TYPES_SET = set(SEARCH_SERVICE_TYPES)
 
+TAGS_METADATA = [
+    {"name": "Health", "description": "Health check endpoints."},
+    {"name": "Metrics", "description": "Prometheus metrics endpoints."},
+    {
+        "name": "App Attest",
+        "description": "iOS App Attest verification flow: (1) GET /verify/challenge to obtain a challenge, "
+        "(2) POST /verify/attest with a JWT containing the attestation object. "
+        "Use the attested key for subsequent requests to /v1/chat/completions with use-app-attest header.",
+    },
+    {
+        "name": "Play Integrity",
+        "description": "Endpoints for verifying Play Integrity payloads.",
+    },
+    {"name": "LiteLLM", "description": "Endpoints for interacting with LiteLLM."},
+    {"name": "Mock", "description": "Mock endpoints for testing purposes."},
+    {
+        "name": "User Management",
+        "description": "Endpoints for managing user blocking status and budgets.",
+    },
+    {
+        "name": "Privacy Filter",
+        "description": "Endpoints for interacting with the Privacy Filter.",
+    },
+]
+
+CHAT_COMPLETION_DESCRIPTION = """
+Authorize first using App Attest, Play Integrity, FxA, or dev tier.
+
+**Headers:**
+
+- **Authorization** (required): Bearer token — FxA OAuth token, Play Integrity MLPA token, or App Attest JWT.
+- **service-type** (required): One of `ai`, `s2s`, `s2s-android`, `memories`, `ai-dev`, `memories-dev`, `mochi-dev`, `answer`, `liner-answer`, `telemetry` — for tracking and budget.
+- **purpose** (required for ai/ai-dev/mochi-dev/memories/memories-dev): One of `chat`, `title-generation`, `convo-starters-sidebar` for AI; `memory-generation` for memories; omit for s2s.
+- **x-dev-authorization** (required for ai-dev/memories-dev/mochi-dev): Experimentation token; also requires FxA in Authorization. Dev service types return 401 without it.
+- **use-app-attest**: Set to `true` for iOS App Attest.
+- **use-play-integrity**: Set to `true` for Android Play Integrity.
+"""
+
+
+SEARCH_DESCRIPTION = """
+Web search proxied to Exa via LiteLLM. Authorize the same way as /v1/chat/completions.
+
+**Headers:**
+
+- **Authorization** (required): Bearer token — FxA OAuth token, Play Integrity MLPA token, or App Attest JWT.
+- **service-type**: `search` by default; use `search-dev` for experiments. Search has its own budget pool and no `purpose` header.
+- **x-dev-authorization** (required for search-dev): Experimentation token; also requires FxA in Authorization.
+
+**Body:** `{"query": str, "max_results": int (1-10)}`.
+"""
+
+# Success (200) response docs for the proxied LiteLLM endpoints. The chat endpoint
+# returns either a JSON chat completion or an SSE stream depending on `stream`.
+CHAT_COMPLETION_SUCCESS_RESPONSE: dict[int | str, dict[str, Any]] = {
+    200: {
+        "description": (
+            "OpenAI-compatible chat completion. Returns a JSON completion object, or "
+            "a `text/event-stream` of SSE chunks when `stream` is `true`."
+        ),
+        "content": {
+            "application/json": {},
+            "text/event-stream": {},
+        },
+    }
+}
+
+SEARCH_SUCCESS_RESPONSE: dict[int | str, dict[str, Any]] = {
+    200: {
+        "description": "Search results returned from the Exa search backend.",
+        "content": {"application/json": {}},
+    }
+}
+
 
 def customize_openapi(app: FastAPI, tags_metadata: list[dict]) -> None:
     """Add AttestationAuth and AssertionAuth schemas to OpenAPI docs."""
