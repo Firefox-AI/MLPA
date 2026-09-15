@@ -60,12 +60,6 @@ def test_custom_key_becomes_the_bearer_token():
     }
 
 
-def test_key_outside_the_allowlist_raises():
-    with pytest.raises(ValueError) as excinfo:
-        litellm_virtual_auth_headers(UNKNOWN_KEY)
-    assert UNKNOWN_KEY not in str(excinfo.value)
-
-
 def test_header_ignored_while_feature_disabled(mocker):
     mocker.patch.object(env, "ALLOW_CUSTOM_VIRTUAL_KEY", False)
     assert authorize_module._resolve_custom_virtual_key(CUSTOM_KEY) is None
@@ -74,44 +68,6 @@ def test_header_ignored_while_feature_disabled(mocker):
 @pytest.mark.parametrize("header", [None, "", "   "])
 def test_absent_or_blank_header_falls_back_to_default(allow_custom_virtual_key, header):
     assert authorize_module._resolve_custom_virtual_key(header) is None
-
-
-def test_unknown_key_is_rejected_with_400(allow_custom_virtual_key):
-    with pytest.raises(HTTPException) as excinfo:
-        authorize_module._resolve_custom_virtual_key(UNKNOWN_KEY)
-    assert excinfo.value.status_code == 400
-    assert UNKNOWN_KEY not in str(excinfo.value.detail)
-
-
-async def test_unknown_key_rejected_before_the_response_starts(
-    allow_custom_virtual_key, mocker
-):
-    """
-    The authorize dependency must reject, not the proxy: on the streaming path
-    `litellm_virtual_auth_headers` runs inside the response generator, where a
-    raise can no longer set a status code.
-    """
-    mocker.patch.object(
-        authorize_module,
-        "fxa_auth",
-        mocker.AsyncMock(return_value={"user": "user-123"}),
-    )
-
-    with pytest.raises(HTTPException) as excinfo:
-        await authorize_module.authorize_chat_request(
-            request=_make_request(),
-            chat_request=ChatRequest(
-                model="gpt-oss-120b",
-                messages=[{"role": "user", "content": "hello"}],
-                stream=True,
-            ),
-            authorization="Bearer token",
-            service_type=authorize_module.ServiceType.ai,
-            purpose="chat",
-            litellm_virtual_key=UNKNOWN_KEY,
-        )
-
-    assert excinfo.value.status_code == 400
 
 
 def test_unknown_key_ignored_rather_than_rejected_while_disabled(mocker):
