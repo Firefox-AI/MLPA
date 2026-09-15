@@ -106,6 +106,12 @@ class Env(BaseSettings):
     USER_FEATURE_BUDGET_ANSWER_RPM_LIMIT: int = 10
     USER_FEATURE_BUDGET_ANSWER_TPM_LIMIT: int = 2000
 
+    USER_FEATURE_BUDGET_SW_ANSWER_BUDGET_ID: str = "end-user-budget-sw-answer"
+    USER_FEATURE_BUDGET_SW_ANSWER_MAX_BUDGET: float = 0.1
+    USER_FEATURE_BUDGET_SW_ANSWER_RPM_LIMIT: int = 10
+    USER_FEATURE_BUDGET_SW_ANSWER_TPM_LIMIT: int = 2000
+    USER_FEATURE_BUDGET_SW_ANSWER_BUDGET_DURATION: str = "1d"
+
     USER_FEATURE_BUDGET_LINER_ANSWERS_BUDGET_ID: str = "end-user-budget-liner-answer"
     USER_FEATURE_BUDGET_LINER_ANSWERS_BUDGET_DURATION: str = "1d"
     USER_FEATURE_BUDGET_LINER_ANSWERS_MAX_BUDGET: float = 0.06
@@ -184,7 +190,7 @@ class Env(BaseSettings):
     def service_type_config(self) -> dict[str, dict]:
         """
         User feature budget configuration by service type.
-        Returns a nested dictionary with service types (ai, s2s, s2s-android, memories, ai-dev, memories-dev, mochi-dev) as keys.
+        Returns a nested dictionary keyed by service type.
         Constructed from individual environment variables.
         """
         return {
@@ -235,6 +241,13 @@ class Env(BaseSettings):
                 "max_budget": self.USER_FEATURE_BUDGET_ANSWER_MAX_BUDGET,
                 "rpm_limit": self.USER_FEATURE_BUDGET_ANSWER_RPM_LIMIT,
                 "tpm_limit": self.USER_FEATURE_BUDGET_ANSWER_TPM_LIMIT,
+            },
+            "sw-answer": {
+                "budget_id": self.USER_FEATURE_BUDGET_SW_ANSWER_BUDGET_ID,
+                "max_budget": self.USER_FEATURE_BUDGET_SW_ANSWER_MAX_BUDGET,
+                "rpm_limit": self.USER_FEATURE_BUDGET_SW_ANSWER_RPM_LIMIT,
+                "tpm_limit": self.USER_FEATURE_BUDGET_SW_ANSWER_TPM_LIMIT,
+                "budget_duration": self.USER_FEATURE_BUDGET_SW_ANSWER_BUDGET_DURATION,
             },
             "liner-answer": {
                 "feature": self.FEATURE_SMART_WINDOW,
@@ -374,7 +387,8 @@ class Env(BaseSettings):
             "s2s": [],
             "s2s-android": [],
             "search": [],
-            "answer": ["smart-window-assistant"],
+            "answer": [],
+            "sw-answer": [],
             "liner-answer": [],
             "search-dev": [],
             "telemetry": ["chat"],
@@ -419,7 +433,7 @@ class Env(BaseSettings):
         # Force certain models to use certain service types
         return {
             "exa-search": ["search", "search-dev", "agent-search"],
-            "exa": ["answer"],
+            "exa": ["answer", "sw-answer"],
             "liner": ["liner-answer"],
         }
 
@@ -614,6 +628,7 @@ ERROR_CODE_FASTLY_WAF_RATE_LIMIT: int = 6
 
 ERROR_CODE_INVALID_MODEL_NAME: int = 8
 ERROR_CODE_INVALID_REQUEST: int = 9
+ERROR_CODE_GLOBAL_BUDGET_LIMIT_EXCEEDED: int = 10
 
 ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
     429: {
@@ -630,7 +645,8 @@ ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
                             "type": "integer",
                             "description": (
                                 "Error code: 1 budget limit exceeded, 2 rate limit (TPM/RPM), "
-                                "5 upstream provider rate limit, 6 Fastly WAF rate limit (edge; not from MLPA)"
+                                "5 upstream provider rate limit, 6 Fastly WAF rate limit (edge; not from MLPA), "
+                                "10 global budget limit exceeded"
                             ),
                         }
                     },
@@ -772,6 +788,30 @@ ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
                         "value": {"error": ERROR_CODE_MAX_USERS_REACHED},
                         "description": "New sign-ins for cap-managed service types are rejected because capacity is full.",
                     }
+                },
+            }
+        },
+    },
+    500: {
+        "description": "Internal Server Error",
+        "content": {
+            "application/json": {
+                "schema": {
+                    "type": "object",
+                    "properties": {
+                        "error": {
+                            "type": "integer",
+                            "description": "Error code: 10 for global budget exceeded",
+                        }
+                    },
+                    "required": ["error"],
+                },
+                "examples": {
+                    "global_budget_exceeded": {
+                        "summary": "Global budget limit exceeded",
+                        "value": {"error": ERROR_CODE_GLOBAL_BUDGET_LIMIT_EXCEEDED},
+                        "description": "Global LiteLLM virtual-key budget limit exceeded. Check Retry-After header (300 seconds = 5 minutes).",
+                    },
                 },
             }
         },
