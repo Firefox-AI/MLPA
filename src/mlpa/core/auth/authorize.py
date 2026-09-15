@@ -36,7 +36,7 @@ def _resolve_custom_virtual_key(virtual_key_header: str | None) -> str | None:
     Normalize the `litellm-virtual-key` header into the key to forward upstream.
 
     Returns None when not custom virtual keys not allowed.
-    Throws HTTPException when key not ofund within custom_virtual_keys
+    Throws HTTPException when key not fund within custom_virtual_keys
     """
     key = (virtual_key_header or "").strip()
     if not key:
