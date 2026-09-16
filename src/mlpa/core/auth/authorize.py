@@ -38,13 +38,10 @@ def _resolve_custom_virtual_key(virtual_key_header: str | None) -> str | None:
     Returns None when custom virtual keys are not allowed.
     Throws HTTPException when key not fund within custom_virtual_keys
     """
-    key = (virtual_key_header or "").strip()
     if not env.ALLOW_CUSTOM_VIRTUAL_KEY:
-        logger.warning(
-            "Ignoring litellm-virtual-key header: ALLOW_CUSTOM_VIRTUAL_KEY is false. "
-            "Request proceeds on the default MLPA virtual key."
-        )
         return None
+
+    key = (virtual_key_header or "").strip()
     if not key:
         return None
     return key
