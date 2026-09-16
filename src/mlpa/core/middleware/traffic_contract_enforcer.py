@@ -1,5 +1,3 @@
-import asyncio
-
 from fastapi import HTTPException, Request
 
 from mlpa.core.classes import (
@@ -7,7 +5,7 @@ from mlpa.core.classes import (
     AuthorizedSearchRequest,
 )
 from mlpa.core.config import env
-from mlpa.core.consts import TrafficContractKeyType, TrafficContractMode
+from mlpa.core.consts import TrafficContractMode
 from mlpa.core.logger import logger
 from mlpa.core.services.services import redis_service
 
@@ -38,25 +36,20 @@ async def enforce_traffic_contract(
         return
 
     try:
-        rpm_decision, tpm_decision = await asyncio.gather(
-            redis_service.check_feature_traffic_contract(
-                key_prefix=env.TRAFFIC_CONTRACT_REDIS_KEY_PREFIX,
-                key_type=TrafficContractKeyType.RPM,
-                feature=contract["feature"],
-                feature_limit=contract["rpm_limit"],
-                basket_limit=env.TOTAL_TRAFFIC_CONTRACT_RPM_LIMIT,
-                increment_amount=1,
-                window_seconds=env.TRAFFIC_CONTRACT_RPM_WINDOW_SECONDS,
-            ),
-            redis_service.check_feature_traffic_contract(
-                key_prefix=env.TRAFFIC_CONTRACT_REDIS_KEY_PREFIX,
-                key_type=TrafficContractKeyType.TPM,
-                feature=contract["feature"],
-                feature_limit=contract["tpm_limit"],
-                basket_limit=env.TOTAL_TRAFFIC_CONTRACT_TPM_LIMIT,
-                increment_amount=0,  # Token usage is incremented after the response.
-                window_seconds=env.TRAFFIC_CONTRACT_TPM_WINDOW_SECONDS,
-            ),
+        (
+            rpm_decision,
+            tpm_decision,
+        ) = await redis_service.check_feature_traffic_contracts(
+            key_prefix=env.TRAFFIC_CONTRACT_REDIS_KEY_PREFIX,
+            feature=contract["feature"],
+            rpm_limit=contract["rpm_limit"],
+            tpm_limit=contract["tpm_limit"],
+            rpm_basket_limit=env.TOTAL_TRAFFIC_CONTRACT_RPM_LIMIT,
+            tpm_basket_limit=env.TOTAL_TRAFFIC_CONTRACT_TPM_LIMIT,
+            rpm_increment_amount=1,
+            tpm_increment_amount=0,  # Token usage is incremented after the response.
+            rpm_window_seconds=env.TRAFFIC_CONTRACT_RPM_WINDOW_SECONDS,
+            tpm_window_seconds=env.TRAFFIC_CONTRACT_TPM_WINDOW_SECONDS,
         )
 
         _set_traffic_contract_modes(

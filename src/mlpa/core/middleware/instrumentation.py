@@ -24,7 +24,7 @@ def _traffic_contract_mode_label(
         "N/A",
     )
     if isinstance(mode, TrafficContractMode):
-        return mode.value
+        mode = mode.value
     if isinstance(mode, str) and mode in {mode.value for mode in TrafficContractMode}:
         return mode
     return "N/A"

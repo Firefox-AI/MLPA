@@ -11,16 +11,24 @@ def test_chat_completion_continues_when_traffic_contract_exceeded(
     mocker.patch.object(env, "ENABLE_TRAFFIC_CONTRACT_ENFORCEMENT", True)
     mocker.patch.object(
         traffic_contract_enforcer.redis_service,
-        "check_feature_traffic_contract",
+        "check_feature_traffic_contracts",
         mocker.AsyncMock(
-            return_value=TrafficContractDecision(
-                allowed=False,
-                feature_count=10_000,
-                basket_count=10_000,
-                retry_after_seconds=42,
-                limited_by="feature",
-                mode="borrowed",
-                ratio_over=1.1,
+            return_value=(
+                TrafficContractDecision(
+                    allowed=False,
+                    feature_count=10_000,
+                    basket_count=10_000,
+                    retry_after_seconds=42,
+                    limited_by="feature",
+                    mode="borrowed",
+                    ratio_over=1.1,
+                ),
+                TrafficContractDecision(
+                    allowed=True,
+                    feature_count=0,
+                    basket_count=0,
+                    retry_after_seconds=42,
+                ),
             )
         ),
     )

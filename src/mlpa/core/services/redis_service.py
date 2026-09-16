@@ -11,30 +11,30 @@ from mlpa.core.logger import logger
 
 TRAFFIC_CONTRACT_BASKET_FIELD = "__basket__"
 
-_CHECK_TRAFFIC_CONTRACT_SCRIPT = """
-local key = KEYS[1]
-local feature_field = ARGV[1]
-local basket_field = ARGV[2]
-local feature_limit = tonumber(ARGV[3])
-local basket_limit = tonumber(ARGV[4])
-local inc_amount = tonumber(ARGV[5])
+_CHECK_TRAFFIC_CONTRACTS_SCRIPT = """
+local function check(key, feature_field, basket_field, feature_limit, basket_limit, inc_amount)
+    if basket_limit == 0 and feature_limit == 0 then
+        return {1, 0, 0, "", "normal", ""}
+    end
 
-if basket_limit == 0 and feature_limit == 0 then
-    return {1, 0, 0, "", "normal", ""}
+    local feature_count = tonumber(redis.call("HGET", key, feature_field) or "0") + inc_amount
+    local basket_count = tonumber(redis.call("HGET", key, basket_field) or "0") + inc_amount
+
+    if basket_limit > 0 and basket_count > basket_limit then
+        return {0, feature_count, basket_count, "basket", "degraded", tostring(basket_count/basket_limit)}
+    end
+
+    if feature_limit > 0 and feature_count > feature_limit then
+        return {0, feature_count, basket_count, "feature", "borrowed", tostring(feature_count/feature_limit)}
+    end
+
+    return {1, feature_count, basket_count, "", "normal", ""}
 end
 
-local feature_count = tonumber(redis.call("HGET", key, feature_field) or "0") + inc_amount
-local basket_count = tonumber(redis.call("HGET", key, basket_field) or "0") + inc_amount
+local rpm = check(KEYS[1], ARGV[1], ARGV[2], tonumber(ARGV[3]), tonumber(ARGV[4]), tonumber(ARGV[5]))
+local tpm = check(KEYS[2], ARGV[1], ARGV[2], tonumber(ARGV[6]), tonumber(ARGV[7]), tonumber(ARGV[8]))
 
-if basket_limit > 0 and basket_count > basket_limit then
-    return {0, feature_count, basket_count, "basket", "degraded", tostring(basket_count/basket_limit)}
-end
-
-if feature_limit > 0 and feature_count > feature_limit then
-    return {0, feature_count, basket_count, "feature", "borrowed", tostring(feature_count/feature_limit)}
-end
-
-return {1, feature_count, basket_count, "", "normal", ""}
+return {rpm, tpm}
 """
 
 _INCREMENT_TRAFFIC_CONTRACT_SCRIPT = """
@@ -113,48 +113,82 @@ class RedisService:
         elapsed_in_bucket = current_time % window_seconds
         return window_seconds - elapsed_in_bucket
 
-    async def check_feature_traffic_contract(
-        self,
+    @staticmethod
+    def traffic_contract_decision_from_result(
+        result: list,
         *,
-        key_prefix: str,
-        key_type: TrafficContractKeyType,
-        feature: str,
-        feature_limit: int,
-        basket_limit: int,
-        increment_amount: int,
-        window_seconds: int = 60,
-        now: int | None = None,
+        retry_after_seconds: int,
     ) -> TrafficContractDecision:
-        key = self.traffic_contract_key(
-            key_prefix=key_prefix,
-            key_type=key_type,
-            now=now,
-            window_seconds=window_seconds,
-        )
-        retry_after = self.retry_after_seconds(
-            now=now,
-            window_seconds=window_seconds,
-        )
-
-        result = await self.client.eval(
-            _CHECK_TRAFFIC_CONTRACT_SCRIPT,
-            1,
-            key,
-            feature,
-            TRAFFIC_CONTRACT_BASKET_FIELD,
-            feature_limit,
-            basket_limit,
-            increment_amount,
-        )
-
         return TrafficContractDecision(
             allowed=bool(int(result[0])),
             feature_count=int(result[1]),
             basket_count=int(result[2]),
-            retry_after_seconds=retry_after,
+            retry_after_seconds=retry_after_seconds,
             limited_by=str(result[3]) or None,
             mode=TrafficContractMode(result[4]),
             ratio_over=float(result[5]) if result[5] not in (None, "") else None,
+        )
+
+    async def check_feature_traffic_contracts(
+        self,
+        *,
+        key_prefix: str,
+        feature: str,
+        rpm_limit: int,
+        tpm_limit: int,
+        rpm_basket_limit: int,
+        tpm_basket_limit: int,
+        rpm_increment_amount: int,
+        tpm_increment_amount: int,
+        rpm_window_seconds: int = 60,
+        tpm_window_seconds: int = 60,
+        now: int | None = None,
+    ) -> tuple[TrafficContractDecision, TrafficContractDecision]:
+        rpm_key = self.traffic_contract_key(
+            key_prefix=key_prefix,
+            key_type=TrafficContractKeyType.RPM,
+            now=now,
+            window_seconds=rpm_window_seconds,
+        )
+        tpm_key = self.traffic_contract_key(
+            key_prefix=key_prefix,
+            key_type=TrafficContractKeyType.TPM,
+            now=now,
+            window_seconds=tpm_window_seconds,
+        )
+        rpm_retry_after = self.retry_after_seconds(
+            now=now,
+            window_seconds=rpm_window_seconds,
+        )
+        tpm_retry_after = self.retry_after_seconds(
+            now=now,
+            window_seconds=tpm_window_seconds,
+        )
+
+        rpm_result, tpm_result = await self.client.eval(
+            _CHECK_TRAFFIC_CONTRACTS_SCRIPT,
+            2,
+            rpm_key,
+            tpm_key,
+            feature,
+            TRAFFIC_CONTRACT_BASKET_FIELD,
+            rpm_limit,
+            rpm_basket_limit,
+            rpm_increment_amount,
+            tpm_limit,
+            tpm_basket_limit,
+            tpm_increment_amount,
+        )
+
+        return (
+            self.traffic_contract_decision_from_result(
+                rpm_result,
+                retry_after_seconds=rpm_retry_after,
+            ),
+            self.traffic_contract_decision_from_result(
+                tpm_result,
+                retry_after_seconds=tpm_retry_after,
+            ),
         )
 
     async def increment_feature_traffic_contract(
