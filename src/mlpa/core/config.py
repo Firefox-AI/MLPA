@@ -527,15 +527,19 @@ LITELLM_VIRTUAL_AUTH_HEADERS = {
 }
 
 
-def litellm_virtual_auth_headers(virtual_key: str | None = None) -> dict[str, str]:
+def resolve_litellm_virtual_auth_headers(
+    custom_virtual_key: str | None = None,
+) -> dict[str, str]:
     """
-    Small utility function to resolve litellm virtual auth headers or virtual key
+    Resolve virtual key to be forwarded to litellm, if passing custom virtual key
+    the custom key will be used. Otherwise, the default LITELLM_VIRTUAL_AUTH_HEADERS
+    will be used
     """
-    if virtual_key is None:
+    if custom_virtual_key is None:
         return LITELLM_VIRTUAL_AUTH_HEADERS
     return {
         "Content-Type": "application/json",
-        "Authorization": f"Bearer {virtual_key}",
+        "Authorization": f"Bearer {custom_virtual_key}",
     }
 
 

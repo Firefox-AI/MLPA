@@ -24,7 +24,7 @@ from mlpa.core.config import (
     LITELLM_VIRTUAL_AUTH_HEADERS,
     Env,
     env,
-    litellm_virtual_auth_headers,
+    resolve_litellm_virtual_auth_headers,
 )
 from mlpa.core.search import get_search
 from tests.consts import SUCCESSFUL_CHAT_RESPONSE
@@ -50,11 +50,11 @@ def _make_request(headers: dict[str, str] | None = None):
 
 
 def test_no_key_reuses_the_shared_default_headers():
-    assert litellm_virtual_auth_headers(None) is LITELLM_VIRTUAL_AUTH_HEADERS
+    assert resolve_litellm_virtual_auth_headers(None) is LITELLM_VIRTUAL_AUTH_HEADERS
 
 
 def test_custom_key_becomes_the_bearer_token():
-    assert litellm_virtual_auth_headers(CUSTOM_KEY) == {
+    assert resolve_litellm_virtual_auth_headers(CUSTOM_KEY) == {
         "Content-Type": "application/json",
         "Authorization": f"Bearer {CUSTOM_KEY}",
     }

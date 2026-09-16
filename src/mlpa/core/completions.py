@@ -12,7 +12,7 @@ from mlpa.core.config import (
     ERROR_CODE_MAX_USERS_REACHED,
     LITELLM_COMPLETIONS_URL,
     env,
-    litellm_virtual_auth_headers,
+    resolve_litellm_virtual_auth_headers,
 )
 from mlpa.core.errors import classify_upstream_error
 from mlpa.core.http_client import get_http_client
@@ -112,7 +112,7 @@ async def stream_completion(
     log = logger.bind(**authorized_chat_request.log_fields)
     start_time = time.perf_counter()
     record_request_with_tools(authorized_chat_request)
-    auth_headers = litellm_virtual_auth_headers(
+    auth_headers = resolve_litellm_virtual_auth_headers(
         authorized_chat_request.litellm_virtual_key
     )
     body = _build_litellm_body(authorized_chat_request, stream=True)
@@ -363,7 +363,7 @@ async def _get_completion(authorized_chat_request: AuthorizedChatRequest):
         client = get_http_client()
         response = await client.post(
             LITELLM_COMPLETIONS_URL,
-            headers=litellm_virtual_auth_headers(
+            headers=resolve_litellm_virtual_auth_headers(
                 authorized_chat_request.litellm_virtual_key
             ),
             json=body,
