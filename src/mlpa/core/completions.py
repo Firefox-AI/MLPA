@@ -333,8 +333,10 @@ async def stream_completion(
             authorized_chat_request, result, time.perf_counter() - start_time
         )
         record_chat_availability(authorized_chat_request, availability_reason)
-        await redis_service.update_contracts(
-            service_type=authorized_chat_request.service_type, usage=usage
+        asyncio.create_task(
+            redis_service.update_contracts(
+                service_type=authorized_chat_request.service_type, usage=usage
+            )
         )
 
 
@@ -424,6 +426,9 @@ async def _get_completion(authorized_chat_request: AuthorizedChatRequest):
             authorized_chat_request, result, time.perf_counter() - start_time
         )
         record_chat_availability(authorized_chat_request, availability_reason)
-        await redis_service.update_contracts(
-            service_type=authorized_chat_request.service_type, usage=usage
+        asyncio.create_task(
+            redis_service.update_contracts(
+                service_type=authorized_chat_request.service_type,
+                usage=usage,
+            )
         )

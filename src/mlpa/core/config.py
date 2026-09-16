@@ -243,6 +243,7 @@ class Env(BaseSettings):
                 "tpm_limit": self.USER_FEATURE_BUDGET_ANSWER_TPM_LIMIT,
             },
             "sw-answer": {
+                "feature": self.FEATURE_SMART_WINDOW,
                 "budget_id": self.USER_FEATURE_BUDGET_SW_ANSWER_BUDGET_ID,
                 "max_budget": self.USER_FEATURE_BUDGET_SW_ANSWER_MAX_BUDGET,
                 "rpm_limit": self.USER_FEATURE_BUDGET_SW_ANSWER_RPM_LIMIT,

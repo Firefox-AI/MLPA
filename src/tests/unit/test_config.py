@@ -93,8 +93,9 @@ def test_user_feature_budget_liner_answer_from_env():
 def test_user_feature_budget_sw_answer_default_values():
     """Test that sw-answer budget configuration has correct default values."""
     env = Env()
-    sw_answer_config = env.user_feature_budget["sw-answer"]
+    sw_answer_config = env.service_type_config["sw-answer"]
 
+    assert sw_answer_config["feature"] == env.FEATURE_SMART_WINDOW
     assert sw_answer_config["budget_id"] == "end-user-budget-sw-answer"
     assert sw_answer_config["max_budget"] == 0.1
     assert sw_answer_config["rpm_limit"] == 10
@@ -115,7 +116,8 @@ def test_user_feature_budget_sw_answer_from_env():
     with patch.dict(os.environ, env_vars):
         env = Env()
 
-        sw_answer_config = env.user_feature_budget["sw-answer"]
+        sw_answer_config = env.service_type_config["sw-answer"]
+        assert sw_answer_config["feature"] == env.FEATURE_SMART_WINDOW
         assert sw_answer_config["budget_id"] == "custom-sw-answer-budget-id"
         assert sw_answer_config["max_budget"] == 0.5
         assert sw_answer_config["rpm_limit"] == 20
@@ -317,6 +319,51 @@ def test_user_feature_budget_structure_consistency():
         assert service_keys == reference_keys, (
             f"{service_type} has different keys than ai"
         )
+
+
+def test_service_type_config_values_are_defined():
+    """Every service type must have complete feature, budget, and rate config."""
+    env = Env()
+    required_keys = {
+        "feature",
+        "budget_id",
+        "budget_duration",
+        "max_budget",
+        "rpm_limit",
+        "tpm_limit",
+    }
+
+    for service_type, config in env.service_type_config.items():
+        assert set(config.keys()) == required_keys, (
+            f"{service_type} service_type_config keys differ from required keys"
+        )
+        assert isinstance(config["feature"], str)
+        assert config["feature"], f"{service_type} feature must be defined"
+        assert isinstance(config["budget_id"], str)
+        assert config["budget_id"], f"{service_type} budget_id must be defined"
+        assert isinstance(config["budget_duration"], str)
+        assert config["budget_duration"], (
+            f"{service_type} budget_duration must be defined"
+        )
+        assert isinstance(config["max_budget"], float)
+        assert config["max_budget"] >= 0
+        assert isinstance(config["rpm_limit"], int)
+        assert config["rpm_limit"] >= 0
+        assert isinstance(config["tpm_limit"], int)
+        assert config["tpm_limit"] >= 0
+
+
+def test_traffic_contract_config_defined_for_each_service_type():
+    env = Env()
+
+    assert set(env.traffic_contract_config) == set(env.service_type_config)
+    for service_type, contract in env.traffic_contract_config.items():
+        service_config = env.service_type_config[service_type]
+        assert contract["feature"] == service_config["feature"]
+        assert isinstance(contract["rpm_limit"], int)
+        assert contract["rpm_limit"] >= 0
+        assert isinstance(contract["tpm_limit"], int)
+        assert contract["tpm_limit"] >= 0
 
 
 def test_user_feature_budget_memories_type_validation():

@@ -189,86 +189,6 @@ class RedisService:
             basket_count=int(result[1]),
         )
 
-    async def check_feature_rpm(
-        self,
-        *,
-        key_prefix: str,
-        feature: str,
-        feature_rpm_limit: int,
-        window_seconds: int = 60,
-        now: int | None = None,
-    ) -> TrafficContractDecision:
-        return await self.check_feature_traffic_contract(
-            key_prefix=key_prefix,
-            key_type=TrafficContractKeyType.RPM,
-            feature=feature,
-            feature_limit=feature_rpm_limit,
-            basket_limit=env.TOTAL_TRAFFIC_CONTRACT_RPM_LIMIT,
-            increment_amount=1,
-            window_seconds=window_seconds,
-            now=now,
-        )
-
-    async def increment_feature_rpm(
-        self,
-        *,
-        key_prefix: str,
-        feature: str,
-        window_seconds: int = 60,
-        ttl_seconds: int = 120,
-        now: int | None = None,
-    ) -> TrafficContractCounters:
-        return await self.increment_feature_traffic_contract(
-            key_prefix=key_prefix,
-            key_type=TrafficContractKeyType.RPM,
-            feature=feature,
-            increment_amount=1,
-            window_seconds=window_seconds,
-            ttl_seconds=ttl_seconds,
-            now=now,
-        )
-
-    async def check_feature_tpm(
-        self,
-        *,
-        key_prefix: str,
-        feature: str,
-        feature_tpm_limit: int,
-        token_count: int = 0,
-        window_seconds: int = 60,
-        now: int | None = None,
-    ) -> TrafficContractDecision:
-        return await self.check_feature_traffic_contract(
-            key_prefix=key_prefix,
-            key_type=TrafficContractKeyType.TPM,
-            feature=feature,
-            feature_limit=feature_tpm_limit,
-            basket_limit=env.TOTAL_TRAFFIC_CONTRACT_TPM_LIMIT,
-            increment_amount=token_count,
-            window_seconds=window_seconds,
-            now=now,
-        )
-
-    async def increment_feature_tpm(
-        self,
-        *,
-        key_prefix: str,
-        feature: str,
-        token_count: int,
-        window_seconds: int = 60,
-        ttl_seconds: int = 120,
-        now: int | None = None,
-    ) -> TrafficContractCounters:
-        return await self.increment_feature_traffic_contract(
-            key_prefix=key_prefix,
-            key_type=TrafficContractKeyType.TPM,
-            feature=feature,
-            increment_amount=token_count,
-            window_seconds=window_seconds,
-            ttl_seconds=ttl_seconds,
-            now=now,
-        )
-
     async def inc_traffic_contract(
         self,
         *,
@@ -301,20 +221,25 @@ class RedisService:
         if not env.ENABLE_TRAFFIC_CONTRACT_ENFORCEMENT:
             return
 
-        updates = [
-            self.inc_traffic_contract(
-                key_type=TrafficContractKeyType.RPM,
-                service_type=service_type,
-                increment_amount=1,
-            )
-        ]
-        if usage and usage.get("total_tokens"):
-            updates.append(
+        try:
+            updates = [
                 self.inc_traffic_contract(
-                    key_type=TrafficContractKeyType.TPM,
+                    key_type=TrafficContractKeyType.RPM,
                     service_type=service_type,
-                    increment_amount=usage["total_tokens"],
+                    increment_amount=1,
                 )
-            )
+            ]
+            if usage and usage.get("total_tokens"):
+                updates.append(
+                    self.inc_traffic_contract(
+                        key_type=TrafficContractKeyType.TPM,
+                        service_type=service_type,
+                        increment_amount=usage["total_tokens"],
+                    )
+                )
 
-        await asyncio.gather(*updates)
+            await asyncio.gather(*updates)
+        except Exception as e:
+            logger.error(f"Error updating traffic contracts for {service_type}: {e}")
+            if not env.TRAFFIC_CONTRACT_FAIL_OPEN_ON_REDIS_ERROR:
+                raise
