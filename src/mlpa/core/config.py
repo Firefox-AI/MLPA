@@ -66,9 +66,6 @@ class Env(BaseSettings):
     MLPA_UI_ACCESS_KEY: str = "sk-ui-access-default"
     MLPA_VIRTUAL_KEY: str = "sk-virtual"  # Enforces LiteLLM.max_budget
 
-    # Debug Timing key
-    MLPA_DEBUG_TIMING_KEY: str = "sk-debug-timing"
-
     # User Feature Budget - AI service type
     USER_FEATURE_BUDGET_AI_BUDGET_ID: str = "end-user-budget-ai"
     USER_FEATURE_BUDGET_AI_BUDGET_DURATION: str = "1d"

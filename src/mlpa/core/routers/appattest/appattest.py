@@ -1,6 +1,4 @@
 import binascii
-import hashlib
-import json
 import os
 import time
 from functools import lru_cache

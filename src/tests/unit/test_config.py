@@ -1,8 +1,6 @@
 import os
 from unittest.mock import patch
 
-import pytest
-
 from mlpa.core.config import Env
 
 

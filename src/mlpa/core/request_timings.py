@@ -8,8 +8,11 @@ from starlette.datastructures import MutableHeaders
 from starlette.requests import Request
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
-from mlpa.core.config import env
 from mlpa.core.logger import logger
+
+
+def timing_enabled(request: Request) -> bool:
+    return request.headers.get("debug-timing", "").strip().lower() == "true"
 
 
 class TimingSpan(TypedDict):
@@ -43,8 +46,7 @@ class RequestDebugTiming:
 
     def __enter__(self):
         self.start_time = None
-        timing_key = self.request.headers.get("debug-timing-key")
-        if timing_key and timing_key == env.MLPA_DEBUG_TIMING_KEY:
+        if timing_enabled(self.request):
             self.start_time = time.perf_counter()
             if not hasattr(self.request.state, "debug_timing_start"):
                 # Direct service calls outside middleware use the first span as origin.
@@ -87,8 +89,7 @@ class RequestTimingsMiddleware:
             return
 
         request = Request(scope)
-        timing_key = request.headers.get("debug-timing-key")
-        if not timing_key or timing_key != env.MLPA_DEBUG_TIMING_KEY:
+        if not timing_enabled(request):
             await self.app(scope, receive, send)
             return
 
@@ -128,7 +129,7 @@ class RequestTimingsMiddleware:
                             del headers[name]
                 if (
                     scope["method"] != "HEAD"
-                    and status_code not in {204, 206, 304}
+                    and status_code == 200
                     and (
                         content_type == "application/json"
                         or content_type.endswith("+json")

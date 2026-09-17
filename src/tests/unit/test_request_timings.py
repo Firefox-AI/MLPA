@@ -3,25 +3,24 @@ import asyncio
 import pytest
 from fastapi import Request
 
-from mlpa.core.config import env
 from mlpa.core.request_timings import RequestTimingsMiddleware, measure
 
 
-def make_request(key=None):
-    headers = [] if key is None else [(b"debug-timing-key", key.encode())]
+def make_request(value=None):
+    headers = [] if value is None else [(b"debug-timing", value.encode())]
     return Request({"type": "http", "method": "POST", "path": "/", "headers": headers})
 
 
-@pytest.mark.parametrize("key", [None, "", "incorrect-key"])
-def test_disabled_timing_does_not_create_state(key):
-    request = make_request(key)
+@pytest.mark.parametrize("value", [None, "", "false", "0", "1", "yes", "invalid"])
+def test_disabled_timing_does_not_create_state(value):
+    request = make_request(value)
     with measure("auth", request):
         pass
     assert not hasattr(request.state, "debug_spans")
 
 
 def test_spans_preserve_each_occurrence_even_on_failure(mocker):
-    request = make_request(env.MLPA_DEBUG_TIMING_KEY)
+    request = make_request("true")
     mocker.patch(
         "mlpa.core.request_timings.time.perf_counter",
         side_effect=[1.0, 1.25, 2.0, 2.5, 3.0, 3.125],
@@ -41,7 +40,7 @@ def test_spans_preserve_each_occurrence_even_on_failure(mocker):
 
 async def test_concurrent_requests_keep_separate_timings():
     async def run(stage):
-        request = make_request(env.MLPA_DEBUG_TIMING_KEY)
+        request = make_request("true")
         with measure(stage, request):
             await asyncio.sleep(0)
         assert {span["name"] for span in request.state.debug_spans} == {stage}
@@ -60,7 +59,7 @@ async def test_middleware_records_full_stream_or_failure(mocker, fail):
         "mlpa.core.request_timings.time.perf_counter", side_effect=lambda: now[0]
     )
     log = mocker.patch("mlpa.core.request_timings.logger")
-    request = make_request(env.MLPA_DEBUG_TIMING_KEY)
+    request = make_request("true")
 
     async def app(scope, receive, send):
         with measure("upstream", Request(scope)):
@@ -107,8 +106,10 @@ async def test_middleware_does_not_log_without_debug_header(mocker):
     log.bind.assert_not_called()
 
 
-@pytest.mark.parametrize("key", [None, "incorrect-key", env.MLPA_DEBUG_TIMING_KEY])
-def test_middleware_adds_completion_timings(mocker, metrics_spy, key):
+@pytest.mark.parametrize(
+    "value", [None, "", "false", "invalid", "true", "TRUE", " true "]
+)
+def test_middleware_adds_completion_timings(mocker, metrics_spy, value):
     import httpx
     from fastapi import FastAPI
     from fastapi.testclient import TestClient
@@ -138,13 +139,13 @@ def test_middleware_adds_completion_timings(mocker, metrics_spy, key):
     mocker.patch("mlpa.core.completions.get_http_client", return_value=client)
     with TestClient(app) as test_client:
         result = test_client.post(
-            "/completion", headers={"debug-timing-key": key} if key else {}
+            "/completion", headers={"debug-timing": value} if value else {}
         )
     assert result.status_code == 200
     assert int(result.headers["content-length"]) == len(result.content)
     data = result.json()
     assert "debug_timings" not in data
-    if key == env.MLPA_DEBUG_TIMING_KEY:
+    if (value or "").strip().lower() == "true":
         spans = data["spans"]
         assert [span["name"] for span in spans] == ["total", "auth", "db", "upstream"]
         assert all(span["duration_ms"] >= 0 for span in spans)
@@ -178,9 +179,7 @@ def test_streaming_timings_survive_registered_middleware(mocker):
         return StreamingResponse(chunks())
 
     with TestClient(app) as client:
-        response = client.get(
-            "/stream", headers={"debug-timing-key": env.MLPA_DEBUG_TIMING_KEY}
-        )
+        response = client.get("/stream", headers={"debug-timing": "true"})
     assert response.content == b"firstlast"
     fields = log.bind.call_args.kwargs
     spans = fields["spans"]
@@ -200,12 +199,13 @@ def test_streaming_timings_survive_registered_middleware(mocker):
         (b"compressed", "application/json", True, False),
     ],
 )
+@pytest.mark.parametrize("status", [200, 201, 202, 400, 401, 403, 429, 500, 503])
 async def test_json_response_handling(
-    mocker, body, content_type, encoded, expected_debug
+    mocker, body, content_type, encoded, expected_debug, status
 ):
     import json
 
-    request = make_request(env.MLPA_DEBUG_TIMING_KEY)
+    request = make_request("true")
     messages = []
 
     async def app(scope, receive, send):
@@ -217,7 +217,9 @@ async def test_json_response_handling(
         ]
         if encoded:
             headers.append((b"content-encoding", b"gzip"))
-        await send({"type": "http.response.start", "status": 403, "headers": headers})
+        await send(
+            {"type": "http.response.start", "status": status, "headers": headers}
+        )
         await send({"type": "http.response.body", "body": body[:3], "more_body": True})
         await send({"type": "http.response.body", "body": body[3:], "more_body": False})
 
@@ -225,18 +227,19 @@ async def test_json_response_handling(
         messages.append(message)
 
     await RequestTimingsMiddleware(app)(request.scope, mocker.AsyncMock(), send)
-    assert messages[0]["status"] == 403
+    assert messages[0]["status"] == status
     headers = dict(messages[0]["headers"])
     assert headers[b"x-custom"] == b"preserved"
     actual_body = b"".join(message.get("body", b"") for message in messages[1:])
     assert int(headers[b"content-length"]) == len(actual_body)
-    if expected_debug:
+    if expected_debug and status == 200:
         data = json.loads(actual_body)
         assert data["detail"] == "denied"
         assert data["spans"][0]["duration_ms"] >= 0
         assert b"etag" not in headers
     else:
         assert actual_body == body
+        assert headers[b"etag"] == b"original"
 
 
 async def test_json_total_excludes_sending_time(mocker):
@@ -247,7 +250,7 @@ async def test_json_total_excludes_sending_time(mocker):
         "mlpa.core.request_timings.time.perf_counter", side_effect=lambda: now[0]
     )
     log = mocker.patch("mlpa.core.request_timings.logger")
-    request = make_request(env.MLPA_DEBUG_TIMING_KEY)
+    request = make_request("true")
     messages = []
 
     async def app(scope, receive, send):
@@ -273,7 +276,9 @@ async def test_json_total_excludes_sending_time(mocker):
     assert log.bind.call_args.kwargs["spans"][0]["duration_ms"] == 2000
 
 
-@pytest.mark.parametrize("key", [None, "incorrect-key", env.MLPA_DEBUG_TIMING_KEY])
+@pytest.mark.parametrize(
+    "value", [None, "", "false", "invalid", "true", "TRUE", " true "]
+)
 @pytest.mark.parametrize(
     "ending",
     [
@@ -283,10 +288,10 @@ async def test_json_total_excludes_sending_time(mocker):
         b'data: {"error":"failed"}\n\n',
     ],
 )
-async def test_sse_debug_event_after_done_without_buffering(mocker, key, ending):
+async def test_sse_debug_event_after_done_without_buffering(mocker, value, ending):
     import json
 
-    request = make_request(key)
+    request = make_request(value)
     messages = []
     original = b'data: {"choices":[{"delta":{"content":"hello"}}]}\n\n' + ending
     now = [1.0]
@@ -321,7 +326,7 @@ async def test_sse_debug_event_after_done_without_buffering(mocker, key, ending)
 
     await RequestTimingsMiddleware(app)(request.scope, mocker.AsyncMock(), send)
     result = b"".join(message.get("body", b"") for message in messages)
-    enabled = key == env.MLPA_DEBUG_TIMING_KEY
+    enabled = (value or "").strip().lower() == "true"
     if enabled and b"[DONE]" in ending:
         assert result.startswith(original + b"data: ")
         debug = json.loads(result[len(original) + len(b"data: ") :])
@@ -363,9 +368,7 @@ def test_sse_debug_event_uses_completed_timings_through_middleware(mocker):
         return StreamingResponse(chunks(), media_type="text/event-stream")
 
     with TestClient(app) as client:
-        response = client.get(
-            "/stream", headers={"debug-timing-key": env.MLPA_DEBUG_TIMING_KEY}
-        )
+        response = client.get("/stream", headers={"debug-timing": "true"})
     events = response.content.split(b"\n\n")
     assert events[1] == b"data: [DONE]"
     payload = json.loads(events[2][len(b"data: ") :])
@@ -379,7 +382,7 @@ def test_sse_debug_event_uses_completed_timings_through_middleware(mocker):
 def test_nested_and_repeated_spans_preserve_offsets_precision_and_failures(mocker):
     from mlpa.core.request_timings import timing_snapshot
 
-    request = make_request(env.MLPA_DEBUG_TIMING_KEY)
+    request = make_request("true")
     request.state.debug_timing_start = 10.0
     request.state.debug_spans = []
     mocker.patch(
@@ -406,7 +409,7 @@ def test_nested_and_repeated_spans_preserve_offsets_precision_and_failures(mocke
 def test_stage_and_total_spans_round_to_two_decimals(mocker):
     from mlpa.core.request_timings import timing_snapshot
 
-    request = make_request(env.MLPA_DEBUG_TIMING_KEY)
+    request = make_request("true")
     request.state.debug_timing_start = 10.0
     request.state.debug_spans = []
     mocker.patch(
@@ -419,3 +422,34 @@ def test_stage_and_total_spans_round_to_two_decimals(mocker):
         {"name": "total", "start_ms": 0.0, "duration_ms": 12.35},
         {"name": "auth", "start_ms": 1.23, "duration_ms": 8.64},
     ]
+
+
+@pytest.mark.parametrize("status", [201, 400, 401, 403, 429, 500, 503])
+async def test_non_200_sse_response_is_unchanged(mocker, status):
+    request = make_request("true")
+    body = b"data: [DONE]\n\n"
+    original = [
+        {
+            "type": "http.response.start",
+            "status": status,
+            "headers": [
+                (b"content-type", b"text/event-stream"),
+                (b"content-length", str(len(body)).encode()),
+                (b"etag", b"original"),
+            ],
+        },
+        {"type": "http.response.body", "body": body, "more_body": False},
+    ]
+    sent = []
+
+    async def app(scope, receive, send):
+        import copy
+
+        for message in original:
+            await send(copy.deepcopy(message))
+
+    async def send(message):
+        sent.append(message)
+
+    await RequestTimingsMiddleware(app)(request.scope, mocker.AsyncMock(), send)
+    assert sent == original

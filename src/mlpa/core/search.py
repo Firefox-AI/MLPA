@@ -1,3 +1,4 @@
+import asyncio
 import time
 
 import httpx
@@ -15,6 +16,7 @@ from mlpa.core.metrics import record_search_latency, record_search_request_rejec
 from mlpa.core.prometheus_metrics import PrometheusResult
 from mlpa.core.request_timings import measure
 from mlpa.core.sanitization import sanitize_request_body, sanitize_response_body
+from mlpa.core.services.services import redis_service
 from mlpa.core.utils import raise_and_log
 
 
@@ -37,6 +39,7 @@ async def _get_search(
         )
     )
     result = PrometheusResult.ERROR
+    usage = None
     logger.debug(
         f"Starting a search request using for user {authorized_search_request.user}",
     )
@@ -71,6 +74,7 @@ async def _get_search(
             raise_and_log(e)
 
         data = sanitize_response_body(response.json())
+        usage = data.get("usage")
 
         result = PrometheusResult.SUCCESS
         return data
@@ -80,3 +84,9 @@ async def _get_search(
         raise_and_log(e, False, 502, "Failed to proxy request")
     finally:
         record_search_latency(result, time.perf_counter() - start_time)
+        asyncio.create_task(
+            redis_service.update_contracts(
+                service_type=authorized_search_request.service_type,
+                usage=usage,
+            )
+        )

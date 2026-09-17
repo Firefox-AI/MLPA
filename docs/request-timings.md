@@ -2,9 +2,9 @@
 
 ## Response format
 
-Send the `debug-timing-key` header matching `MLPA_DEBUG_TIMING_KEY` to enable
-request timing tracking and response. JSON object responses include a top-level `spans` array. Successful SSE
-streams ending with `data: [DONE]` receive one additional `data: {"spans": [...]}`
+Send `debug-timing: true` as a header to enable request timing tracking and response.
+Timing data is returned only for HTTP 200 responses. Other status codes retain their original response body and headers; debug-enabled requests still log timings.
+HTTP 200 JSON object responses include a top-level `spans` array. HTTP 200 SSE streams ending with `data: [DONE]` receive one additional `data: {"spans": [...]}`
 event. Clients must continue reading after `[DONE]` to receive it.
 
 Both payloads, and the structured request-completion log, contain the same shape:

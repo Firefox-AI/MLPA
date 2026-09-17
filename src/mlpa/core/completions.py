@@ -14,7 +14,6 @@ from mlpa.core.config import (
     LITELLM_VIRTUAL_AUTH_HEADERS,
     env,
 )
-from mlpa.core.consts import TrafficContractKeyType
 from mlpa.core.errors import classify_upstream_error
 from mlpa.core.http_client import get_http_client
 from mlpa.core.litellm_routing import parse_litellm_routing_headers

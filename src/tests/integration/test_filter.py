@@ -42,7 +42,7 @@ def test_filter_forwards_items_to_privacy_filter(
 
     headers = {"authorization": f"Bearer {TEST_FXA_TOKEN}"}
     if debug:
-        headers["debug-timing-key"] = env.MLPA_DEBUG_TIMING_KEY
+        headers["debug-timing"] = "true"
     response = mocked_client_integration.post(
         "/privacy-filter/",
         headers=headers,
