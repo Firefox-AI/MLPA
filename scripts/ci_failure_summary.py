@@ -50,6 +50,17 @@ def _split_classname(classname: str) -> tuple[list[str], str | None]:
 
 def main(junit_path: str, banner: str) -> None:
     lines: list[str] = []
+    if not Path(junit_path).exists():
+        # A step before pytest (e.g. bringing up the docker-compose stack)
+        # failed, so pytest never ran and never wrote this file. That's a
+        # real failure -- just not one with test docstrings to show.
+        lines.append(
+            f"Tests never ran -- {junit_path!r} was not created. "
+            "Check the earlier steps in this job for the actual failure."
+        )
+        _write(lines)
+        return
+
     tree = ET.parse(junit_path)
     failures = []
     for testcase in tree.getroot().iter("testcase"):
@@ -87,6 +98,10 @@ def main(junit_path: str, banner: str) -> None:
             if message:
                 lines.append(f"  - Failure: {message}")
 
+    _write(lines)
+
+
+def _write(lines: list[str]) -> None:
     output = "\n".join(lines) + "\n"
     summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
     if summary_path:
