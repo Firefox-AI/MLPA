@@ -13,8 +13,8 @@ setup: node-setup
 	@echo "✅ Setup complete! To activate your environment, run:"
 	@echo "   source $(VENV)/bin/activate"
 
-# Ensure the Node version `make docs` needs (.nvmrc). Best-effort and non-fatal:
-# Redoc emits Node-specific CSS hashes, so docs must be built on this version.
+# Ensure the Node version `make docs` needs (.nvmrc). Best-effort and non-fatal.
+# `styled-components` (pinned in `docs`) generates the CSS hashes rather than Node.
 node-setup:
 	@want=$$(cat .nvmrc); \
 	if command -v node >/dev/null 2>&1 && [ "$$(node -v | sed 's/v\([0-9]*\).*/\1/')" = "$$want" ]; then \
@@ -53,12 +53,11 @@ docs:
 	want=$$(cat .nvmrc); have=$$(node -v | sed 's/v\([0-9]*\).*/\1/'); \
 	if [ "$$have" != "$$want" ]; then \
 		echo "make docs needs Node $$want (see .nvmrc); found Node $$have."; \
-		echo "Redoc emits Node-specific CSS hashes, so a mismatch fails the CI docs check."; \
 		echo "Switch with: nvm use  (or e.g. brew install node@$$want)"; \
 		exit 1; \
 	fi; \
 	uv run python -c "from mlpa.run import app; import json; json.dump(app.openapi(), open('openapi.json', 'w'), indent=2)" && \
-	npx --yes @redocly/cli@2.5.0 build-docs openapi.json -o docs/index.html && \
+	npx --yes -p @redocly/cli@2.5.0 -p styled-components@6.4.3 redocly build-docs openapi.json -o docs/index.html && \
 	rm -f openapi.json
 
 # NOTE: for local development only

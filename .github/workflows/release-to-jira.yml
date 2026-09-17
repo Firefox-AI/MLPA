@@ -1,0 +1,66 @@
+name: Release to Jira
+on:
+  release:
+    types: [published]   # fires when Argo publishes the release (not for drafts)
+
+permissions:
+  contents: read
+  pull-requests: read
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install requests anthropic
+      - name: Create Jira release from GitHub release
+        id: sync
+        env:
+          GH_TOKEN:            ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO:             ${{ github.repository }}
+          RELEASE_TAG:         ${{ github.event.release.tag_name }}
+          RELEASE_URL:         ${{ github.event.release.html_url }}
+          RELEASE_BODY:        ${{ github.event.release.body }}
+          # Service account must use the api.atlassian.com/ex gateway, not the site URL.
+          ATLASSIAN_CLOUD_ID:   "d8febd08-c6e9-4c03-9c13-db37c2369ce5"
+          JIRA_SITE_URL:        "https://mozilla-hub.atlassian.net"   # human-facing links only
+          JIRA_EMAIL:          ${{ secrets.JIRA_EMAIL }}
+          JIRA_API_TOKEN:      ${{ secrets.JIRA_API_TOKEN }}
+          JIRA_PROJECT_KEY:    AIPLAT
+          CONFLUENCE_PARENT_ID: "2885845046"   # "Release Notes Folder" in FAAMT
+          # Narrative release notes. If unset, the page still publishes with
+          # just the ticket and PR lists.
+          ANTHROPIC_API_KEY:   ${{ secrets.ANTHROPIC_API_KEY }}
+        run: python .github/scripts/release_to_jira.py
+
+      - name: Notify Slack
+        uses: slackapi/slack-github-action@v2
+        with:
+          method: chat.postMessage
+          token: ${{ secrets.SLACK_BOT_TOKEN }}
+          payload: |
+            channel: "${{ secrets.SLACK_CHANNEL_ID }}"
+            text: ":rocket: *MLPA ${{ steps.sync.outputs.tag }}* released\n${{ steps.sync.outputs.summary }}\n<${{ steps.sync.outputs.page_url }}|View release notes>"
+
+      - name: Notify AI Platform Slack Bot
+        env:
+          SLACK_WEBHOOK_URL: ${{ secrets.AIPLAT_RELEASE_SLACK_WEBHOOK_URL }}
+          # Passed as env rather than interpolated into the script, so quotes
+          # and backticks in the summary can't break (or escape) the shell.
+          TAG: ${{ steps.sync.outputs.tag }}
+          SUMMARY: ${{ steps.sync.outputs.summary }}
+          PAGE_URL: ${{ steps.sync.outputs.page_url }}
+        run: |
+          python - <<'PY' > payload.json
+          import json, os
+          lines = [f"🚀 MLPA {os.environ['TAG']} released"]
+          if os.environ.get("SUMMARY"):
+              lines.append(os.environ["SUMMARY"])
+          lines.append(f"<{os.environ['PAGE_URL']}|View release notes>")
+          print(json.dumps({"text": "\n".join(lines)}))
+          PY
+          curl -sf -X POST -H 'Content-Type: application/json' \
+            -d @payload.json "$SLACK_WEBHOOK_URL"

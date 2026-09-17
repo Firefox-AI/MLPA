@@ -22,6 +22,7 @@ from mlpa.core.completions import (
 from mlpa.core.config import (
     ERROR_RESPONSES,
     SENSITIVE_FIELDS_TO_SCRUB_FROM_SENTRY,
+    SENSITIVE_HEADERS_TO_SCRUB_FROM_SENTRY,
     env,
 )
 from mlpa.core.http_client import close_http_client, get_http_client
@@ -37,6 +38,7 @@ from mlpa.core.openapi import customize_openapi
 from mlpa.core.pg_services.services import app_attest_pg, litellm_pg
 from mlpa.core.prometheus_metrics import AvailabilityReason
 from mlpa.core.routers.appattest import appattest_router
+from mlpa.core.routers.filter import filter_router
 from mlpa.core.routers.health import health_router
 from mlpa.core.routers.mock import mock_router
 from mlpa.core.routers.play import play_router
@@ -61,6 +63,10 @@ tags_metadata = [
     {
         "name": "User Management",
         "description": "Endpoints for managing user blocking status and budgets.",
+    },
+    {
+        "name": "Privacy Filter",
+        "description": "Endpoints for interacting with the Privacy Filter.",
     },
 ]
 
@@ -104,6 +110,17 @@ def sentry_scrub_sensitive_fields(event, hint):
         except Exception:
             pass
 
+    if "request" in event and "headers" in event["request"]:
+        try:
+            # A dict, per sentry_sdk's _filter_headers; reassigning a value in
+            # place never resizes it, so iterating it directly is safe.
+            headers = event["request"]["headers"]
+            for name in headers:
+                if name.lower() in SENSITIVE_HEADERS_TO_SCRUB_FROM_SENTRY:
+                    headers[name] = "[Filtered]"
+        except Exception:
+            pass
+
     return event
 
 
@@ -136,6 +153,7 @@ app.include_router(health_router, prefix="/health")
 app.include_router(appattest_router, prefix="/verify")
 app.include_router(play_router, prefix="/verify")
 app.include_router(user_router, prefix="/user")
+app.include_router(filter_router)
 app.include_router(mock_router, prefix="/mock")
 customize_openapi(app, tags_metadata)
 
@@ -152,7 +170,7 @@ Authorize first using App Attest, Play Integrity, FxA, or dev tier.
 **Headers:**
 
 - **Authorization** (required): Bearer token — FxA OAuth token, Play Integrity MLPA token, or App Attest JWT.
-- **service-type** (required): One of `ai`, `s2s`, `s2s-android`, `memories`, `ai-dev`, `memories-dev`, `mochi-dev`, `answer`, `telemetry` — for tracking and budget.
+- **service-type** (required): One of the keys in env.user_feature_budget — used for tracking and budget.
 - **purpose** (required for ai/ai-dev/mochi-dev/memories/memories-dev): One of `chat`, `title-generation`, `convo-starters-sidebar` for AI; `memory-generation` for memories; omit for s2s.
 - **x-dev-authorization** (required for ai-dev/memories-dev/mochi-dev): Experimentation token; also requires FxA in Authorization. Dev service types return 401 without it.
 - **use-app-attest**: Set to `true` for iOS App Attest.
@@ -208,7 +226,7 @@ async def chat_completion(
     ],
 ):
     record_request_country(
-        request.headers.get("X-Geo-Country"),
+        authorized_chat_request.client_country,
         service_type=authorized_chat_request.service_type,
         model=authorized_chat_request.model,
     )
@@ -245,7 +263,7 @@ async def search(
     ],
 ):
     record_request_country(
-        request.headers.get("X-Geo-Country"),
+        authorized_search_request.client_country,
         service_type=authorized_search_request.service_type,
         model=SEARCH_MODEL,
     )

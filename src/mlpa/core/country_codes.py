@@ -1,5 +1,9 @@
 """Bounded country-code labels for Prometheus metrics."""
 
+# NOTE: the small, hand-maintained launch-market set used to bucket
+# per-country metrics (AIPLAT-1266) lives in config.py as
+# `env.MLPA_LAUNCH_COUNTRIES` (overridable without a deploy), not here.
+
 # ISO 3166-1 alpha-2 country codes.
 COUNTRY_CODES = frozenset(
     """

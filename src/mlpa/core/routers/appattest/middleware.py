@@ -14,7 +14,11 @@ from mlpa.core.routers.appattest import (
     verify_assert,
     verify_attest,
 )
-from mlpa.core.utils import b64decode_safe, parse_app_attest_jwt
+from mlpa.core.utils import (
+    b64decode_safe,
+    is_plausible_base64_key_id,
+    parse_app_attest_jwt,
+)
 
 router = APIRouter()
 
@@ -41,6 +45,8 @@ async def get_challenge(
         raise HTTPException(status_code=400, detail="Bad Request: missing key_id_b64")
     # iOS key id generation not urlsafe workaround
     key_id_b64 = key_id_b64.replace(" ", "+")
+    if not is_plausible_base64_key_id(key_id_b64):
+        raise HTTPException(status_code=400, detail="Bad Request: invalid key_id_b64")
     return {"challenge": await generate_client_challenge(key_id_b64)}
 
 
@@ -79,6 +85,8 @@ async def attest(
     ] = None,
 ):
     attestationAuth = parse_app_attest_jwt(authorization, "attest")
+    if not is_plausible_base64_key_id(attestationAuth.key_id_b64):
+        raise HTTPException(status_code=400, detail="Bad Request: invalid key_id_b64")
     challenge_bytes = b64decode_safe(attestationAuth.challenge_b64, "challenge_b64")
     if not await validate_challenge(
         challenge_bytes.decode(), attestationAuth.key_id_b64
@@ -108,6 +116,8 @@ async def app_attest_auth(
     expected_hash: bytes,
     use_qa_certificates: bool,
 ):
+    if not is_plausible_base64_key_id(assertionAuth.key_id_b64):
+        raise HTTPException(status_code=401, detail="Invalid App Attest assertion")
     challenge_bytes = b64decode_safe(assertionAuth.challenge_b64, "challenge_b64")
     if not await validate_challenge(challenge_bytes.decode(), assertionAuth.key_id_b64):
         raise HTTPException(status_code=401, detail="Invalid or expired challenge")

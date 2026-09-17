@@ -11,8 +11,8 @@ from mlpa.core.classes import AuthorizedChatRequest, AuthorizedSearchRequest
 from mlpa.core.config import (
     ERROR_CODE_MAX_USERS_REACHED,
     LITELLM_COMPLETIONS_URL,
-    LITELLM_VIRTUAL_AUTH_HEADERS,
     env,
+    resolve_litellm_virtual_auth_headers,
 )
 from mlpa.core.errors import classify_upstream_error
 from mlpa.core.http_client import get_http_client
@@ -41,13 +41,28 @@ from mlpa.core.utils import (
 
 def _build_litellm_body(req: AuthorizedChatRequest, *, stream: bool) -> dict:
     body = req.model_dump(
-        exclude={"max_completion_tokens", "service_type", "purpose"},
+        exclude={
+            "max_completion_tokens",
+            "service_type",
+            "purpose",
+            "client_country",
+            "litellm_virtual_key",
+        },
         exclude_none=True,
     )
     body["max_tokens"] = req.max_completion_tokens
     body["stream"] = stream
     if stream:
         body["stream_options"] = {"include_usage": True}
+    # tags would be litellm-native but spend-by-tag reporting is Enterprise-only
+    # and tags are flat strings, harder to query in BQ. JSON metadata is OSS and
+    # queryable as a plain key.
+    body["metadata"] = {
+        "spend_logs_metadata": {
+            "purpose": req.purpose,
+            "country_code": req.client_country,
+        }
+    }
     return sanitize_request_body(body)
 
 
@@ -97,6 +112,9 @@ async def stream_completion(
     log = logger.bind(**authorized_chat_request.log_fields)
     start_time = time.perf_counter()
     record_request_with_tools(authorized_chat_request)
+    auth_headers = resolve_litellm_virtual_auth_headers(
+        authorized_chat_request.litellm_virtual_key
+    )
     body = _build_litellm_body(authorized_chat_request, stream=True)
     result = PrometheusResult.ERROR
     availability_reason = AvailabilityReason.UPSTREAM_ERROR
@@ -131,7 +149,7 @@ async def stream_completion(
         async with client.stream(
             "POST",
             LITELLM_COMPLETIONS_URL,
-            headers=LITELLM_VIRTUAL_AUTH_HEADERS,
+            headers=auth_headers,
             json=body,
             timeout=httpx.Timeout(
                 read=env.STREAMING_TIMEOUT_SECONDS,
@@ -211,7 +229,7 @@ async def stream_completion(
 
                 if is_first_token:
                     record_ttft(
-                        authorized_chat_request.model,
+                        authorized_chat_request,
                         time.perf_counter() - start_time,
                     )
                     is_first_token = False
@@ -345,7 +363,9 @@ async def _get_completion(authorized_chat_request: AuthorizedChatRequest):
         client = get_http_client()
         response = await client.post(
             LITELLM_COMPLETIONS_URL,
-            headers=LITELLM_VIRTUAL_AUTH_HEADERS,
+            headers=resolve_litellm_virtual_auth_headers(
+                authorized_chat_request.litellm_virtual_key
+            ),
             json=body,
         )
         try:

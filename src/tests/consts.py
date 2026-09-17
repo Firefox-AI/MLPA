@@ -1,3 +1,5 @@
+import json
+
 from mlpa.core.classes import AuthorizedChatRequest, ChatRequest
 
 TEST_USER_ID = "test-user-id"
@@ -18,7 +20,7 @@ SAMPLE_REQUEST = AuthorizedChatRequest(
     max_completion_tokens=150,
 )
 
-MOCK_MODEL_NAME = "mock-gpt"
+MOCK_MODEL_NAME = "mock"
 
 SAMPLE_CHAT_REQUEST = ChatRequest(
     model=MOCK_MODEL_NAME,
@@ -38,7 +40,7 @@ SUCCESSFUL_CHAT_RESPONSE = {
             "finish_reason": "stop",
             "index": 0,
             "message": {
-                "content": "I'd be happy to help with that!",
+                "content": "I'd be happy to help with that! (mocked)",
                 "role": "assistant",
             },
         }
@@ -49,7 +51,7 @@ SUCCESSFUL_CHAT_RESPONSE = {
 MOCK_CHAT_RESPONSE = {
     "choices": [{"message": {"content": "mock completion response"}}],
     "usage": {"prompt_tokens": 10, "completion_tokens": 5, "total_tokens": 15},
-    "model": "mock-gpt",
+    "model": "mock",
 }
 
 MOCK_STREAMING_CHUNKS = [
@@ -71,3 +73,13 @@ MOCK_FXA_USER_DATA = {
     "generation": 1,
     "profile_changed_at": 1234567890,
 }
+
+MOCK_LITELLM_GLOBAL_BUDGET_ERROR_TEXT = json.dumps(
+    {
+        "error": {
+            "message": "ExceededBudget: User=default_user_id over budget. Spend=9.1e-05, Budget=1e-05",
+            "type": "budget_exceeded",
+            "code": "400",
+        }
+    }
+)

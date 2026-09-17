@@ -2,11 +2,12 @@ import ast
 import base64
 import json
 import re
+import string
 import time
 from functools import lru_cache
 from typing import Any, Literal, NoReturn, cast, overload
 
-from fastapi import HTTPException
+from fastapi import HTTPException, Request
 from fxa.oauth import Client
 from jwtoxide import DecodingKey, ValidationOptions, decode, encode
 
@@ -33,10 +34,45 @@ KNOWN_HTTP_METHODS = frozenset(
         "PUT",
     }
 )
+FX_USER_AGENT_RE = r".*?Firefox/(\d+\.\d+)"
 
 
 def clamp_model(model: str) -> str:
     return model if model in env.valid_model_labels else "invalid"
+
+
+# "/" and "_" are required for real, configured model names like
+# "openai/gpt-4o" and "vertex_ai/mistral-small-2503" (see litellm_config.yaml).
+# Max length 64: edge chars (2) + up to 62 interior chars.
+_VALID_MODEL_NAME_PATTERN = re.compile(r"^[a-z0-9](?:[a-z0-9./_-]{0,62}[a-z0-9])?$")
+
+
+def is_valid_model_name(model: str) -> bool:
+    return bool(_VALID_MODEL_NAME_PATTERN.match(model))
+
+
+# Real App Attest key IDs are base64(SHA-256 digest) = 44 chars; this bound is
+# generous slack, not a hand-tuned exact length.
+_BASE64_STANDARD_CHARS = frozenset(string.ascii_letters + string.digits + "+/=")
+MAX_KEY_ID_B64_LEN = 128
+
+
+def is_plausible_base64_key_id(key_id_b64: str) -> bool:
+    if not key_id_b64 or len(key_id_b64) > MAX_KEY_ID_B64_LEN:
+        return False
+    return set(key_id_b64) <= _BASE64_STANDARD_CHARS
+
+
+# Play Integrity tokens are compact JWT/JWE strings (base64url segments joined
+# by "."); this bound is generous slack for the real token size, not exact.
+_JWT_LIKE_CHARS = frozenset(string.ascii_letters + string.digits + "-_.")
+MAX_INTEGRITY_TOKEN_LEN = 10000
+
+
+def is_plausible_integrity_token(integrity_token: str) -> bool:
+    if not integrity_token or len(integrity_token) > MAX_INTEGRITY_TOKEN_LEN:
+        return False
+    return set(integrity_token) <= _JWT_LIKE_CHARS
 
 
 def clamp_service_type(raw: str) -> str:
@@ -47,6 +83,23 @@ def clamp_purpose(raw: str) -> str:
     return raw if raw == "" or raw in env.valid_purposes_set else "other"
 
 
+def clamp_major_fx_version(raw: str) -> str:
+    """Bound firefox version to known values, else "unknown"."""
+    return raw if raw == "" or raw in env.valid_major_fx_versions_set else "unknown"
+
+
+def _clamp_to_set(
+    raw: str | None, valid: frozenset[str] | set[str], fallback: str
+) -> str:
+    """Bound a raw label value to a known set, else `fallback`. Caps cardinality."""
+    return raw if raw in valid else fallback
+
+
+def get_client_country(request: Request) -> str:
+    """Read the raw, edge-stamped ``X-Geo-Country`` header. Clamp at metric time."""
+    return request.headers.get("X-Geo-Country") or ""
+
+
 def clamp_country(raw: str | None) -> str:
     """Bound an edge-stamped client country to a known country code, else "unknown".
 
@@ -54,7 +107,17 @@ def clamp_country(raw: str | None) -> str:
     for aggregate metrics, never per-user data or logs. The clamp also caps label
     cardinality and blocks injection from a spoofed ``X-Geo-Country`` header.
     """
-    return raw if raw in COUNTRY_CODES else "unknown"
+    return _clamp_to_set(raw, COUNTRY_CODES, "unknown")
+
+
+def clamp_launch_country(raw: str) -> str:
+    """Bound a client country to the small Grafana-filterable launch-market set.
+
+    Distinct from `clamp_country`: this backs the dedicated by-country latency/
+    TTFT/availability metrics (AIPLAT-1266), which stay cheap only because this
+    set is a handful of values, not the full ISO list.
+    """
+    return _clamp_to_set(raw, env.MLPA_LAUNCH_COUNTRIES, "other")
 
 
 def clamp_request_method(method: str) -> str:
@@ -163,7 +226,7 @@ def is_rate_limit_error(error_response: dict, keywords: list[str]) -> bool:
     """Check if the error response indicates a budget or rate limit exceeded error."""
     error = error_response.get("error", {})
     error_text = f"{error.get('type', '')} {error.get('message', '')}".lower()
-    return any(indicator in error_text for indicator in keywords)
+    return any(indicator.lower() in error_text for indicator in keywords)
 
 
 def is_litellm_upstream_rate_limit(error_text: str) -> bool:
@@ -384,3 +447,15 @@ def issue_mlpa_access_token(user_id: str) -> str:
         env.MLPA_ACCESS_TOKEN_SECRET,
         algorithm="HS256",
     )
+
+
+def parse_firefox_major_version_from_user_agent(user_agent: str) -> str:
+    major_version = ""
+    try:
+        match = re.match(FX_USER_AGENT_RE, user_agent)
+        if match:
+            major_version = match.group(1).split(".")[0]
+    except Exception as e:
+        logger.error(f"Failed to parse user agent: {user_agent} {e}")
+        major_version = "unknown"
+    return major_version

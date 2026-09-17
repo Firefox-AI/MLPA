@@ -1,5 +1,8 @@
-version: "3.8"
-
+# The `litellm:` image tag below is the LiteLLM version
+# src/tests/litellm_compatibility (AIPLAT-910, AIPLAT-1337) runs against
+# locally and in CI. Dependabot bumps it automatically
+# (.github/dependabot.yml, "docker-compose" ecosystem) -- review the diff
+# on that PR like any other version bump.
 services:
   postgres:
     image: postgres:15
@@ -47,15 +50,30 @@ services:
       - "4000:4000"
     volumes:
       - ./litellm_config.yaml:/app/config.yaml
+      #- ./custom_callbacks.py:/app/custom_callbacks.py
+      #- ./liner_handler.py:/app/liner_handler.py
       - ./service_account.json:/app/service_account.json
     env_file:
-      - .env
+      - path: .env
+        required: false
     environment:
       PG_DB_URL: postgresql://litellm:litellm@postgres:5432/litellm
       REDIS_HOST: redis
       REDIS_PORT: 6379
       PORT: 4000
     command: ["--config", "/app/config.yaml"]
+
+  privacy_filter:
+    profiles:
+      - privacy-filter
+    image: privacy-filter:local
+    container_name: privacy-filter
+    command: ["python", "-m", "privacy_filter.run"]
+    shm_size: "2gb"
+    ports:
+      - "5000:5000"
+    environment:
+      PORT: 5000
 
 volumes:
   pg_data:

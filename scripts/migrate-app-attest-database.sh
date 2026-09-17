@@ -38,4 +38,13 @@ psql -d "${APP_ATTEST_DB_NAME}" -c "
     updated_at = NOW();
 "
 
+echo "[mlpa-appattest-migrate] Setting role-level PG timeouts for ${DB_USERNAME}"
+if [ "${PG_STATEMENT_TIMEOUT_MS:-0}" != "0" ]; then
+  psql -d postgres -c "ALTER ROLE \"${DB_USERNAME}\" SET statement_timeout = '${PG_STATEMENT_TIMEOUT_MS}ms';"
+  psql -d postgres -c "ALTER ROLE \"${DB_USERNAME}\" SET idle_in_transaction_session_timeout = '${PG_IDLE_IN_TX_TIMEOUT_MS}ms';"
+else
+  psql -d postgres -c "ALTER ROLE \"${DB_USERNAME}\" RESET statement_timeout;"
+  psql -d postgres -c "ALTER ROLE \"${DB_USERNAME}\" RESET idle_in_transaction_session_timeout;"
+fi
+
 echo "[mlpa-appattest-migrate] Finished successfully."

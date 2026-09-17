@@ -160,18 +160,37 @@ default. Careful: it is NOT relaxed by the per-transaction `SET LOCAL` budgets. 
 you turn it on, set it above `PG_MAINTENANCE_STATEMENT_TIMEOUT_MS` (30s) or it
 will cancel the maintenance/admin reads.
 
-### These timeouts only apply to MLPA
+### Where each timeout actually applies
 
-All of the above is set as asyncpg `server_settings` on MLPA's own connection
-pools, at connect time. It's per-session, not database-wide and not on the DB
-role. Nothing in the migrations or scripts sets `statement_timeout` at the
-`ALTER DATABASE` / `ALTER ROLE` level.
+The per-session `server_settings` above are what this doc used to describe:
+set on MLPA's own connection pools at connect time, MLPA-only, per-session.
 
-So anything else that connects to these databases on its own session is NOT
-affected. That includes the cleanup cron job in the llm-proxy infra, LiteLLM
-itself, and the Cloud SQL console. They run with the Postgres default (usually
-unlimited) unless someone sets a timeout for that role separately. The cron job
-can take as long as it needs, the 3s default won't touch it.
+That mechanism breaks under PgBouncer's transaction pooling.
+`statement_timeout` and `idle_in_transaction_session_timeout` aren't
+`GUC_REPORT` parameters, so PgBouncer can't replay them onto a pooled backend
+connection. `track_extra_parameters` in pgbouncer.ini doesn't help here even
+with both listed - per [PgBouncer's own config docs](https://www.pgbouncer.org/config.html),
+it only tracks parameters Postgres reports back to the client, and these two
+aren't in that set ([AIPLAT-1026](https://mozilla-hub.atlassian.net/browse/AIPLAT-1026)).
+
+`scripts/migrate-app-attest-database.sh` now also sets both values at the role
+level (`ALTER ROLE ... SET ...`), at the end of the migration job, whenever
+`PG_STATEMENT_TIMEOUT_MS` is non-zero for that environment. This is a
+Postgres-side default, so it applies whether the connection is direct or
+pooled, and whether PgBouncer is deployed at all. It covers every session on
+that role - including LiteLLM's own connections and any cron job that doesn't
+override it.
+
+Both settings are live wherever `PG_STATEMENT_TIMEOUT_MS != 0`. On a direct
+connection the session-level one already wins, so the role default just sits
+there unused. Through PgBouncer, the session-level one silently does nothing
+and the role default is what's actually protecting you.
+
+Most llm-proxy jobs on the shared role already set their own
+`PGOPTIONS -c statement_timeout=...`, which wins over the role default.
+Prisma-based jobs (LiteLLM's migrations) can't do that - Prisma has no
+`statement_timeout` connection param and doesn't honor `PGOPTIONS` - so they
+inherit the role default with no per-job override available.
 
 ## Migrations
 
@@ -186,6 +205,54 @@ uv run alembic revision -m "..." # new migration
 The `mlpa_user_capacity*` tables are created by migration, then reconciled on
 every startup via `ensure_capacity_state()`. Deploy runs
 `scripts/migrate-app-attest-database.sh` with `-x sqlalchemy.url=...`.
+
+### Rollback procedure
+
+[AIPLAT-1189](https://mozilla-hub.atlassian.net/browse/AIPLAT-1189) covers the
+full context. `migrate-app-attest-database.sh` is forward-only, it runs
+`upgrade head` and aborts on any error, there's no downgrade path in that
+script. If a deploy needs to be rolled back and it included an app_attest
+migration:
+
+1. Revert the code on `main` (git revert + Argo sync), same as any other
+   rollback.
+2. Check whether the migration applied before the deploy failed:
+   `alembic -c alembic.ini -x sqlalchemy.url=... current`. If it's still on
+   the old revision, there's nothing to undo, stop here. The rollback script
+   also prints the current revision again before it asks you to confirm.
+3. If it did apply, step 4 runs `kubectl apply` directly against the
+   cluster, bypassing ArgoCD. If you get a permissions error, run
+   `mzcld jit elevate "AIPLAT-1189 rollback"` for temporary access
+   (`mzcld jit state` / `mzcld jit revoke` to check/drop it).
+4. Render and apply the `mlpa-rollback` job (`dataservices-infra`) directly
+   against the cluster. `TARGET` defaults to `-1`, one revision back, set it
+   to a specific revision if you need to go further:
+
+   ```
+   helm template k8s/llm-proxy -f k8s/llm-proxy/values-<env>.yaml \
+     --set mozcloud.tasks.jobs.mlpa-rollback.enabled=true \
+     --set-string mozcloud.tasks.jobs.mlpa-rollback.containers.mlpa-appattest-rollback.envVars.TARGET=-1 \
+     | kubectl apply -f -
+   ```
+
+   The job runs `scripts/rollback-app-attest-database.sh` under whatever
+   image tag is currently configured, that's fine: Alembic migration files
+   are append-only, nobody edits a merged migration's `downgrade()` after the
+   fact, so any image build that shipped the migration you're rolling back
+   contains the identical downgrade code. What matters is `TARGET` (the
+   revision), not which image tag runs it.
+5. Confirm the app comes up healthy against the downgraded schema before
+   considering the rollback done.
+
+This only covers `app_attest` (the DB MLPA's Alembic manages). `litellm` runs
+its own Prisma-based migration job, owned by LiteLLM, not this repo. Don't
+assume this script touches it, check with the LiteLLM side separately.
+
+Every migration in `alembic/versions/` should stay additive (expand/contract:
+add a nullable column, backfill, only drop/rename in a later migration once
+nothing reads the old shape). That's what makes step 3 above safe to run. See
+`5b4ed32c7b2b_add_counter_to_public_keys.py` for an example, and
+CONTRIBUTING.md for the full checklist.
 
 ## Startup work
 
