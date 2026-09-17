@@ -14,8 +14,12 @@ services:
       POSTGRES_DB: litellm
     ports:
       - "5432:5432"
+    # Mounted at the /var/lib/postgresql parent, not .../data: Postgres 18+
+    # images store data in a major-version-specific subdirectory and refuse
+    # to start against an old-style .../data mount. The parent mount works
+    # on both 15 and 18, so this survives the next major-version bump too.
     volumes:
-      - pg_data:/var/lib/postgresql/data
+      - pg_data:/var/lib/postgresql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U litellm -d litellm"]
       interval: 5s
