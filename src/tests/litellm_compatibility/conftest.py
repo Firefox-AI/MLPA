@@ -35,7 +35,9 @@ def pytest_collection_modifyitems(config, items):
     """Probe the backend once per session rather than per module, then either
     skip everything or abort the run."""
     litellm_items = [
-        item for item in items if "e2e/litellm_compat" in item.nodeid.replace("\\", "/")
+        item
+        for item in items
+        if "litellm_compatibility" in item.nodeid.replace("\\", "/")
     ]
     if not litellm_items or real_backend_available():
         return
