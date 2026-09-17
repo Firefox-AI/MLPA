@@ -2,7 +2,7 @@ import importlib.metadata
 import json
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Annotated, Any
+from typing import Annotated
 
 import sentry_sdk
 import uvicorn
@@ -37,7 +37,6 @@ from mlpa.core.logger import logger, setup_logger
 from mlpa.core.metrics import (
     SEARCH_MODEL,
     record_chat_availability,
-    record_chat_availability_for,
     record_request_country,
 )
 from mlpa.core.middleware import register_middleware

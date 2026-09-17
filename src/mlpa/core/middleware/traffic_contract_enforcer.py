@@ -1,9 +1,5 @@
 from fastapi import HTTPException, Request
 
-from mlpa.core.classes import (
-    AuthorizedChatRequest,
-    AuthorizedSearchRequest,
-)
 from mlpa.core.config import env
 from mlpa.core.consts import TrafficContractMode
 from mlpa.core.logger import logger

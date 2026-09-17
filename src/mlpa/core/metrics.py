@@ -5,7 +5,6 @@ from mlpa.core.classes import (
     AuthorizedSearchRequest,
     LitellmRoutingSnapshot,
 )
-from mlpa.core.config import env
 from mlpa.core.prometheus_metrics import (
     AvailabilityReason,
     PrometheusRejectionReason,

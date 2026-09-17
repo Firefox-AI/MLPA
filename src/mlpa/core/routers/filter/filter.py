@@ -10,7 +10,6 @@ from mlpa.core.config import (
     ERROR_RESPONSES,
     PRIVACY_FILTER_MASTER_AUTH_HEADERS,
     PRIVACY_FILTER_URL,
-    env,
 )
 from mlpa.core.http_client import get_http_client
 from mlpa.core.prometheus_metrics import (

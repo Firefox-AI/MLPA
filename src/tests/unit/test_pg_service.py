@@ -1,8 +1,6 @@
 import asyncio
 from unittest.mock import AsyncMock
 
-import pytest
-
 from mlpa.core.services.pg_service import PGService
 
 

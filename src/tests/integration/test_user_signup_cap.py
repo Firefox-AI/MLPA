@@ -2,7 +2,6 @@ from unittest.mock import patch
 
 import pytest
 
-from mlpa.core.config import env
 from tests.consts import SAMPLE_REQUEST, SUCCESSFUL_CHAT_RESPONSE, TEST_FXA_TOKEN
 
 
