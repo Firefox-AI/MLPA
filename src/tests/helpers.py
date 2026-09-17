@@ -4,6 +4,7 @@ Shared helpers for MLPA test suite
 
 import asyncio
 import json
+import subprocess
 import time
 
 import asyncpg
@@ -12,6 +13,9 @@ import httpx
 from mlpa.core.config import env
 
 CHAT_COMPLETIONS_PATH = "/v1/chat/completions"
+
+# Must match the `litellm` service's container_name in litellm_docker_compose.yaml.
+LITELLM_CONTAINER_NAME = "litellm"
 
 MOCK_MODEL = "mock"
 MOCK_RESPONSE_TEXT = "this is a mocked response"
@@ -46,26 +50,6 @@ def real_backend_available() -> bool:
     except Exception:
         return False
     return _db_reachable(env.LITELLM_DB_NAME) and _db_reachable(env.APP_ATTEST_DB_NAME)
-
-
-class FxAStub:
-    """Maps a single bearer token to a single FxA base identity, so each
-    test can get a fresh, collision-free user_id against the real LiteLLM
-    end-user table."""
-
-    def __init__(self, token: str, base_identity: str):
-        self._token = token
-        self._base_identity = base_identity
-
-    def verify_token(
-        self, token: str, scope: str = "profile:uid", include_verification_source=False
-    ):
-        if token == self._token:
-            result = {"user": self._base_identity}
-            if include_verification_source:
-                result["verification_source"] = "local"
-            return result
-        raise Exception("Invalid token")
 
 
 def chat_request(**overrides) -> dict:
@@ -172,3 +156,20 @@ def wait_for_key_spend(
         "accounting is not working."
     )
     return spend
+
+
+def list_litellm_container_dir(path: str) -> list[str]:
+    """Lists a directory inside the running LiteLLM container. Only for
+    inspecting the image's own filesystem (e.g. bundled migration files) --
+    anything reachable through LiteLLM's API or DB should use that instead."""
+    result = subprocess.run(
+        ["docker", "exec", LITELLM_CONTAINER_NAME, "ls", path],
+        capture_output=True,
+        text=True,
+        timeout=10,
+    )
+    assert result.returncode == 0, (
+        f"couldn't list {path} in the {LITELLM_CONTAINER_NAME!r} container "
+        f"(image layout may have changed): {result.stderr}"
+    )
+    return result.stdout.splitlines()

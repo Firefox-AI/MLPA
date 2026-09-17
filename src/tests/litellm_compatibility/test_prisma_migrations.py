@@ -2,7 +2,7 @@
 Prisma migration completeness for the pinned LiteLLM image.
 """
 
-import subprocess
+from tests.helpers import list_litellm_container_dir
 
 MIGRATIONS_DIR = "/app/litellm-proxy-extras/litellm_proxy_extras/migrations"
 
@@ -30,21 +30,9 @@ class TestPrismaMigrations:
         attempted to run (not just one that failed partway), by
         cross-checking _prisma_migrations against the image's own
         migration source."""
-        result = subprocess.run(
-            ["docker", "exec", "litellm", "ls", MIGRATIONS_DIR],
-            capture_output=True,
-            text=True,
-            timeout=10,
-        )
-        assert result.returncode == 0, (
-            f"couldn't list {MIGRATIONS_DIR} in the litellm container "
-            f"(image layout may have changed): {result.stderr}"
-        )
-        # splitlines(), not split(): some migration dir names contain spaces.
+        entries = list_litellm_container_dir(MIGRATIONS_DIR)
         # migration_lock.toml isn't a migration, filter to timestamp-prefixed dirs.
-        bundled = {
-            name for name in result.stdout.splitlines() if name and name[0].isdigit()
-        }
+        bundled = {name for name in entries if name and name[0].isdigit()}
 
         rows = await litellm_db.fetch(
             'SELECT migration_name FROM "_prisma_migrations" WHERE finished_at IS NOT NULL'

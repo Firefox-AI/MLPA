@@ -9,7 +9,6 @@ from fastapi.testclient import TestClient
 
 from mlpa import run as main_app
 from mlpa.core.config import LITELLM_MASTER_AUTH_HEADERS, env
-from tests.helpers import FxAStub
 from tests.mocks import (
     MockAppAttestPGService,
     MockFxAClientForMockRouter,
@@ -180,7 +179,13 @@ def real_backend_client():
 
     token = f"e2e-token-{uuid.uuid4().hex}"
     base_identity = f"e2e-{uuid.uuid4().hex[:12]}"
-    fxa_stub = FxAStub(token, base_identity)
+    fxa_stub = MockFxAService(
+        "e2e-client-id",
+        "e2e-client-secret",
+        "https://e2e-fxa.test",
+        token,
+        base_identity,
+    )
     with patch("mlpa.core.auth.fxa.client", fxa_stub):
         with TestClient(main_app.app) as client:
             yield client, token, base_identity
