@@ -21,37 +21,12 @@ import asyncio
 import os
 
 import asyncpg
-import httpx
 import pytest
 
 from mlpa.core.config import env
+from tests.helpers import real_backend_available
 
-
-def _db_reachable(db_name: str) -> bool:
-    async def _connect() -> bool:
-        try:
-            conn = await asyncpg.connect(
-                f"{env.PG_DB_URL.rstrip('/')}/{db_name}", timeout=2.0
-            )
-            await conn.close()
-            return True
-        except Exception:
-            return False
-
-    return asyncio.run(_connect())
-
-
-def _real_backend_available() -> bool:
-    try:
-        httpx.get(
-            f"{env.LITELLM_API_BASE}/health/liveliness", timeout=2.0
-        ).raise_for_status()
-    except Exception:
-        return False
-    return _db_reachable(env.LITELLM_DB_NAME) and _db_reachable(env.APP_ATTEST_DB_NAME)
-
-
-_BACKEND_AVAILABLE = _real_backend_available()
+_BACKEND_AVAILABLE = real_backend_available()
 _REQUIRE_REAL_BACKEND = os.environ.get(
     "MLPA_TEST_REQUIRE_REAL_BACKEND", ""
 ).lower() in {

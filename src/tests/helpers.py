@@ -20,6 +20,9 @@ MOCK_RESPONSE_TEXT = "this is a mocked response"
 SERVICE_TYPE = "ai"
 PURPOSE = "chat"
 
+BUDGET_TABLE = "LiteLLM_BudgetTable"
+END_USER_TABLE = "LiteLLM_EndUserTable"
+
 
 def _db_reachable(db_name: str) -> bool:
     async def _connect() -> bool:
@@ -163,7 +166,7 @@ def wait_for_key_spend(
         lambda: (lambda s: s if s > above else None)(key_spend(proxy, key)),
         timeout_s=timeout_s,
     )
-    assert spend, (
+    assert spend is not None, (
         f"LiteLLM recorded no spend above {above} against the virtual key "
         f"within {timeout_s}s of a successful completion -- key-level spend "
         "accounting is not working."

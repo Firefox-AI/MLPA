@@ -23,7 +23,9 @@ from mlpa.core.config import (
 )
 from mlpa.core.litellm_routing import parse_litellm_routing_headers
 from tests.helpers import (
+    BUDGET_TABLE,
     CHAT_COMPLETIONS_PATH,
+    END_USER_TABLE,
     MOCK_MODEL,
     MOCK_RESPONSE_TEXT,
     SERVICE_TYPE,
@@ -108,8 +110,8 @@ class TestBudgetErrorClassification:
         budget_id = f"e2e-exhausted-{uuid.uuid4().hex[:12]}"
 
         await litellm_db.execute(
-            """
-            INSERT INTO "LiteLLM_BudgetTable"
+            f"""
+            INSERT INTO "{BUDGET_TABLE}"
             (budget_id, max_budget, budget_duration, created_at,
              updated_at, created_by, updated_by)
             VALUES ($1, $2, $3, NOW(), NOW(), $4, $4)
@@ -120,8 +122,8 @@ class TestBudgetErrorClassification:
             "e2e-test",
         )
         await litellm_db.execute(
-            """
-            INSERT INTO "LiteLLM_EndUserTable" (user_id, spend, budget_id, blocked)
+            f"""
+            INSERT INTO "{END_USER_TABLE}" (user_id, spend, budget_id, blocked)
             VALUES ($1, $2, $3, false)
             """,
             user_id,

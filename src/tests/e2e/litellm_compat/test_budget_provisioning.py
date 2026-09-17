@@ -21,14 +21,13 @@ import pytest
 
 from mlpa.core.config import env
 from tests.helpers import (
+    BUDGET_TABLE,
     CHAT_COMPLETIONS_PATH,
+    END_USER_TABLE,
     SERVICE_TYPE,
     chat_request,
     mlpa_headers,
 )
-
-BUDGET_TABLE = "LiteLLM_BudgetTable"
-END_USER_TABLE = "LiteLLM_EndUserTable"
 
 
 class TestBudgetProvisioningInPostgres:
