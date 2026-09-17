@@ -1,3 +1,4 @@
+import asyncio
 import binascii
 import hashlib
 import json
@@ -28,7 +29,9 @@ challenge_store = {}
 PROJECT_ROOT = Path(__file__).resolve().parents[5]
 
 
-@lru_cache(maxsize=1)
+@lru_cache(
+    maxsize=2
+)  # both bool values of use_qa_certificates, so neither evicts the other
 def _load_root_ca(use_qa_certificates: bool) -> bytes:
     """Load the root CA certificate based on APP_ATTEST_QA flag"""
     if env.APP_ATTEST_QA and use_qa_certificates:
@@ -121,7 +124,11 @@ async def verify_attest(
     result = PrometheusResult.ERROR
     try:
         attestation = Attestation(attestation_obj, challenge, config)
-        await run_in_threadpool(attestation.verify)
+        # verify() is CPU-bound (pyattest>=1.0.5 made it a coroutine, but no
+        # I/O). asyncio.run() keeps it thread-offloaded and non-blocking;
+        # driving it via coro.send() benchmarked 13% faster but made the
+        # main thread 3-5x less responsive under load.
+        await run_in_threadpool(asyncio.run, attestation.verify())
 
         # Retrieve verified public key
         verified_data = attestation.data["data"]
