@@ -206,6 +206,54 @@ The `mlpa_user_capacity*` tables are created by migration, then reconciled on
 every startup via `ensure_capacity_state()`. Deploy runs
 `scripts/migrate-app-attest-database.sh` with `-x sqlalchemy.url=...`.
 
+### Rollback procedure
+
+[AIPLAT-1189](https://mozilla-hub.atlassian.net/browse/AIPLAT-1189) covers the
+full context. `migrate-app-attest-database.sh` is forward-only, it runs
+`upgrade head` and aborts on any error, there's no downgrade path in that
+script. If a deploy needs to be rolled back and it included an app_attest
+migration:
+
+1. Revert the code on `main` (git revert + Argo sync), same as any other
+   rollback.
+2. Check whether the migration applied before the deploy failed:
+   `alembic -c alembic.ini -x sqlalchemy.url=... current`. If it's still on
+   the old revision, there's nothing to undo, stop here. The rollback script
+   also prints the current revision again before it asks you to confirm.
+3. If it did apply, step 4 runs `kubectl apply` directly against the
+   cluster, bypassing ArgoCD. If you get a permissions error, run
+   `mzcld jit elevate "AIPLAT-1189 rollback"` for temporary access
+   (`mzcld jit state` / `mzcld jit revoke` to check/drop it).
+4. Render and apply the `mlpa-rollback` job (`dataservices-infra`) directly
+   against the cluster. `TARGET` defaults to `-1`, one revision back, set it
+   to a specific revision if you need to go further:
+
+   ```
+   helm template k8s/llm-proxy -f k8s/llm-proxy/values-<env>.yaml \
+     --set mozcloud.tasks.jobs.mlpa-rollback.enabled=true \
+     --set-string mozcloud.tasks.jobs.mlpa-rollback.containers.mlpa-appattest-rollback.envVars.TARGET=-1 \
+     | kubectl apply -f -
+   ```
+
+   The job runs `scripts/rollback-app-attest-database.sh` under whatever
+   image tag is currently configured, that's fine: Alembic migration files
+   are append-only, nobody edits a merged migration's `downgrade()` after the
+   fact, so any image build that shipped the migration you're rolling back
+   contains the identical downgrade code. What matters is `TARGET` (the
+   revision), not which image tag runs it.
+5. Confirm the app comes up healthy against the downgraded schema before
+   considering the rollback done.
+
+This only covers `app_attest` (the DB MLPA's Alembic manages). `litellm` runs
+its own Prisma-based migration job, owned by LiteLLM, not this repo. Don't
+assume this script touches it, check with the LiteLLM side separately.
+
+Every migration in `alembic/versions/` should stay additive (expand/contract:
+add a nullable column, backfill, only drop/rename in a later migration once
+nothing reads the old shape). That's what makes step 3 above safe to run. See
+`5b4ed32c7b2b_add_counter_to_public_keys.py` for an example, and
+CONTRIBUTING.md for the full checklist.
+
 ## Startup work
 
 The `lifespan` in `run.py` does two DB things on boot:

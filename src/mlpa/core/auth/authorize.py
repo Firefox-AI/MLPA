@@ -15,6 +15,7 @@ from mlpa.core.classes import (
     ServiceType,
 )
 from mlpa.core.config import ERROR_CODE_INVALID_MODEL_NAME, env
+from mlpa.core.logger import logger
 from mlpa.core.metrics import record_chat_availability_for
 from mlpa.core.prometheus_metrics import AvailabilityReason
 from mlpa.core.routers.appattest import app_attest_auth
@@ -28,6 +29,22 @@ from mlpa.core.utils import (
 TAuthorizedRequest = TypeVar(
     "TAuthorizedRequest", AuthorizedChatRequest, AuthorizedSearchRequest
 )
+
+
+def _resolve_custom_virtual_key(virtual_key_header: str | None) -> str | None:
+    """
+    Normalize the `litellm-virtual-key` header into the key to forward upstream.
+
+    Returns None when custom virtual keys are not allowed.
+    Throws HTTPException when key not fund within custom_virtual_keys
+    """
+    if not env.ALLOW_CUSTOM_VIRTUAL_KEY:
+        return None
+
+    key = (virtual_key_header or "").strip()
+    if not key:
+        return None
+    return key
 
 
 def _resolve_purpose(service_type_value: str, purpose_header: str | None) -> str:
@@ -126,8 +143,10 @@ async def authorize_chat_request(
     use_app_attest: Annotated[bool | None, Header()] = None,
     use_qa_certificates: Annotated[bool | None, Header()] = None,
     use_play_integrity: Annotated[bool | None, Header()] = None,
+    litellm_virtual_key: Annotated[str | None, Header()] = None,
 ) -> AuthorizedChatRequest:
     client_country = get_client_country(request)
+    custom_virtual_key = _resolve_custom_virtual_key(litellm_virtual_key)
 
     # Charset/length check runs before any auth, DB, or LiteLLM work below, so
     # fuzzed/scanner model values are rejected without that cost.
@@ -181,6 +200,7 @@ async def authorize_chat_request(
                 service_type=service_type.value,
                 purpose=purpose_value,
                 client_country=client_country,
+                litellm_virtual_key=custom_virtual_key,
                 **chat_request.model_dump(exclude_unset=True),
             ),
             authorization=authorization,
@@ -225,8 +245,10 @@ async def authorize_search_request(
     use_app_attest: Annotated[bool | None, Header()] = None,
     use_qa_certificates: Annotated[bool | None, Header()] = None,
     use_play_integrity: Annotated[bool | None, Header()] = None,
+    litellm_virtual_key: Annotated[str | None, Header()] = None,
 ) -> AuthorizedSearchRequest:
     client_country = get_client_country(request)
+    custom_virtual_key = _resolve_custom_virtual_key(litellm_virtual_key)
     return await _authorize_common_request(
         request=request,
         build_authorized_request=lambda user, purpose_value: AuthorizedSearchRequest(
@@ -234,6 +256,7 @@ async def authorize_search_request(
             service_type=service_type.value,
             purpose=purpose_value,
             client_country=client_country,
+            litellm_virtual_key=custom_virtual_key,
             **search_request.model_dump(exclude_unset=True),
         ),
         authorization=authorization,
