@@ -29,9 +29,7 @@ challenge_store = {}
 PROJECT_ROOT = Path(__file__).resolve().parents[5]
 
 
-@lru_cache(
-    maxsize=2
-)  # both bool values of use_qa_certificates, so neither evicts the other
+@lru_cache(maxsize=1)
 def _load_root_ca(use_qa_certificates: bool) -> bytes:
     """Load the root CA certificate based on APP_ATTEST_QA flag"""
     if env.APP_ATTEST_QA and use_qa_certificates:
