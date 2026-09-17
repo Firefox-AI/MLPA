@@ -52,9 +52,15 @@ jobs:
           uv pip install --no-cache-dir -e .
 
       - name: Run unit tests
-        run: uv run pytest src/tests/unit -v
+        run: uv run pytest src/tests/unit -v --junit-xml=unit-results.xml
 
-  integration-tests:
+      - name: Summarize failures
+        if: always()
+        run: uv run python scripts/ci_failure_summary.py unit-results.xml
+
+  # Tests a real FastAPI TestClient wired to mocked LiteLLM/app_attest
+  # services (mocked_client_integration) -- no real backend, no docker.
+  component-tests:
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
@@ -74,42 +80,16 @@ jobs:
           uv sync --all-groups
           uv pip install --no-cache-dir -e .
 
-      - name: Configure LiteLLM env
-        run: echo "MASTER_KEY=sk-default" > .env
+      - name: Run component tests
+        run: uv run pytest src/tests/component -v --junit-xml=component-results.xml
 
-      - name: Start LiteLLM + Postgres + Redis
-        run: docker compose -f litellm_docker_compose.yaml up -d
-
-      - name: Wait for LiteLLM to be ready
-        run: |
-          for i in $(seq 1 60); do
-            if curl -sf http://localhost:4000/health/liveliness > /dev/null; then
-              echo "LiteLLM is up"
-              exit 0
-            fi
-            sleep 2
-          done
-          echo "LiteLLM did not become ready in time"
-          docker compose -f litellm_docker_compose.yaml logs
-          exit 1
-
-      - name: Migrate app_attest database
-        run: |
-          sudo apt-get update && sudo apt-get install -y postgresql-client
-          bash scripts/migrate-app-attest-database-local.sh
-
-      - name: Create MLPA virtual key
-        run: uv run python scripts/create-and-set-virtual-key.py
-
-      - name: Run integration tests
-        env:
-          MLPA_TEST_REQUIRE_REAL_BACKEND: "true"
-        run: uv run pytest src/tests/integration -v
-
-      - name: Stop LiteLLM + Postgres + Redis
+      - name: Summarize failures
         if: always()
-        run: docker compose -f litellm_docker_compose.yaml down -v
+        run: uv run python scripts/ci_failure_summary.py component-results.xml
 
+  # Tests MLPA against the real, pinned LiteLLM + Postgres + Redis stack --
+  # this is what actually exercises a LiteLLM version bump
+  # (test_litellm_contract's old job, AIPLAT-910, folded in here).
   e2e-tests:
     runs-on: ubuntu-latest
     steps:
@@ -160,7 +140,13 @@ jobs:
       - name: Run e2e tests
         env:
           MLPA_TEST_REQUIRE_REAL_BACKEND: "true"
-        run: uv run pytest src/tests/e2e/litellm_compat -v
+        run: uv run pytest src/tests/e2e/litellm_compat -v --junit-xml=e2e-results.xml
+
+      - name: Summarize failures
+        if: always()
+        run: |
+          uv run python scripts/ci_failure_summary.py e2e-results.xml \
+            "> A failure here usually means the pinned LiteLLM version broke a documented contract -- see the checks below for what each one verifies."
 
       - name: Stop LiteLLM + Postgres + Redis
         if: always()
@@ -197,6 +183,10 @@ jobs:
       - name: Verify docs are up to date
         run: git diff --exit-code -- docs/index.html
 
+  # Narrow, fast happy-path checks for auth + data-flow response shape
+  # (pytest.mark.smoke). Runs against a mocked client here; the same suite
+  # can point at a live deployment instead via SMOKE_BASE_URL (post-deploy
+  # sanity check), see src/tests/smoke/conftest.py.
   smoke-tests:
     runs-on: ubuntu-latest
     steps:

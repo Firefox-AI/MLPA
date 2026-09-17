@@ -1,8 +1,8 @@
-# The `litellm:` image tag below is the LiteLLM version this whole file (and
-# every test in src/tests/integration, incl. the contract test,
-# AIPLAT-910) runs against locally and in CI. Dependabot bumps it
-# automatically (.github/dependabot.yml, "docker-compose" ecosystem) --
-# review the diff on that PR like any other version bump.
+# The `litellm:` image tag below is the LiteLLM version src/tests/e2e/
+# litellm_compat (AIPLAT-910, AIPLAT-1337) runs against locally and in CI.
+# Dependabot bumps it automatically (.github/dependabot.yml,
+# "docker-compose" ecosystem) -- review the diff on that PR like any other
+# version bump.
 services:
   postgres:
     image: postgres:15

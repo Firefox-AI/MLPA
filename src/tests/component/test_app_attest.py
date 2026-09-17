@@ -13,17 +13,17 @@ from pyattest.testutils.factories.attestation import apple as apple_factory
 from mlpa.core.classes import AssertionAuth
 from mlpa.core.config import env
 from mlpa.core.routers.appattest import appattest, middleware
+from tests.component.appattest_helpers import (
+    auth_headers,
+    get_challenge_b64,
+    make_jwt,
+    patch_apple_config_capture_app_id,
+)
 from tests.consts import (
     SAMPLE_CHAT_REQUEST,
     SUCCESSFUL_CHAT_RESPONSE,
     TEST_BUNDLE_ID,
     TEST_KEY_ID_B64,
-)
-from tests.integration.appattest_helpers import (
-    auth_headers,
-    get_challenge_b64,
-    make_jwt,
-    patch_apple_config_capture_app_id,
 )
 from tests.mocks import MockAppAttestPGService, MockLiteLLMPGService
 

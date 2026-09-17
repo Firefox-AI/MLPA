@@ -10,7 +10,7 @@ Two things here can break MLPA without any MLPA code changing:
     renamed header blanks that telemetry with nothing failing.
 
 Both are asserted against the real proxy. test_mock_router_integration.py
-in src/tests/integration mocks the router and cannot see either.
+in src/tests/component mocks the router and cannot see either.
 """
 
 import uuid
