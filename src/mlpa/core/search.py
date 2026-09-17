@@ -6,7 +6,7 @@ from fastapi import HTTPException
 from mlpa.core.classes import AuthorizedSearchRequest
 from mlpa.core.config import (
     LITELLM_SEARCH_URL,
-    LITELLM_VIRTUAL_AUTH_HEADERS,
+    resolve_litellm_virtual_auth_headers,
 )
 from mlpa.core.errors import classify_upstream_error
 from mlpa.core.http_client import get_http_client
@@ -27,7 +27,12 @@ async def _get_search(authorized_search_request: AuthorizedSearchRequest):
     start_time = time.perf_counter()
     body = sanitize_request_body(
         authorized_search_request.model_dump(
-            exclude={"client_country", "service_type", "purpose"},
+            exclude={
+                "client_country",
+                "service_type",
+                "purpose",
+                "litellm_virtual_key",
+            },
             exclude_none=True,
         )
     )
@@ -39,7 +44,9 @@ async def _get_search(authorized_search_request: AuthorizedSearchRequest):
         client = get_http_client()
         response = await client.post(
             f"{LITELLM_SEARCH_URL}/exa-search",
-            headers=LITELLM_VIRTUAL_AUTH_HEADERS,
+            headers=resolve_litellm_virtual_auth_headers(
+                authorized_search_request.litellm_virtual_key
+            ),
             json=body,
         )
         try:

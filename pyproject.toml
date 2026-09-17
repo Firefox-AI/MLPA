@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mlpa"
-version = "1.0.36"
+version = "1.0.39"
 description = "Authenticates and proxies LLM requests through LiteLLM to enact budgets and per-user management."
 authors = [
     { name = "Noah Podgurski", email = "npodgurski@mozilla.com" },
@@ -58,6 +58,7 @@ test = [
     "pytest-env==1.2.0",
     "pytest-httpx==0.35.0",
     "pytest-mock==3.15.1",
+    "redis==8.1.0",
     "tqdm==4.67.1",
 ]
 lint = [

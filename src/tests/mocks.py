@@ -303,16 +303,30 @@ class MockLiteLLMPGService:
 
 
 class MockFxAService:
-    def __init__(self, client_id: str, client_secret: str, fxa_url: str):
+    """Maps a single bearer token to a single FxA user, defaulting to the
+    shared TEST_FXA_TOKEN/TEST_USER_ID constants. Pass `token`/`user_id` to
+    get a fresh, collision-free identity instead (e.g. against a real
+    LiteLLM end-user table)."""
+
+    def __init__(
+        self,
+        client_id: str,
+        client_secret: str,
+        fxa_url: str,
+        token: str = TEST_FXA_TOKEN,
+        user_id: str = TEST_USER_ID,
+    ):
         self.client_id = client_id
         self.client_secret = client_secret
         self.fxa_url = fxa_url
+        self._token = token
+        self._user_id = user_id
 
     def verify_token(
         self, token: str, scope: str = "profile:uid", include_verification_source=False
     ):
-        if token == TEST_FXA_TOKEN:
-            result = {"user": TEST_USER_ID}
+        if token == self._token:
+            result = {"user": self._user_id}
             if include_verification_source:
                 result["verification_source"] = "local"
             return result

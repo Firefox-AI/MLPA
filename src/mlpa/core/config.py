@@ -50,6 +50,11 @@ class Env(BaseSettings):
     LINER_API_KEY: str = "sk-add-your-key"  # for local LiteLLM testing
     LITELLM_API_BASE: str = "http://localhost:4000"
     CHALLENGE_EXPIRY_SECONDS: int = 300  # 5 minutes
+    # Custom virtual key passthrough: when true, a request may carry a
+    # `litellm-virtual-key` header, which MLPA forwards as the upstream Bearer
+    # token in place of MLPA_VIRTUAL_KEY. That selects a LiteLLM key with its own
+    # budget / rate-limit / model configuration instead configured values.
+    ALLOW_CUSTOM_VIRTUAL_KEY: bool = False
 
     # Privacy Filter
     PRIVACY_FILTER_ENABLED: bool = False
@@ -521,6 +526,23 @@ LITELLM_VIRTUAL_AUTH_HEADERS = {
     "Authorization": f"Bearer {env.MLPA_VIRTUAL_KEY}",
 }
 
+
+def resolve_litellm_virtual_auth_headers(
+    custom_virtual_key: str | None = None,
+) -> dict[str, str]:
+    """
+    Resolve virtual key to be forwarded to litellm, if passing custom virtual key
+    the custom key will be used. Otherwise, the default LITELLM_VIRTUAL_AUTH_HEADERS
+    will be used
+    """
+    if custom_virtual_key is None:
+        return LITELLM_VIRTUAL_AUTH_HEADERS
+    return {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {custom_virtual_key}",
+    }
+
+
 # LiteLLM proxy response headers (lowercase names for httpx Headers.get)
 # https://docs.litellm.ai/docs/proxy/response_headers
 LITELLM_HEADER_MODEL_API_BASE = "x-litellm-model-api-base"
@@ -548,6 +570,7 @@ ERROR_CODE_FASTLY_WAF_RATE_LIMIT: int = 6
 
 ERROR_CODE_INVALID_MODEL_NAME: int = 8
 ERROR_CODE_INVALID_REQUEST: int = 9
+ERROR_CODE_GLOBAL_BUDGET_LIMIT_EXCEEDED: int = 10
 
 ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
     429: {
@@ -564,7 +587,8 @@ ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
                             "type": "integer",
                             "description": (
                                 "Error code: 1 budget limit exceeded, 2 rate limit (TPM/RPM), "
-                                "5 upstream provider rate limit, 6 Fastly WAF rate limit (edge; not from MLPA)"
+                                "5 upstream provider rate limit, 6 Fastly WAF rate limit (edge; not from MLPA), "
+                                "10 global budget limit exceeded"
                             ),
                         }
                     },
@@ -706,6 +730,30 @@ ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
                         "value": {"error": ERROR_CODE_MAX_USERS_REACHED},
                         "description": "New sign-ins for cap-managed service types are rejected because capacity is full.",
                     }
+                },
+            }
+        },
+    },
+    500: {
+        "description": "Internal Server Error",
+        "content": {
+            "application/json": {
+                "schema": {
+                    "type": "object",
+                    "properties": {
+                        "error": {
+                            "type": "integer",
+                            "description": "Error code: 10 for global budget exceeded",
+                        }
+                    },
+                    "required": ["error"],
+                },
+                "examples": {
+                    "global_budget_exceeded": {
+                        "summary": "Global budget limit exceeded",
+                        "value": {"error": ERROR_CODE_GLOBAL_BUDGET_LIMIT_EXCEEDED},
+                        "description": "Global LiteLLM virtual-key budget limit exceeded. Check Retry-After header (300 seconds = 5 minutes).",
+                    },
                 },
             }
         },
@@ -897,3 +945,5 @@ PLAY_VERIFY_RESPONSES: dict[int | str, dict[str, Any]] = {
 }
 
 SENSITIVE_FIELDS_TO_SCRUB_FROM_SENTRY = ["messages"]
+
+SENSITIVE_HEADERS_TO_SCRUB_FROM_SENTRY = ["litellm-virtual-key"]

@@ -17,6 +17,7 @@ from mlpa.core.completions import (
 )
 from mlpa.core.config import (
     ERROR_CODE_BUDGET_LIMIT_EXCEEDED,
+    ERROR_CODE_GLOBAL_BUDGET_LIMIT_EXCEEDED,
     ERROR_CODE_INVALID_MODEL_NAME,
     ERROR_CODE_INVALID_REQUEST,
     ERROR_CODE_RATE_LIMIT_EXCEEDED,
@@ -38,7 +39,11 @@ from mlpa.core.prometheus_metrics import (
     PrometheusResult,
 )
 from mlpa.core.utils import clamp_model
-from tests.consts import SAMPLE_REQUEST, SUCCESSFUL_CHAT_RESPONSE
+from tests.consts import (
+    MOCK_LITELLM_GLOBAL_BUDGET_ERROR_TEXT,
+    SAMPLE_REQUEST,
+    SUCCESSFUL_CHAT_RESPONSE,
+)
 
 
 @contextlib.contextmanager
@@ -649,6 +654,40 @@ async def test_get_completion_budget_limit_exceeded_400(mocker, metrics_spy):
         )
     )
     assert _rejection_count(metrics_spy, PrometheusRejectionReason.BUDGET_EXCEEDED) == 1
+
+
+async def test_get_completion_global_budget_limit_exceeded(mocker, metrics_spy):
+    mock_response = MagicMock()
+    mock_response.text = MOCK_LITELLM_GLOBAL_BUDGET_ERROR_TEXT
+    mock_response.status_code = 400
+
+    mock_http_status_error = httpx.HTTPStatusError(
+        "Bad Request", request=MagicMock(), response=mock_response
+    )
+    mock_response.raise_for_status.side_effect = mock_http_status_error
+
+    mock_client = AsyncMock()
+    mock_client.post.return_value = mock_response
+    mocker.patch("mlpa.core.completions.get_http_client", return_value=mock_client)
+
+    with pytest.raises(HTTPException) as exc_info:
+        await get_completion(SAMPLE_REQUEST)
+
+    assert exc_info.value.status_code == 500
+    assert exc_info.value.detail == {"error": ERROR_CODE_GLOBAL_BUDGET_LIMIT_EXCEEDED}
+    assert exc_info.value.headers == {"Retry-After": "300"}
+    assert (
+        _rejection_count(metrics_spy, PrometheusRejectionReason.GLOBAL_BUDGET_EXCEEDED)
+        == 1
+    )
+    assert (
+        _availability_count(
+            metrics_spy,
+            AvailabilityOutcome.FAILURE,
+            AvailabilityReason.GLOBAL_BUDGET_EXCEEDED,
+        )
+        == 1
+    )
 
 
 async def test_get_completion_rate_limit_exceeded(mocker, metrics_spy):

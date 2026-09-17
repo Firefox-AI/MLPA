@@ -20,12 +20,21 @@ updates:
     # This does not limit dependencies per grouped PR.
     open-pull-requests-limit: 5
 
-  # Keeps the pinned LiteLLM image tag in litellm_docker_compose.yaml current.
-  # A bump PR is what actually exercises the LiteLLM upgrade contract test
-  # (src/tests/integration/test_litellm_contract.py, AIPLAT-910) -- it runs
-  # like any other PR via linters_and_tests.yml.
+  # Bumps the pinned LiteLLM image tag in litellm_docker_compose.yaml. The PR
+  # runs like any other via linters_and_tests.yml, which is what exercises the
+  # upgrade: src/tests/litellm_compatibility (AIPLAT-910, AIPLAT-1337).
+  #
+  # LiteLLM tags as vMAJOR.MINOR.PATCH with MAJOR always 1, so MINOR is their
+  # real release number (e.g. v1.101.0 -> v1.102.0) -- patch-only bumps
+  # (v1.101.0 -> v1.101.1) are ignored, and any remaining bump waits 14 days
+  # after release before Dependabot opens a PR for it.
   - package-ecosystem: "docker-compose"
     directory: "/"
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 5
+    cooldown:
+      default-days: 14
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-patch"]
