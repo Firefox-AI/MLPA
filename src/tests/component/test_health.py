@@ -2,11 +2,13 @@ import importlib.metadata
 from unittest.mock import AsyncMock
 
 import httpx
+import pytest
 
 from mlpa.core.config import env
 
 READINESS_URL = f"{env.LITELLM_API_BASE}/health/readiness"
 INFO_URL = f"{env.LITELLM_API_BASE}/public/model_hub/info"
+PRIVACY_FILTER_READINESS_URL = f"{env.PRIVACY_FILTER_API_BASE}/readyz"
 
 
 def _mock_litellm_ready(httpx_mock, status="healthy", db="connected", status_code=200):
@@ -25,15 +27,54 @@ def _mock_litellm_ready(httpx_mock, status="healthy", db="connected", status_cod
     )
 
 
+def _mock_privacy_filter_ready(httpx_mock, ready=True, status_code=200):
+    httpx_mock.add_response(
+        method="GET",
+        url=PRIVACY_FILTER_READINESS_URL,
+        status_code=status_code,
+        json={
+            "ready": ready,
+            "version": "privacy-filter-test",
+            "model_id": "pii-filter",
+        },
+    )
+
+
+def _mock_dependencies_ready(httpx_mock):
+    _mock_litellm_ready(httpx_mock)
+    _mock_privacy_filter_ready(httpx_mock)
+
+
+@pytest.fixture
+def privacy_filter_enabled(mocker):
+    mocker.patch.object(env, "PRIVACY_FILTER_ENABLED", True)
+
+
 def test_health_liveness(mocked_client_integration, httpx_mock):
     liveness_response = mocked_client_integration.get("/health/liveness")
     assert liveness_response.status_code == 200
     assert liveness_response.json() == {"status": "alive"}
 
 
-def test_readiness_200_when_all_healthy(mocked_client_integration, httpx_mock):
-    mlpa_version = importlib.metadata.version("mlpa")
+def test_readiness_200_when_privacy_filter_disabled(
+    mocked_client_integration, httpx_mock, mocker
+):
+    mocker.patch.object(env, "PRIVACY_FILTER_ENABLED", False)
     _mock_litellm_ready(httpx_mock)
+
+    response = mocked_client_integration.get("/health/readiness")
+    body = response.json()
+
+    assert response.status_code == 200
+    assert body["status"] == "connected"
+    assert body["privacy_filter"] == {"status": "disabled"}
+
+
+def test_readiness_200_when_all_healthy(
+    mocked_client_integration, httpx_mock, privacy_filter_enabled
+):
+    mlpa_version = importlib.metadata.version("mlpa")
+    _mock_dependencies_ready(httpx_mock)
 
     response = mocked_client_integration.get("/health/readiness")
     body = response.json()
@@ -43,13 +84,17 @@ def test_readiness_200_when_all_healthy(mocked_client_integration, httpx_mock):
     assert body["mlpa_version"] == mlpa_version
     assert body["pg_server_dbs"] == {"postgres": "connected", "app_attest": "connected"}
     assert body["litellm"]["db"] == "connected"
-    assert body["litellm"]["litellm_version"] == "1.84.4"
+    assert body["litellm"]["version"] == "1.84.4"
+    assert body["privacy_filter"] == {
+        "version": "privacy-filter-test",
+        "model_id": "pii-filter",
+    }
 
 
 def test_readiness_503_when_litellm_pool_down(
-    mocked_client_integration, httpx_mock, mocker
+    mocked_client_integration, httpx_mock, mocker, privacy_filter_enabled
 ):
-    _mock_litellm_ready(httpx_mock)
+    _mock_dependencies_ready(httpx_mock)
     mocker.patch(
         "mlpa.core.routers.health.health.litellm_pg.ping",
         AsyncMock(return_value=False),
@@ -64,9 +109,9 @@ def test_readiness_503_when_litellm_pool_down(
 
 
 def test_readiness_503_when_app_attest_pool_down(
-    mocked_client_integration, httpx_mock, mocker
+    mocked_client_integration, httpx_mock, mocker, privacy_filter_enabled
 ):
-    _mock_litellm_ready(httpx_mock)
+    _mock_dependencies_ready(httpx_mock)
     mocker.patch(
         "mlpa.core.routers.health.health.app_attest_pg.ping",
         AsyncMock(return_value=False),
@@ -79,8 +124,11 @@ def test_readiness_503_when_app_attest_pool_down(
     assert body["pg_server_dbs"]["app_attest"] == "offline"
 
 
-def test_readiness_503_when_litellm_non_200(mocked_client_integration, httpx_mock):
+def test_readiness_503_when_litellm_non_200(
+    mocked_client_integration, httpx_mock, privacy_filter_enabled
+):
     _mock_litellm_ready(httpx_mock, status_code=503)
+    _mock_privacy_filter_ready(httpx_mock)
 
     response = mocked_client_integration.get("/health/readiness")
     body = response.json()
@@ -90,16 +138,49 @@ def test_readiness_503_when_litellm_non_200(mocked_client_integration, httpx_moc
 
 
 def test_readiness_503_when_litellm_db_not_connected(
-    mocked_client_integration, httpx_mock
+    mocked_client_integration, httpx_mock, privacy_filter_enabled
 ):
     _mock_litellm_ready(httpx_mock, status="healthy", db="disconnected")
+    _mock_privacy_filter_ready(httpx_mock)
 
     response = mocked_client_integration.get("/health/readiness")
 
     assert response.status_code == 503
 
 
-def test_readiness_503_when_litellm_times_out(mocked_client_integration, httpx_mock):
+def test_readiness_503_when_privacy_filter_not_ready(
+    mocked_client_integration, httpx_mock, privacy_filter_enabled
+):
+    _mock_litellm_ready(httpx_mock)
+    _mock_privacy_filter_ready(httpx_mock, ready=False)
+
+    response = mocked_client_integration.get("/health/readiness")
+    body = response.json()
+
+    assert response.status_code == 503
+    assert body["status"] == "degraded"
+    assert body["privacy_filter"] == {
+        "version": "privacy-filter-test",
+        "model_id": "pii-filter",
+    }
+
+
+def test_readiness_503_when_privacy_filter_non_200(
+    mocked_client_integration, httpx_mock, privacy_filter_enabled
+):
+    _mock_litellm_ready(httpx_mock)
+    _mock_privacy_filter_ready(httpx_mock, status_code=503)
+
+    response = mocked_client_integration.get("/health/readiness")
+    body = response.json()
+
+    assert response.status_code == 503
+    assert body["privacy_filter"] == {"version": "N/A", "status": "unreachable"}
+
+
+def test_readiness_503_when_litellm_times_out(
+    mocked_client_integration, httpx_mock, privacy_filter_enabled
+):
     httpx_mock.add_exception(
         httpx.ReadTimeout("timed out"), method="GET", url=READINESS_URL
     )
@@ -107,9 +188,10 @@ def test_readiness_503_when_litellm_times_out(mocked_client_integration, httpx_m
         method="GET",
         url=INFO_URL,
         status_code=200,
-        json={"litellm_version": "1.84.4"},
+        json={"version": "1.84.4"},
         is_optional=True,
     )
+    _mock_privacy_filter_ready(httpx_mock)
 
     response = mocked_client_integration.get("/health/readiness")
     body = response.json()

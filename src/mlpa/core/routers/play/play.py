@@ -13,7 +13,11 @@ from mlpa.core.classes import PlayIntegrityRequest, PlayIntegrityTokenResponse
 from mlpa.core.config import PLAY_VERIFY_RESPONSES, env
 from mlpa.core.http_client import get_http_client
 from mlpa.core.prometheus_metrics import PrometheusResult, metrics
-from mlpa.core.utils import issue_mlpa_access_token, raise_and_log
+from mlpa.core.utils import (
+    is_plausible_integrity_token,
+    issue_mlpa_access_token,
+    raise_and_log,
+)
 
 router = APIRouter()
 
@@ -113,6 +117,8 @@ async def verify_play_integrity(payload: PlayIntegrityRequest):
     start_time = time.perf_counter()
     try:
         result = PrometheusResult.ERROR
+        if not is_plausible_integrity_token(payload.integrity_token):
+            raise HTTPException(status_code=400, detail="Invalid integrity_token")
         decoded = await _decode_integrity_token(
             payload.integrity_token, payload.package_name
         )

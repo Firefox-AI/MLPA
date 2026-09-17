@@ -8,11 +8,13 @@ from fastapi import HTTPException
 from mlpa.core.classes import AuthorizedSearchRequest
 from mlpa.core.config import (
     ERROR_CODE_BUDGET_LIMIT_EXCEEDED,
+    ERROR_CODE_GLOBAL_BUDGET_LIMIT_EXCEEDED,
     ERROR_CODE_REQUEST_TOO_LARGE,
 )
 from mlpa.core.metrics import SEARCH_MODEL
 from mlpa.core.prometheus_metrics import PrometheusRejectionReason, PrometheusResult
 from mlpa.core.search import get_search
+from tests.consts import MOCK_LITELLM_GLOBAL_BUDGET_ERROR_TEXT
 
 
 def _httpx_encode_json(body: dict) -> bytes:
@@ -54,6 +56,41 @@ async def test_get_search_handles_unpaired_surrogate(mocker):
     _httpx_encode_json(sent_json)
     assert "\ud83e" not in sent_json["query"]
     assert sent_json["query"].startswith("weather in tokyo ")
+
+
+async def test_get_search_excludes_internal_fields_from_upstream_body(mocker):
+    """client_country/service_type/purpose are internal auth/routing fields;
+    they must never be forwarded to the Exa search backend. `user` must be
+    kept: LiteLLM needs it to enforce the per-end-user search budget."""
+    mock_response = MagicMock()
+    mock_response.json.return_value = {"results": []}
+    mock_response.raise_for_status.return_value = None
+
+    mock_client = AsyncMock()
+    mock_client.post.return_value = mock_response
+    mocker.patch("mlpa.core.search.get_http_client", return_value=mock_client)
+
+    req = AuthorizedSearchRequest(
+        user="test-user:search",
+        service_type="search",
+        purpose="",
+        client_country="US",
+        query="weather in tokyo",
+        max_results=5,
+    )
+
+    await get_search(req)
+
+    _, call_kwargs = mock_client.post.call_args
+    sent_json = call_kwargs["json"]
+    assert "client_country" not in sent_json
+    assert "service_type" not in sent_json
+    assert "purpose" not in sent_json
+    assert sent_json == {
+        "user": "test-user:search",
+        "query": "weather in tokyo",
+        "max_results": 5,
+    }
 
 
 async def test_get_search_sanitizes_response_surrogates(mocker):
@@ -136,6 +173,46 @@ async def test_get_search_budget_limit_exceeded_records_rejection(mocker, metric
     assert (
         _search_rejection_count(
             metrics_spy, PrometheusRejectionReason.BUDGET_EXCEEDED, req
+        )
+        == 1
+    )
+    assert _search_latency_count(metrics_spy, PrometheusResult.ERROR) == 1
+
+
+async def test_get_search_global_budget_limit_exceeded_records_rejection(
+    mocker, metrics_spy
+):
+    req = AuthorizedSearchRequest(
+        user="test-user:search",
+        service_type="search",
+        purpose="",
+        query="weather in tokyo",
+        max_results=5,
+    )
+
+    mock_response = MagicMock()
+    mock_response.text = MOCK_LITELLM_GLOBAL_BUDGET_ERROR_TEXT
+    mock_response.status_code = 400
+    mock_response.raise_for_status.side_effect = httpx.HTTPStatusError(
+        "Bad Request",
+        request=MagicMock(),
+        response=mock_response,
+    )
+
+    mock_client = AsyncMock()
+    mock_client.post.return_value = mock_response
+    mocker.patch("mlpa.core.search.get_http_client", return_value=mock_client)
+
+    with pytest.raises(HTTPException) as exc_info:
+        await get_search(req)
+
+    assert exc_info.value.status_code == 500
+    assert exc_info.value.detail == {"error": ERROR_CODE_GLOBAL_BUDGET_LIMIT_EXCEEDED}
+    assert exc_info.value.headers == {"Retry-After": "300"}
+    metrics_spy.assert_only({"search_request_rejections", "search_latency"})
+    assert (
+        _search_rejection_count(
+            metrics_spy, PrometheusRejectionReason.GLOBAL_BUDGET_EXCEEDED, req
         )
         == 1
     )

@@ -12,6 +12,7 @@ class PrometheusResult(StrEnum):
 
 class PrometheusRejectionReason(StrEnum):
     BUDGET_EXCEEDED = "budget_exceeded"
+    GLOBAL_BUDGET_EXCEEDED = "global_budget_exceeded"
     RATE_LIMITED = "rate_limited"
     PAYLOAD_TOO_LARGE = "payload_too_large"
     SIGNUP_CAP_EXCEEDED = "signup_cap_exceeded"
@@ -44,10 +45,13 @@ class AvailabilityReason(StrEnum):
     AUTH_SYSTEM_FAILURE = "auth_system_failure"  # failure
 
     # --- completion-stage reasons (recorded inside stream_completion / get_completion) ---
+    # INVALID_MODEL_NAME is the exception: also recorded pre-completion, in
+    # authorize_chat_request, when the model fails the charset/length check.
     VALID_RESPONSE = "valid_response"  # success
     UPSTREAM_ERROR = "upstream_error"  # failure
     EMPTY_RESPONSE = "empty_response"  # failure
     BUDGET_EXCEEDED = "budget_exceeded"  # excluded
+    GLOBAL_BUDGET_EXCEEDED = "global_budget_exceeded"  # failure
     RATE_LIMITED_PLATFORM = "rate_limited_platform"  # excluded
     RATE_LIMITED_UPSTREAM = "rate_limited_upstream"  # excluded
     PAYLOAD_TOO_LARGE = "payload_too_large"  # excluded
@@ -68,6 +72,7 @@ _AVAILABILITY_OUTCOME_BY_REASON: dict[AvailabilityReason, AvailabilityOutcome] =
     AvailabilityReason.UPSTREAM_ERROR: AvailabilityOutcome.FAILURE,
     AvailabilityReason.EMPTY_RESPONSE: AvailabilityOutcome.FAILURE,
     AvailabilityReason.BUDGET_EXCEEDED: AvailabilityOutcome.EXCLUDED,
+    AvailabilityReason.GLOBAL_BUDGET_EXCEEDED: AvailabilityOutcome.FAILURE,
     AvailabilityReason.RATE_LIMITED_PLATFORM: AvailabilityOutcome.EXCLUDED,
     AvailabilityReason.RATE_LIMITED_UPSTREAM: AvailabilityOutcome.EXCLUDED,
     AvailabilityReason.PAYLOAD_TOO_LARGE: AvailabilityOutcome.EXCLUDED,
@@ -178,6 +183,9 @@ class PrometheusMetrics:
     chat_requests_with_tools: Counter
     chat_request_rejections: Counter
     chat_availability: Counter
+    chat_completion_latency_by_country: Histogram
+    chat_completion_ttft_by_country: Histogram
+    chat_availability_by_country: Counter
 
     # search
     search_latency: Histogram
@@ -207,7 +215,7 @@ def build_metrics(registry: CollectorRegistry = REGISTRY) -> PrometheusMetrics:
         requests_total=Counter(
             "mlpa_requests_total",
             "Total number of requests handled by the proxy.",
-            ["method", "endpoint", "service_type", "purpose"],
+            ["method", "endpoint", "service_type", "purpose", "major_fx_version"],
             registry=registry,
         ),
         requests_by_country_total=Counter(
@@ -350,6 +358,34 @@ def build_metrics(registry: CollectorRegistry = REGISTRY) -> PrometheusMetrics:
             "mlpa_chat_availability_total",
             "Interim availability outcomes for chat completions. outcome is success/failure/excluded/abort; reason is the bounded cause. Availability = success / (success + failure).",
             ["outcome", "reason", "model", "service_type", "purpose"],
+            registry=registry,
+        ),
+        chat_completion_latency_by_country=Histogram(
+            "mlpa_chat_completion_latency_by_country_seconds",
+            "Chat completion latency in seconds, by launch-market client country "
+            "and service_type (AIPLAT-1266). Deliberately thin (no model/purpose) "
+            "to keep cardinality bounded; client_country is one of "
+            "LAUNCH_COUNTRIES or 'other'.",
+            ["result", "client_country", "service_type"],
+            buckets=BUCKETS_COMPLETION,
+            registry=registry,
+        ),
+        chat_completion_ttft_by_country=Histogram(
+            "mlpa_chat_completion_ttft_by_country_seconds",
+            "Time to first token for streaming chat completions, by launch-market "
+            "client country and service_type. See chat_completion_latency_by_country "
+            "for the cardinality rationale.",
+            ["client_country", "service_type"],
+            buckets=BUCKETS_TTFT,
+            registry=registry,
+        ),
+        chat_availability_by_country=Counter(
+            "mlpa_chat_availability_by_country_total",
+            "Interim availability outcomes for chat completions, by launch-market "
+            "client country and service_type (AIPLAT-1266). outcome only (no reason "
+            "breakdown) to keep cardinality bounded; see chat_availability for the "
+            "full reason breakdown without country.",
+            ["outcome", "client_country", "service_type"],
             registry=registry,
         ),
         search_latency=Histogram(

@@ -1,3 +1,5 @@
+import json
+
 from mlpa.core.classes import AuthorizedChatRequest, ChatRequest
 
 TEST_USER_ID = "test-user-id"
@@ -71,3 +73,13 @@ MOCK_FXA_USER_DATA = {
     "generation": 1,
     "profile_changed_at": 1234567890,
 }
+
+MOCK_LITELLM_GLOBAL_BUDGET_ERROR_TEXT = json.dumps(
+    {
+        "error": {
+            "message": "ExceededBudget: User=default_user_id over budget. Spend=9.1e-05, Budget=1e-05",
+            "type": "budget_exceeded",
+            "code": "400",
+        }
+    }
+)

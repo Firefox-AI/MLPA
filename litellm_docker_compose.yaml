@@ -1,5 +1,8 @@
-version: "3.8"
-
+# The `litellm:` image tag below is the LiteLLM version
+# src/tests/litellm_compatibility (AIPLAT-910, AIPLAT-1337) runs against
+# locally and in CI. Dependabot bumps it automatically
+# (.github/dependabot.yml, "docker-compose" ecosystem) -- review the diff
+# on that PR like any other version bump.
 services:
   postgres:
     image: postgres:15
@@ -11,8 +14,12 @@ services:
       POSTGRES_DB: litellm
     ports:
       - "5432:5432"
+    # Mounted at the /var/lib/postgresql parent, not .../data: Postgres 18+
+    # images store data in a major-version-specific subdirectory and refuse
+    # to start against an old-style .../data mount. The parent mount works
+    # on both 15 and 18, so this survives the next major-version bump too.
     volumes:
-      - pg_data:/var/lib/postgresql/data
+      - pg_data:/var/lib/postgresql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U litellm -d litellm"]
       interval: 5s
@@ -20,7 +27,7 @@ services:
       retries: 5
 
   redis:
-    image: redis:7-alpine
+    image: redis:8-alpine
     container_name: litellm_redis
     restart: always
     ports:
@@ -47,15 +54,30 @@ services:
       - "4000:4000"
     volumes:
       - ./litellm_config.yaml:/app/config.yaml
+      #- ./custom_callbacks.py:/app/custom_callbacks.py
+      #- ./liner_handler.py:/app/liner_handler.py
       - ./service_account.json:/app/service_account.json
     env_file:
-      - .env
+      - path: .env
+        required: false
     environment:
       PG_DB_URL: postgresql://litellm:litellm@postgres:5432/litellm
       REDIS_HOST: redis
       REDIS_PORT: 6379
       PORT: 4000
     command: ["--config", "/app/config.yaml"]
+
+  privacy_filter:
+    profiles:
+      - privacy-filter
+    image: privacy-filter:local
+    container_name: privacy-filter
+    command: ["python", "-m", "privacy_filter.run"]
+    shm_size: "2gb"
+    ports:
+      - "5000:5000"
+    environment:
+      PORT: 5000
 
 volumes:
   pg_data:

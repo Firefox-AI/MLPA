@@ -19,6 +19,12 @@ model_list:
       model: openai/exa
       api_base: https://api.exa.ai
       api_key: os.environ/EXA_API_KEY
+  # Note this model requires a custom provider map to handle liner requests
+  #- model_name: liner
+  #  litellm_params:
+  #    model: liner/liner-quick-answer
+  #    api_base: https://platform.liner.com/api/v1/agents/quick-answer
+  #    api_key: os.environ/LINER_API_KEY
   - model_name: mock
     litellm_params:
       model: vertex_ai/qwen/qwen3-235b-a22b-instruct-2507-maas
@@ -46,3 +52,6 @@ litellm_settings:
     host: redis
     port: 6379
     ttl: 3600
+  #custom_provider_map:
+  #  - custom_handler: liner_handler.liner_llm
+  #    provider: liner

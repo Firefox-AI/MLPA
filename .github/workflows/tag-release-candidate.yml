@@ -1,6 +1,15 @@
 name: Tag Release Candidate in GAR
 
 on:
+  # Automatic: every successful main build for an unreleased version gets an
+  # RC tag, so the image keeps a durable semantic label after `latest` moves on.
+  # Chained off the build rather than the push itself, because the image does
+  # not exist until the build lands.
+  workflow_run:
+    workflows: ["Build and Push Docker Image to Google Artifact Registry"]
+    types: [completed]
+
+  # Manual: tag a specific commit, optionally with an explicit RC number.
   workflow_dispatch:
     inputs:
       commit_sha:
@@ -8,14 +17,14 @@ on:
         required: true
         type: string
       rc_number:
-        description: "Release candidate number, e.g. 1 for vX.Y.Z-rc.1. Increment for each new candidate of the same version"
-        required: true
+        description: "RC number to use, e.g. 3 for vX.Y.Z-rc.3. Leave empty to allocate the next one"
+        required: false
         type: string
 
 concurrency:
-  # Shared with the stable promotion workflow so the two cannot mutate tags at the same time
+  # Serialize RC tagging and stable promotion without dropping pending runs.
   group: mlpa-image-promotion
-  cancel-in-progress: false
+  queue: max
 
 env:
   GAR_LOCATION: us
@@ -26,7 +35,16 @@ env:
 
 jobs:
   tag-rc:
+    # A manual run has no `github.event.workflow_run`, so checking only those fields
+    # would stop manual dispatch from ever starting.
+    if: >
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push' &&
+       github.event.workflow_run.head_branch == 'main')
     runs-on: ubuntu-latest
+    # NOTE: adding required reviewers to this environment would make every automatic
+    # run block for approval on every merge to main.
     environment: build
     timeout-minutes: 10
     permissions:
@@ -34,54 +52,72 @@ jobs:
       id-token: write
 
     steps:
-      - name: Validate inputs
+      - name: Resolve target commit
+        id: resolve
         env:
-          COMMIT_SHA: ${{ inputs.commit_sha }}
-          RC_NUMBER: ${{ inputs.rc_number }}
+          INPUT_SHA: ${{ inputs.commit_sha }}
+          INPUT_RC_NUMBER: ${{ inputs.rc_number }}
+          BUILD_SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
           set -euo pipefail
-          if [[ ! "$COMMIT_SHA" =~ ^[0-9a-fA-F]{40}$ ]]; then
-            echo "::error::commit_sha must be a full 40-character hex SHA, got: '$COMMIT_SHA'"
-            exit 1
+
+          if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]; then
+            SHA="$INPUT_SHA"
+            if [[ ! "$SHA" =~ ^[0-9a-fA-F]{40}$ ]]; then
+              echo "::error::commit_sha must be a full 40-character hex SHA, got: '$SHA'"
+              exit 1
+            fi
+            if [[ -n "$INPUT_RC_NUMBER" && ! "$INPUT_RC_NUMBER" =~ ^[1-9][0-9]*$ ]]; then
+              echo "::error::rc_number must be a positive integer with no leading zeros, got: '$INPUT_RC_NUMBER'"
+              exit 1
+            fi
+          else
+            SHA="$BUILD_SHA"
+            if [[ -z "$SHA" ]]; then
+              echo "::error::Could not read the built commit from the triggering workflow run."
+              exit 1
+            fi
           fi
-          if [[ ! "$RC_NUMBER" =~ ^[1-9][0-9]*$ ]]; then
-            echo "::error::rc_number must be a positive integer with no leading zeros, got: '$RC_NUMBER'"
-            exit 1
-          fi
+
+          echo "sha=${SHA}" >> "$GITHUB_OUTPUT"
+          echo "Target commit: ${SHA}"
 
       - name: Checkout repository
         uses: actions/checkout@v4
         with:
-          ref: ${{ inputs.commit_sha }}
-          # Full history: needed to fetch and compare against `origin/main` below
+          ref: ${{ steps.resolve.outputs.sha }}
+          # Full history and tags: the checks below compare against origin/main and
+          # look for the stable tag locally.
           fetch-depth: 0
           persist-credentials: false
 
       # The short-SHA image tags we look up are only created by pushes to `main`
       # We confirm the candidate actually landed there before looking it up in GAR
       - name: Verify candidate is on main
-        env:
-          COMMIT_SHA: ${{ inputs.commit_sha }}
+        id: commit
         run: |
           set -euo pipefail
+
+          SHA="$(git rev-parse HEAD)"
 
           # The explicit refspec guarantees `origin/main` is up-to-date locally
           git fetch --no-tags origin "+refs/heads/main:refs/remotes/origin/main"
 
-          if ! git merge-base --is-ancestor "$COMMIT_SHA" origin/main; then
-            echo "::error::Commit $COMMIT_SHA is not on main. Has it been merged?"
+          if ! git merge-base --is-ancestor "$SHA" origin/main; then
+            echo "::error::Commit $SHA is not on main. Has it been merged?"
             exit 1
           fi
 
-      - name: Derive tags and version
-        id: tags
+          echo "sha=${SHA}" >> "$GITHUB_OUTPUT"
+
+      - name: Derive version and check release state
+        id: version
         env:
-          COMMIT_SHA: ${{ inputs.commit_sha }}
-          RC_NUMBER: ${{ inputs.rc_number }}
+          COMMIT_SHA: ${{ steps.commit.outputs.sha }}
         run: |
           set -euo pipefail
 
-          # Recompute the tag w/ the same command the build used (length can exceed 10)
+          # Recompute the tag with the same command the build used (length can exceed 10)
           SOURCE_TAG="$(git rev-parse --short=10 "$COMMIT_SHA")"
 
           # Read the version from `pyproject.toml` as of the candidate commit
@@ -93,30 +129,57 @@ jobs:
             exit 1
           fi
 
-          RC_TAG="v${VERSION}-rc.${RC_NUMBER}"
-
           echo "source_tag=${SOURCE_TAG}" >> "$GITHUB_OUTPUT"
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
-          echo "rc_tag=${RC_TAG}" >> "$GITHUB_OUTPUT"
-          echo "Source tag: ${SOURCE_TAG}  ->  RC tag: ${RC_TAG}"
+
+          # A stable Git tag means the version name is claimed. If it points at another
+          # commit, this build can never become v${VERSION}, since promote-release.yml
+          # requires the release tag to equal v${project.version}. If it points at this
+          # commit, the release was cut mid-run and the candidate still needs its RC tag.
+          STABLE_REF="refs/tags/v${VERSION}"
+
+          if git rev-parse -q --verify "$STABLE_REF" >/dev/null; then
+            # ^{commit} resolves both lightweight and annotated tags
+            STABLE_SHA="$(git rev-parse "${STABLE_REF}^{commit}")"
+
+            if [[ "$STABLE_SHA" == "$COMMIT_SHA" ]]; then
+              echo "Stable Git tag v${VERSION} points to this candidate; continuing so it gets an RC tag."
+            elif [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]; then
+              echo "::error::Stable Git tag v${VERSION} already exists on commit ${STABLE_SHA}."
+              echo "::error::This candidate cannot become the stable v${VERSION} release."
+              exit 1
+            else
+              echo "skip=true" >> "$GITHUB_OUTPUT"
+              echo "Stable Git tag v${VERSION} already exists on another commit; skipping RC tagging."
+              exit 0
+            fi
+          fi
+
+          echo "skip=false" >> "$GITHUB_OUTPUT"
+          echo "Source tag: ${SOURCE_TAG}, version ${VERSION}"
 
       - name: Authenticate to Google Cloud
+        if: steps.version.outputs.skip != 'true'
         uses: google-github-actions/auth@v2
         with:
           service_account: artifact-writer@${{ env.GCP_PROJECT_ID }}.iam.gserviceaccount.com
           workload_identity_provider: ${{ env.GCPV2_GITHUB_WORKLOAD_IDENTITY_PROVIDER }}
 
       - name: Set up gcloud
+        if: steps.version.outputs.skip != 'true'
         uses: google-github-actions/setup-gcloud@v2
 
       - name: Tag release candidate
         id: tag
+        if: steps.version.outputs.skip != 'true'
         env:
-          SOURCE_TAG: ${{ steps.tags.outputs.source_tag }}
-          RC_TAG: ${{ steps.tags.outputs.rc_tag }}
+          SOURCE_TAG: ${{ steps.version.outputs.source_tag }}
+          VERSION: ${{ steps.version.outputs.version }}
+          REQUESTED_RC: ${{ inputs.rc_number }}
         run: |
           set -euo pipefail
           IMAGE="${GAR_LOCATION}-docker.pkg.dev/${GCP_PROJECT_ID}/${GAR_REPOSITORY}/${GAR_NAME}"
+          RC_PREFIX="v${VERSION}-rc."
 
           # Return the image digest for a ref, or empty if it doesn't resolve.
           # Errors are silenced, i.e., an empty digest does not distinguish
@@ -126,7 +189,6 @@ jobs:
               --format='value(image_summary.digest)' 2>/dev/null || true
           }
 
-          # The source image must exist
           SOURCE_DIGEST="$(get_digest "${IMAGE}:${SOURCE_TAG}")"
           if [[ -z "$SOURCE_DIGEST" ]]; then
             echo "::error::Source image ${IMAGE}:${SOURCE_TAG} could not be resolved."
@@ -139,64 +201,126 @@ jobs:
           fi
           echo "Source: ${IMAGE}:${SOURCE_TAG} -> ${SOURCE_DIGEST}"
 
-          # Use `tags list` here instead of `images describe` for the existence check:
-          # - `describe` cannot tell between a missing tag and an API failure
-          # - `list` only exits non-zero for a real failure
-          if ! ALL_TAGS="$(gcloud artifacts docker tags list "$IMAGE" \
-              --format='value(tag)')"; then
-            echo "::error::Failed to list tags for ${IMAGE}; aborting rather than risk moving an existing RC tag."
+          # One row per tag, giving us both:
+          # - the highest RC number already in use for this version
+          # - whether the source digest already carries an RC tag
+          if ! TAG_ROWS="$(gcloud artifacts docker tags list "$IMAGE" \
+              --format='value(version.basename(),tag.basename())')"; then
+            echo "::error::Failed to list tags for ${IMAGE}; aborting rather than risk a conflicting RC tag."
             exit 1
           fi
 
-          rc_exists=false
-          while IFS= read -r t; do
-            # Docker tags can't contain '/', so stripping any path prefix is safe
-            [[ -n "$t" && "${t##*/}" == "$RC_TAG" ]] && { rc_exists=true; break; }
-          done <<< "$ALL_TAGS"
+          max_rc=0
+          rc_on_source=""
+          saw_source=false
 
-          if [[ "$rc_exists" == "true" ]]; then
-            RC_DIGEST="$(get_digest "${IMAGE}:${RC_TAG}")"
-            if [[ -z "$RC_DIGEST" ]]; then
-              echo "::error::RC tag ${RC_TAG} exists, but its digest could not be resolved."
-              echo "::error::Check GAR access and API availability, then rerun."
-              exit 1
-            elif [[ ! "$RC_DIGEST" =~ ^sha256:[0-9a-f]{64}$ ]]; then
-              echo "::error::Invalid digest for RC tag ${RC_TAG}: '$RC_DIGEST'"
-              exit 1
-            elif [[ "$RC_DIGEST" == "$SOURCE_DIGEST" ]]; then
-              echo "RC tag ${RC_TAG} already points to ${SOURCE_DIGEST}. Nothing to do."
-            else
-              # `tags add` would repoint the tag at this image instead. Stage pins to
-              # this tag, so moving it could cause stage to run a different image
-              # without a values-file change. We exit instead of overwriting.
-              echo "::error::RC tag ${RC_TAG} already points to a different image (${RC_DIGEST})."
-              echo "::error::Use a new RC number instead of overwriting this tag."
-              exit 1
-            fi
-          else
-            gcloud artifacts docker tags add "${IMAGE}@${SOURCE_DIGEST}" "${IMAGE}:${RC_TAG}"
-            echo "Tagged ${IMAGE}@${SOURCE_DIGEST} as ${IMAGE}:${RC_TAG}"
+          while IFS=$'\t' read -r digest tag; do
+            [[ -n "$digest" && -n "$tag" ]] || continue
+
+            [[ "$digest" == "$SOURCE_DIGEST" ]] && saw_source=true
+            [[ "$tag" == "${RC_PREFIX}"* ]] || continue
+
+            n="${tag#"$RC_PREFIX"}"
+            [[ "$n" =~ ^[1-9][0-9]*$ ]] || continue
+
+            (( n > max_rc )) && max_rc="$n"
+            [[ "$digest" == "$SOURCE_DIGEST" ]] && rc_on_source="${rc_on_source} ${tag}"
+          done <<< "$TAG_ROWS"
+
+          # SOURCE_DIGEST came from a tag on this image, so it must appear here. If it
+          # doesn't, the projection returned something unexpected and every digest
+          # comparison below is unreliable.
+          if [[ "$saw_source" != "true" ]]; then
+            echo "::error::${SOURCE_DIGEST} did not appear in the tag listing for ${IMAGE}."
+            echo "::error::The tag listing may be stale, incomplete, or using an unexpected projection."
+            exit 1
           fi
 
+          # Check the idempotent case first. An existing tag means max_rc is already at
+          # least that number, so the "must exceed" rule below would reject it.
+          RC_TAG=""
+          RESULT=""
+
+          if [[ -n "$REQUESTED_RC" ]]; then
+            CANDIDATE="${RC_PREFIX}${REQUESTED_RC}"
+            if [[ " ${rc_on_source} " == *" ${CANDIDATE} "* ]]; then
+              echo "RC tag ${CANDIDATE} already points at ${SOURCE_DIGEST}. Nothing to do."
+              RC_TAG="$CANDIDATE"
+              RESULT="already-tagged"
+            fi
+          fi
+
+          # One digest, one RC number. An automatic re-run just no-ops, but a manual
+          # request for a different number is likely a mistake, so say what's there.
+          if [[ -z "$RESULT" && -n "$rc_on_source" ]]; then
+            EXISTING="${rc_on_source# }"
+            if [[ "$GITHUB_EVENT_NAME" == "workflow_dispatch" ]]; then
+              echo "::error::${SOURCE_DIGEST} already carries ${EXISTING} for v${VERSION}."
+              echo "::error::Reuse that tag, or pick a different commit, rather than giving one image two RC numbers."
+              exit 1
+            fi
+            echo "Digest already carries ${EXISTING}. Nothing to do."
+            RC_TAG="${EXISTING%% *}"
+            RESULT="already-tagged"
+          fi
+
+          if [[ -z "$RESULT" ]]; then
+            if [[ -n "$REQUESTED_RC" ]]; then
+              if (( REQUESTED_RC <= max_rc )); then
+                echo "::error::rc_number ${REQUESTED_RC} must exceed the highest existing RC for v${VERSION} (${max_rc})."
+                exit 1
+              fi
+              RC_NUMBER="$REQUESTED_RC"
+            else
+              # N counts allocations, not commits. Builds can finish out of order, so a
+              # higher N doesn't mean newer code.
+              RC_NUMBER=$(( max_rc + 1 ))
+            fi
+            RC_TAG="${RC_PREFIX}${RC_NUMBER}"
+
+            gcloud artifacts docker tags add "${IMAGE}@${SOURCE_DIGEST}" "${IMAGE}:${RC_TAG}"
+            echo "Tagged ${IMAGE}@${SOURCE_DIGEST} as ${IMAGE}:${RC_TAG}"
+            RESULT="created"
+          fi
+
+          echo "rc_tag=${RC_TAG}" >> "$GITHUB_OUTPUT"
           echo "digest=${SOURCE_DIGEST}" >> "$GITHUB_OUTPUT"
+          echo "result=${RESULT}" >> "$GITHUB_OUTPUT"
 
       - name: Summary
+        if: always()
         env:
-          COMMIT_SHA: ${{ inputs.commit_sha }}
-          SOURCE_TAG: ${{ steps.tags.outputs.source_tag }}
-          VERSION: ${{ steps.tags.outputs.version }}
-          RC_TAG: ${{ steps.tags.outputs.rc_tag }}
+          TRIGGER: ${{ github.event_name == 'workflow_dispatch' && 'manual dispatch' || 'automatic (main build)' }}
+          COMMIT_SHA: ${{ steps.commit.outputs.sha }}
+          SOURCE_TAG: ${{ steps.version.outputs.source_tag }}
+          VERSION: ${{ steps.version.outputs.version }}
+          SKIPPED: ${{ steps.version.outputs.skip }}
+          RC_TAG: ${{ steps.tag.outputs.rc_tag }}
           DIGEST: ${{ steps.tag.outputs.digest }}
+          RESULT: ${{ steps.tag.outputs.result }}
         run: |
           set -euo pipefail
+
+          if [[ "$SKIPPED" == "true" ]]; then
+            STATUS="Skipped: stable Git tag v${VERSION} points to another commit, so this build has no promotion path"
+          else
+            case "${RESULT:-}" in
+              created) STATUS="Created \`${RC_TAG}\`" ;;
+              already-tagged) STATUS="No change: \`${RC_TAG}\` already points at this digest" ;;
+              *) STATUS="Did not complete, see the failing step above" ;;
+            esac
+          fi
+
           cat >> "$GITHUB_STEP_SUMMARY" << EOF
           ## RC Tag
 
           | Field | Value |
           |---|---|
-          | Commit | \`${COMMIT_SHA}\` |
-          | Source tag | \`${SOURCE_TAG}\` |
-          | Version | \`${VERSION}\` |
-          | RC tag | \`${RC_TAG}\` |
-          | Digest | \`${DIGEST}\` |
+          | Trigger | ${TRIGGER} |
+          | Status | ${STATUS} |
+          | Commit | \`${COMMIT_SHA:-unknown}\` |
+          | Source tag | \`${SOURCE_TAG:-unknown}\` |
+          | Version | \`${VERSION:-unknown}\` |
+          | RC tag | \`${RC_TAG:-n/a}\` |
+          | Digest | \`${DIGEST:-n/a}\` |
           EOF

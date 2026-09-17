@@ -16,8 +16,11 @@ RUN mkdir -p /tmp/qa_certificates && chmod 777 /tmp/qa_certificates
 RUN chmod +x /app/scripts/migrate-app-attest-database.sh
 RUN chmod +x /app/scripts/migrate-litellm-database.sh
 
+# App Attest rollback script (manual, incident response - AIPLAT-1189)
+RUN chmod +x /app/scripts/rollback-app-attest-database.sh
+
 # Install dependencies
-RUN pip install --no-cache-dir uv
+RUN pip install --no-cache-dir uv==0.10.8
 RUN apt-get update && apt-get install -y git
 RUN uv pip install --system --editable .
 

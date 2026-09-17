@@ -37,6 +37,23 @@ def test_verify_play_integrity_success(mocked_client_integration, mocker):
     assert data["expires_in"] == env.MLPA_ACCESS_TOKEN_TTL_SECONDS
 
 
+def test_verify_play_integrity_rejects_garbage_token(mocked_client_integration, mocker):
+    decode_mock = mocker.patch(
+        "mlpa.core.routers.play.play._decode_integrity_token",
+    )
+
+    response = mocked_client_integration.post(
+        "/verify/play",
+        json={
+            "integrity_token": "' OR (SELECT pg_sleep(6)) IS NULL --",
+            "user_id": TEST_USER_ID,
+        },
+    )
+
+    assert response.status_code == 400
+    decode_mock.assert_not_called()
+
+
 def test_verify_play_integrity_invalid_hash(mocked_client_integration, mocker):
     mocker.patch(
         "mlpa.core.routers.play.play._decode_integrity_token",

@@ -1,3 +1,18 @@
+"""
+Smoke suite: narrow, fast happy-path checks for auth + data-flow response
+shape (pytest.mark.smoke), distinct from unit/component/e2e by *where* they
+run rather than what they mock.
+
+Without SMOKE_BASE_URL: `smoke_client` falls back to the mocked TestClient
+(mocked_client_integration), same as component tests -- this is what runs
+in CI on every PR.
+
+With SMOKE_BASE_URL set: `smoke_client` hits that URL directly (a real
+deployment, e.g. stage/prod), and `smoke_fxa_token` mints a real FxA
+session against FxA stage instead of using the static TEST_FXA_TOKEN. This
+mode is for a post-deploy sanity check, not pre-merge CI.
+"""
+
 import os
 import time
 from collections.abc import Iterator

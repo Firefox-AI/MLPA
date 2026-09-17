@@ -1,7 +1,8 @@
 from functools import cached_property
-from typing import Any
+from typing import Annotated, Any
 
-from pydantic_settings import BaseSettings, SettingsConfigDict
+from pydantic import field_validator
+from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 
 class Env(BaseSettings):
@@ -18,6 +19,24 @@ class Env(BaseSettings):
     MLPA_CAPPED_SERVICE_TYPES: set[str] = {"ai", "memories"}
     MLPA_ADMISSION_LOCK_TIMEOUT_MS: int = 5000
 
+    # Countries with their own Grafana breakout (AIPLAT-1266). Deliberately a
+    # small set, distinct from the full ISO country_codes.COUNTRY_CODES list,
+    # so the per-country latency/TTFT/availability metrics stay cheap.
+    # Everything else clamps to "other" (see utils.clamp_launch_country).
+    # Grafana's country/region dropdown reads the same values.
+    # `NoDecode` + the validator below let ops set this as a plain
+    # comma-separated string (e.g. "US,CA,FR,DE,GB"); pydantic-settings'
+    # default complex-type decoding otherwise requires JSON syntax and would
+    # crash the app on startup for the intuitive comma-separated format.
+    MLPA_LAUNCH_COUNTRIES: Annotated[set[str], NoDecode] = {"US", "CA", "FR", "DE"}
+
+    @field_validator("MLPA_LAUNCH_COUNTRIES", mode="before")
+    @classmethod
+    def _parse_launch_countries(cls, raw: str | set[str]) -> set[str]:
+        if isinstance(raw, str):
+            return {code.strip() for code in raw.split(",") if code.strip()}
+        return raw
+
     # Purpose header enforcement/backwards-compatibility:
     # when false (default), the `purpose` header is optional for all service types.
     # when true, the `purpose` header becomes mandatory for service types that
@@ -26,15 +45,25 @@ class Env(BaseSettings):
 
     # LiteLLM
     MASTER_KEY: str = "sk-default"  # Bypasses LiteLLM.max_budget, use MLPA_VIRTUAL_KEY (virtual key) for completion requests
+    OPENAI_API_KEY: str = "sk-add-your-key"  # for local LiteLLM testing
+    EXA_API_KEY: str = "sk-add-your-key"  # for local LiteLLM testing
+    LINER_API_KEY: str = "sk-add-your-key"  # for local LiteLLM testing
+    LITELLM_API_BASE: str = "http://localhost:4000"
+    CHALLENGE_EXPIRY_SECONDS: int = 300  # 5 minutes
+    # Custom virtual key passthrough: when true, a request may carry a
+    # `litellm-virtual-key` header, which MLPA forwards as the upstream Bearer
+    # token in place of MLPA_VIRTUAL_KEY. That selects a LiteLLM key with its own
+    # budget / rate-limit / model configuration instead configured values.
+    ALLOW_CUSTOM_VIRTUAL_KEY: bool = False
+
+    # Privacy Filter
+    PRIVACY_FILTER_ENABLED: bool = False
+    PRIVACY_FILTER_MASTER_KEY: str = "sk-default"
+    PRIVACY_FILTER_API_BASE: str = "http://localhost:5000"
+
     # Read-only admin dashboard (`/admin`) and GET /user/counts-by-service-type; not LiteLLM's master key
     MLPA_UI_ACCESS_KEY: str = "sk-ui-access-default"
     MLPA_VIRTUAL_KEY: str = "sk-virtual"  # Enforces LiteLLM.max_budget
-
-    OPENAI_API_KEY: str = "sk-add-your-key"  # for local LiteLLM testing
-    EXA_API_KEY: str = "sk-add-your-key"  # for local LiteLLM testing
-
-    LITELLM_API_BASE: str = "http://localhost:4000"
-    CHALLENGE_EXPIRY_SECONDS: int = 300  # 5 minutes
 
     # User Feature Budget - AI service type
     USER_FEATURE_BUDGET_AI_BUDGET_ID: str = "end-user-budget-ai"
@@ -76,6 +105,18 @@ class Env(BaseSettings):
     USER_FEATURE_BUDGET_ANSWER_TPM_LIMIT: int = 2000
     USER_FEATURE_BUDGET_ANSWER_BUDGET_DURATION: str = "1d"
 
+    USER_FEATURE_BUDGET_SW_ANSWER_BUDGET_ID: str = "end-user-budget-sw-answer"
+    USER_FEATURE_BUDGET_SW_ANSWER_MAX_BUDGET: float = 0.1
+    USER_FEATURE_BUDGET_SW_ANSWER_RPM_LIMIT: int = 10
+    USER_FEATURE_BUDGET_SW_ANSWER_TPM_LIMIT: int = 2000
+    USER_FEATURE_BUDGET_SW_ANSWER_BUDGET_DURATION: str = "1d"
+
+    USER_FEATURE_BUDGET_LINER_ANSWERS_BUDGET_ID: str = "end-user-budget-liner-answer"
+    USER_FEATURE_BUDGET_LINER_ANSWERS_MAX_BUDGET: float = 0.06
+    USER_FEATURE_BUDGET_LINER_ANSWERS_RPM_LIMIT: int = 10
+    USER_FEATURE_BUDGET_LINER_ANSWERS_TPM_LIMIT: int = 2000
+    USER_FEATURE_BUDGET_LINER_ANSWERS_BUDGET_DURATION: str = "1d"
+
     USER_FEATURE_BUDGET_TELEMETRY_BUDGET_ID: str = "end-user-budget-telemetry"
     USER_FEATURE_BUDGET_TELEMETRY_MAX_BUDGET: float = 0.1
     USER_FEATURE_BUDGET_TELEMETRY_RPM_LIMIT: int = 10
@@ -86,7 +127,13 @@ class Env(BaseSettings):
     USER_FEATURE_BUDGET_AGENT_MAX_BUDGET: float = 0.1
     USER_FEATURE_BUDGET_AGENT_RPM_LIMIT: int = 10
     USER_FEATURE_BUDGET_AGENT_TPM_LIMIT: int = 2000
-    USER_FEATURE_BUDGET_AGENT_BUDGET_DURATION: str = "1d"
+    USER_FEATURE_BUDGET_AGENT_BUDGET_DURATION: str = "7d"
+
+    USER_FEATURE_BUDGET_AGENT_SEARCH_BUDGET_ID: str = "end-user-budget-agent-search"
+    USER_FEATURE_BUDGET_AGENT_SEARCH_MAX_BUDGET: float = 0.1
+    USER_FEATURE_BUDGET_AGENT_SEARCH_RPM_LIMIT: int = 10
+    USER_FEATURE_BUDGET_AGENT_SEARCH_TPM_LIMIT: int = 2000
+    USER_FEATURE_BUDGET_AGENT_SEARCH_BUDGET_DURATION: str = "7d"
 
     # User Feature Budget - ai-dev service type (experimentation, batch predictions)
     USER_FEATURE_BUDGET_AI_DEV_BUDGET_ID: str = "end-user-budget-ai-dev"
@@ -118,7 +165,7 @@ class Env(BaseSettings):
     def user_feature_budget(self) -> dict[str, dict]:
         """
         User feature budget configuration by service type.
-        Returns a nested dictionary with service types (ai, s2s, s2s-android, memories, ai-dev, memories-dev, mochi-dev) as keys.
+        Returns a nested dictionary keyed by service type.
         Constructed from individual environment variables.
         """
         return {
@@ -164,6 +211,20 @@ class Env(BaseSettings):
                 "tpm_limit": self.USER_FEATURE_BUDGET_ANSWER_TPM_LIMIT,
                 "budget_duration": self.USER_FEATURE_BUDGET_ANSWER_BUDGET_DURATION,
             },
+            "sw-answer": {
+                "budget_id": self.USER_FEATURE_BUDGET_SW_ANSWER_BUDGET_ID,
+                "max_budget": self.USER_FEATURE_BUDGET_SW_ANSWER_MAX_BUDGET,
+                "rpm_limit": self.USER_FEATURE_BUDGET_SW_ANSWER_RPM_LIMIT,
+                "tpm_limit": self.USER_FEATURE_BUDGET_SW_ANSWER_TPM_LIMIT,
+                "budget_duration": self.USER_FEATURE_BUDGET_SW_ANSWER_BUDGET_DURATION,
+            },
+            "liner-answer": {
+                "budget_id": self.USER_FEATURE_BUDGET_LINER_ANSWERS_BUDGET_ID,
+                "max_budget": self.USER_FEATURE_BUDGET_LINER_ANSWERS_MAX_BUDGET,
+                "rpm_limit": self.USER_FEATURE_BUDGET_LINER_ANSWERS_RPM_LIMIT,
+                "tpm_limit": self.USER_FEATURE_BUDGET_LINER_ANSWERS_TPM_LIMIT,
+                "budget_duration": self.USER_FEATURE_BUDGET_LINER_ANSWERS_BUDGET_DURATION,
+            },
             "telemetry": {
                 "budget_id": self.USER_FEATURE_BUDGET_TELEMETRY_BUDGET_ID,
                 "max_budget": self.USER_FEATURE_BUDGET_TELEMETRY_MAX_BUDGET,
@@ -177,6 +238,13 @@ class Env(BaseSettings):
                 "rpm_limit": self.USER_FEATURE_BUDGET_AGENT_RPM_LIMIT,
                 "tpm_limit": self.USER_FEATURE_BUDGET_AGENT_TPM_LIMIT,
                 "budget_duration": self.USER_FEATURE_BUDGET_AGENT_BUDGET_DURATION,
+            },
+            "agent-search": {
+                "budget_id": self.USER_FEATURE_BUDGET_AGENT_SEARCH_BUDGET_ID,
+                "max_budget": self.USER_FEATURE_BUDGET_AGENT_SEARCH_MAX_BUDGET,
+                "rpm_limit": self.USER_FEATURE_BUDGET_AGENT_SEARCH_RPM_LIMIT,
+                "tpm_limit": self.USER_FEATURE_BUDGET_AGENT_SEARCH_TPM_LIMIT,
+                "budget_duration": self.USER_FEATURE_BUDGET_AGENT_SEARCH_BUDGET_DURATION,
             },
             "ai-dev": {
                 "budget_id": self.USER_FEATURE_BUDGET_AI_DEV_BUDGET_ID,
@@ -234,6 +302,9 @@ class Env(BaseSettings):
             "chat",
             "title-generation",
             "convo-starters-sidebar",
+            "smart-form-fill",
+            "aitab",
+            "auto-tab-grouping",
         ]
         memories_purposes = ["memory-generation"]
         return {
@@ -246,9 +317,12 @@ class Env(BaseSettings):
             "s2s-android": [],
             "search": [],
             "answer": [],
+            "sw-answer": [],
+            "liner-answer": [],
             "search-dev": [],
             "telemetry": ["chat"],
             "agent": ["monitor", "research"],
+            "agent-search": ["research"],
         }
 
     def valid_purposes_for_service_type(self, service_type: str) -> list[str]:
@@ -272,6 +346,10 @@ class Env(BaseSettings):
             | {""}
         )
 
+    @cached_property
+    def valid_major_fx_versions_set(self) -> set[str]:
+        return {str(n) for n in range(100, 200)}
+
     def service_type_requires_purpose(self, service_type: str) -> bool:
         """True if the purpose header is mandatory for this service type."""
         return len(self.valid_purposes_for_service_type(service_type)) > 0
@@ -282,7 +360,11 @@ class Env(BaseSettings):
         Returns a dictionary mapping model names to their valid service types.
         """
         # Force certain models to use certain service types
-        return {"exa-search": ["search", "search-dev"], "exa": ["answer"]}
+        return {
+            "exa-search": ["search", "search-dev", "agent-search"],
+            "exa": ["answer", "sw-answer"],
+            "liner": ["liner-answer"],
+        }
 
     def valid_service_type_for_model(self, service_type: str, model: str) -> bool:
         """Check if a service type is valid for a specific model."""
@@ -310,6 +392,7 @@ class Env(BaseSettings):
             "gemini-2.5-flash-lite",
             "gemini-3.1-flash-lite",
             "gpt-oss-120b",
+            "liner-answers",
             "openai/gpt-4o",
             "mistral-small-2503",
             "mistral-small-2603",
@@ -443,6 +526,23 @@ LITELLM_VIRTUAL_AUTH_HEADERS = {
     "Authorization": f"Bearer {env.MLPA_VIRTUAL_KEY}",
 }
 
+
+def resolve_litellm_virtual_auth_headers(
+    custom_virtual_key: str | None = None,
+) -> dict[str, str]:
+    """
+    Resolve virtual key to be forwarded to litellm, if passing custom virtual key
+    the custom key will be used. Otherwise, the default LITELLM_VIRTUAL_AUTH_HEADERS
+    will be used
+    """
+    if custom_virtual_key is None:
+        return LITELLM_VIRTUAL_AUTH_HEADERS
+    return {
+        "Content-Type": "application/json",
+        "Authorization": f"Bearer {custom_virtual_key}",
+    }
+
+
 # LiteLLM proxy response headers (lowercase names for httpx Headers.get)
 # https://docs.litellm.ai/docs/proxy/response_headers
 LITELLM_HEADER_MODEL_API_BASE = "x-litellm-model-api-base"
@@ -450,6 +550,14 @@ LITELLM_HEADER_ATTEMPTED_FALLBACKS = "x-litellm-attempted-fallbacks"
 LITELLM_HEADER_ATTEMPTED_RETRIES = "x-litellm-attempted-retries"
 LITELLM_HEADER_RESPONSE_DURATION_MS = "x-litellm-response-duration-ms"
 LITELLM_HEADER_RESPONSE_COST = "x-litellm-response-cost"
+
+# Privacy Filter
+PRIVACY_FILTER_READINESS_URL = f"{env.PRIVACY_FILTER_API_BASE}/readyz"
+PRIVACY_FILTER_URL = f"{env.PRIVACY_FILTER_API_BASE}/privacy-filter"
+PRIVACY_FILTER_MASTER_AUTH_HEADERS = {
+    "Content-Type": "application/json",
+    "x-pf-api-key": env.PRIVACY_FILTER_MASTER_KEY,
+}
 
 ERROR_CODE_BUDGET_LIMIT_EXCEEDED: int = 1
 ERROR_CODE_RATE_LIMIT_EXCEEDED: int = 2
@@ -462,6 +570,7 @@ ERROR_CODE_FASTLY_WAF_RATE_LIMIT: int = 6
 
 ERROR_CODE_INVALID_MODEL_NAME: int = 8
 ERROR_CODE_INVALID_REQUEST: int = 9
+ERROR_CODE_GLOBAL_BUDGET_LIMIT_EXCEEDED: int = 10
 
 ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
     429: {
@@ -478,7 +587,8 @@ ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
                             "type": "integer",
                             "description": (
                                 "Error code: 1 budget limit exceeded, 2 rate limit (TPM/RPM), "
-                                "5 upstream provider rate limit, 6 Fastly WAF rate limit (edge; not from MLPA)"
+                                "5 upstream provider rate limit, 6 Fastly WAF rate limit (edge; not from MLPA), "
+                                "10 global budget limit exceeded"
                             ),
                         }
                     },
@@ -620,6 +730,30 @@ ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
                         "value": {"error": ERROR_CODE_MAX_USERS_REACHED},
                         "description": "New sign-ins for cap-managed service types are rejected because capacity is full.",
                     }
+                },
+            }
+        },
+    },
+    500: {
+        "description": "Internal Server Error",
+        "content": {
+            "application/json": {
+                "schema": {
+                    "type": "object",
+                    "properties": {
+                        "error": {
+                            "type": "integer",
+                            "description": "Error code: 10 for global budget exceeded",
+                        }
+                    },
+                    "required": ["error"],
+                },
+                "examples": {
+                    "global_budget_exceeded": {
+                        "summary": "Global budget limit exceeded",
+                        "value": {"error": ERROR_CODE_GLOBAL_BUDGET_LIMIT_EXCEEDED},
+                        "description": "Global LiteLLM virtual-key budget limit exceeded. Check Retry-After header (300 seconds = 5 minutes).",
+                    },
                 },
             }
         },
@@ -811,3 +945,5 @@ PLAY_VERIFY_RESPONSES: dict[int | str, dict[str, Any]] = {
 }
 
 SENSITIVE_FIELDS_TO_SCRUB_FROM_SENTRY = ["messages"]
+
+SENSITIVE_HEADERS_TO_SCRUB_FROM_SENTRY = ["litellm-virtual-key"]

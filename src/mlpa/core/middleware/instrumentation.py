@@ -4,7 +4,13 @@ from fastapi import Request
 
 from mlpa.core.logger import logger
 from mlpa.core.prometheus_metrics import metrics
-from mlpa.core.utils import clamp_purpose, clamp_request_method, clamp_service_type
+from mlpa.core.utils import (
+    clamp_major_fx_version,
+    clamp_purpose,
+    clamp_request_method,
+    clamp_service_type,
+    parse_firefox_major_version_from_user_agent,
+)
 
 
 async def instrument_requests_middleware(request: Request, call_next):
@@ -30,7 +36,8 @@ async def instrument_requests_middleware(request: Request, call_next):
             method = clamp_request_method(request.method)
             service_type = request.headers.get("service-type", "")
             purpose = request.headers.get("purpose", "")
-
+            user_agent = request.headers.get("user-agent", "")
+            major_fx_version = parse_firefox_major_version_from_user_agent(user_agent)
             metrics.request_latency.labels(method=method, endpoint=endpoint).observe(
                 time.perf_counter() - start_time
             )
@@ -39,6 +46,7 @@ async def instrument_requests_middleware(request: Request, call_next):
                 endpoint=endpoint,
                 service_type=clamp_service_type(service_type),
                 purpose=clamp_purpose(purpose),
+                major_fx_version=clamp_major_fx_version(major_fx_version),
             ).inc()
             metrics.response_status_codes.labels(status_code=response.status_code).inc()
             return response

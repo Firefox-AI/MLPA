@@ -7,20 +7,44 @@ from mlpa.core.auth.dev_auth import auth_with_key
 from mlpa.core.auth.fxa import fxa_auth
 from mlpa.core.classes import (
     AuthorizedChatRequest,
+    AuthorizedFilterRequest,
     AuthorizedSearchRequest,
     ChatRequest,
+    PrivacyFilterRequest,
     SearchRequest,
     ServiceType,
 )
-from mlpa.core.config import env
+from mlpa.core.config import ERROR_CODE_INVALID_MODEL_NAME, env
+from mlpa.core.logger import logger
 from mlpa.core.metrics import record_chat_availability_for
 from mlpa.core.prometheus_metrics import AvailabilityReason
 from mlpa.core.routers.appattest import app_attest_auth
-from mlpa.core.utils import extract_user_from_play_integrity_jwt, parse_app_attest_jwt
+from mlpa.core.utils import (
+    extract_user_from_play_integrity_jwt,
+    get_client_country,
+    is_valid_model_name,
+    parse_app_attest_jwt,
+)
 
 TAuthorizedRequest = TypeVar(
     "TAuthorizedRequest", AuthorizedChatRequest, AuthorizedSearchRequest
 )
+
+
+def _resolve_custom_virtual_key(virtual_key_header: str | None) -> str | None:
+    """
+    Normalize the `litellm-virtual-key` header into the key to forward upstream.
+
+    Returns None when custom virtual keys are not allowed.
+    Throws HTTPException when key not fund within custom_virtual_keys
+    """
+    if not env.ALLOW_CUSTOM_VIRTUAL_KEY:
+        return None
+
+    key = (virtual_key_header or "").strip()
+    if not key:
+        return None
+    return key
 
 
 def _resolve_purpose(service_type_value: str, purpose_header: str | None) -> str:
@@ -119,7 +143,26 @@ async def authorize_chat_request(
     use_app_attest: Annotated[bool | None, Header()] = None,
     use_qa_certificates: Annotated[bool | None, Header()] = None,
     use_play_integrity: Annotated[bool | None, Header()] = None,
+    litellm_virtual_key: Annotated[str | None, Header()] = None,
 ) -> AuthorizedChatRequest:
+    client_country = get_client_country(request)
+    custom_virtual_key = _resolve_custom_virtual_key(litellm_virtual_key)
+
+    # Charset/length check runs before any auth, DB, or LiteLLM work below, so
+    # fuzzed/scanner model values are rejected without that cost.
+    if not is_valid_model_name(chat_request.model):
+        record_chat_availability_for(
+            AvailabilityReason.INVALID_MODEL_NAME,
+            model=chat_request.model,
+            service_type=service_type.value,
+            purpose=purpose or "",
+            client_country=client_country,
+        )
+        raise HTTPException(
+            status_code=400,
+            detail={"error": ERROR_CODE_INVALID_MODEL_NAME},
+        )
+
     is_service_type_valid = env.valid_service_type_for_model(
         service_type.value, chat_request.model
     )
@@ -142,6 +185,7 @@ async def authorize_chat_request(
             model=chat_request.model,
             service_type=service_type.value,
             purpose=purpose or "",
+            client_country=client_country,
         )
         raise HTTPException(
             status_code=400,
@@ -155,6 +199,8 @@ async def authorize_chat_request(
                 user=user,
                 service_type=service_type.value,
                 purpose=purpose_value,
+                client_country=client_country,
+                litellm_virtual_key=custom_virtual_key,
                 **chat_request.model_dump(exclude_unset=True),
             ),
             authorization=authorization,
@@ -184,6 +230,7 @@ async def authorize_chat_request(
             model=chat_request.model,
             service_type=service_type.value,
             purpose=purpose or "",
+            client_country=client_country,
         )
         raise
 
@@ -198,13 +245,18 @@ async def authorize_search_request(
     use_app_attest: Annotated[bool | None, Header()] = None,
     use_qa_certificates: Annotated[bool | None, Header()] = None,
     use_play_integrity: Annotated[bool | None, Header()] = None,
+    litellm_virtual_key: Annotated[str | None, Header()] = None,
 ) -> AuthorizedSearchRequest:
+    client_country = get_client_country(request)
+    custom_virtual_key = _resolve_custom_virtual_key(litellm_virtual_key)
     return await _authorize_common_request(
         request=request,
         build_authorized_request=lambda user, purpose_value: AuthorizedSearchRequest(
             user=user,
             service_type=service_type.value,
             purpose=purpose_value,
+            client_country=client_country,
+            litellm_virtual_key=custom_virtual_key,
             **search_request.model_dump(exclude_unset=True),
         ),
         authorization=authorization,
@@ -214,4 +266,26 @@ async def authorize_search_request(
         use_app_attest=use_app_attest,
         use_qa_certificates=use_qa_certificates,
         use_play_integrity=use_play_integrity,
+    )
+
+
+async def authorize_filter_request(
+    request: Request,
+    filter_request: PrivacyFilterRequest,
+    authorization: Annotated[str, Header()],
+) -> AuthorizedFilterRequest:
+    if not env.PRIVACY_FILTER_ENABLED:
+        raise HTTPException(
+            status_code=503,
+            detail={"error": "Privacy Filter is disabled."},
+        )
+
+    if not authorization:
+        raise HTTPException(status_code=401, detail="Missing authorization header")
+
+    fxa_user_id = await fxa_auth(authorization)
+    if not fxa_user_id or fxa_user_id.get("error"):
+        raise HTTPException(status_code=401, detail=fxa_user_id["error"])
+    return AuthorizedFilterRequest(
+        user=fxa_user_id["user"], **filter_request.model_dump(exclude_unset=True)
     )
