@@ -11,7 +11,7 @@ from tests.consts import SAMPLE_REQUEST
 
 
 def _request_with_state():
-    return SimpleNamespace(state=SimpleNamespace())
+    return SimpleNamespace(state=SimpleNamespace(), headers={})
 
 
 def _decision(

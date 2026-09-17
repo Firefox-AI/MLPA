@@ -33,6 +33,7 @@ from mlpa.core.prometheus_metrics import (
     PrometheusRejectionReason,
     PrometheusResult,
 )
+from mlpa.core.request_timings import measure
 from mlpa.core.sanitization import sanitize_request_body, sanitize_response_body
 from mlpa.core.services.services import redis_service
 from mlpa.core.utils import (
@@ -43,7 +44,12 @@ from mlpa.core.utils import (
 
 def _build_litellm_body(req: AuthorizedChatRequest, *, stream: bool) -> dict:
     body = req.model_dump(
-        exclude={"max_completion_tokens", "service_type", "purpose", "client_country"},
+        exclude={
+            "max_completion_tokens",
+            "service_type",
+            "purpose",
+            "client_country",
+        },
         exclude_none=True,
     )
     body["max_tokens"] = req.max_completion_tokens
@@ -63,7 +69,7 @@ def _build_litellm_body(req: AuthorizedChatRequest, *, stream: bool) -> dict:
 
 
 async def get_or_create_user_for_completion(
-    user_id: str, req: AuthorizedChatRequest | AuthorizedSearchRequest
+    request: Request, user_id: str, req: AuthorizedChatRequest | AuthorizedSearchRequest
 ):
     """
     Wraps get_or_create_user and records availability for chat requests:
@@ -71,30 +77,35 @@ async def get_or_create_user_for_completion(
     - user-resolution server or system failure (status >= 500): failure
     - search requests and non-signup-cap, non-5xx failures: not recorded
     """
-    try:
-        return await get_or_create_user(user_id)
-    except HTTPException as exc:
-        if isinstance(req, AuthorizedChatRequest):
-            if (
-                exc.status_code == 403
-                and isinstance(exc.detail, dict)
-                and exc.detail.get("error") == ERROR_CODE_MAX_USERS_REACHED
-            ):
-                record_chat_request_rejection(
-                    req,
-                    PrometheusRejectionReason.SIGNUP_CAP_EXCEEDED,
-                )
-                record_chat_availability(req, AvailabilityReason.SIGNUP_CAP_EXCEEDED)
-            elif exc.status_code >= 500:
-                # User-resolution server or system failure. Non-signup-cap 4xx errors
-                # are not recorded; a client-side 4xx should get its own classification
-                # rather than counting as an availability failure.
-                record_chat_availability(req, AvailabilityReason.PROVISIONING_FAILURE)
-        raise
+    with measure("db", request):
+        try:
+            return await get_or_create_user(user_id)
+        except HTTPException as exc:
+            if isinstance(req, AuthorizedChatRequest):
+                if (
+                    exc.status_code == 403
+                    and isinstance(exc.detail, dict)
+                    and exc.detail.get("error") == ERROR_CODE_MAX_USERS_REACHED
+                ):
+                    record_chat_request_rejection(
+                        req,
+                        PrometheusRejectionReason.SIGNUP_CAP_EXCEEDED,
+                    )
+                    record_chat_availability(
+                        req, AvailabilityReason.SIGNUP_CAP_EXCEEDED
+                    )
+                elif exc.status_code >= 500:
+                    # User-resolution server or system failure. Non-signup-cap 4xx errors
+                    # are not recorded; a client-side 4xx should get its own classification
+                    # rather than counting as an availability failure.
+                    record_chat_availability(
+                        req, AvailabilityReason.PROVISIONING_FAILURE
+                    )
+            raise
 
 
 async def stream_completion(
-    authorized_chat_request: AuthorizedChatRequest, request: Request
+    request: Request, authorized_chat_request: AuthorizedChatRequest
 ):
     """
     Proxies a streaming request to LiteLLM.
@@ -140,157 +151,168 @@ async def stream_completion(
     usage = None
     try:
         client = get_http_client()
-        async with client.stream(
-            "POST",
-            LITELLM_COMPLETIONS_URL,
-            headers=LITELLM_VIRTUAL_AUTH_HEADERS,
-            json=body,
-            timeout=httpx.Timeout(
-                read=env.STREAMING_TIMEOUT_SECONDS,
-                connect=env.HTTPX_CONNECT_TIMEOUT_SECONDS,
-                write=env.HTTPX_WRITE_TIMEOUT_SECONDS,
-                pool=env.HTTPX_POOL_TIMEOUT_SECONDS,
-            ),
-        ) as response:
-            try:
-                response.raise_for_status()
-            except httpx.HTTPStatusError as e:
-                error_text_str = ""
+        with measure("upstream", request):
+            async with client.stream(
+                "POST",
+                LITELLM_COMPLETIONS_URL,
+                headers=LITELLM_VIRTUAL_AUTH_HEADERS,
+                json=body,
+                timeout=httpx.Timeout(
+                    read=env.STREAMING_TIMEOUT_SECONDS,
+                    connect=env.HTTPX_CONNECT_TIMEOUT_SECONDS,
+                    write=env.HTTPX_WRITE_TIMEOUT_SECONDS,
+                    pool=env.HTTPX_POOL_TIMEOUT_SECONDS,
+                ),
+            ) as response:
                 try:
-                    error_bytes = await e.response.aread()
-                    error_text_str = error_bytes.decode("utf-8") if error_bytes else ""
-                except Exception:
-                    pass
+                    response.raise_for_status()
+                except httpx.HTTPStatusError as e:
+                    error_text_str = ""
+                    try:
+                        error_bytes = await e.response.aread()
+                        error_text_str = (
+                            error_bytes.decode("utf-8") if error_bytes else ""
+                        )
+                    except Exception:
+                        pass
 
-                match = classify_upstream_error(
-                    error_text=error_text_str,
-                    status_code=e.response.status_code,
-                    user=authorized_chat_request.user,
-                )
-                if match is not None:
-                    if match.log_message:
-                        log.warning(match.log_message)
-                    record_chat_request_rejection(authorized_chat_request, match.reason)
-                    availability_reason = match.availability_reason()
-                    yield f'data: {{"error": {match.error_code}}}\n\n'.encode()
+                    match = classify_upstream_error(
+                        error_text=error_text_str,
+                        status_code=e.response.status_code,
+                        user=authorized_chat_request.user,
+                    )
+                    if match is not None:
+                        if match.log_message:
+                            log.warning(match.log_message)
+                        record_chat_request_rejection(
+                            authorized_chat_request, match.reason
+                        )
+                        availability_reason = match.availability_reason()
+                        yield f'data: {{"error": {match.error_code}}}\n\n'.encode()
+                        return
+
+                    yield raise_and_log(e, True, log=log)
                     return
 
-                yield raise_and_log(e, True, log=log)
-                return
+                litellm_routing_snapshot = parse_litellm_routing_headers(
+                    response.headers
+                )
+                response_iterator = response.aiter_bytes()
 
-            litellm_routing_snapshot = parse_litellm_routing_headers(response.headers)
-            response_iterator = response.aiter_bytes()
+                while True:
+                    if next_chunk_task is None:
+                        next_chunk_task = asyncio.create_task(
+                            _read_next_chunk(response_iterator)
+                        )
 
-            while True:
-                if next_chunk_task is None:
-                    next_chunk_task = asyncio.create_task(
-                        _read_next_chunk(response_iterator)
+                    done, _ = await asyncio.wait(
+                        {next_chunk_task, watch_task},
+                        return_when=asyncio.FIRST_COMPLETED,
                     )
 
-                done, _ = await asyncio.wait(
-                    {next_chunk_task, watch_task},
-                    return_when=asyncio.FIRST_COMPLETED,
-                )
-
-                if watch_task in done:
-                    watch_task.result()
-                    result = PrometheusResult.ABORT
-                    log.info(_client_disconnected_msg)
-                    if not next_chunk_task.done():
-                        next_chunk_task.cancel()
-                    with contextlib.suppress(
-                        asyncio.CancelledError,
-                        StopAsyncIteration,
-                        httpx.ReadError,
-                        RuntimeError,
-                    ):
-                        await next_chunk_task
-                    break
-
-                try:
-                    chunk = next_chunk_task.result()
-                except StopAsyncIteration:
-                    break
-                except httpx.ReadError:
-                    if disconnect_event.is_set() or await request.is_disconnected():
-                        disconnect_event.set()
+                    if watch_task in done:
+                        watch_task.result()
                         result = PrometheusResult.ABORT
                         log.info(_client_disconnected_msg)
+                        if not next_chunk_task.done():
+                            next_chunk_task.cancel()
+                        with contextlib.suppress(
+                            asyncio.CancelledError,
+                            StopAsyncIteration,
+                            httpx.ReadError,
+                            RuntimeError,
+                        ):
+                            await next_chunk_task
                         break
-                    raise
-                finally:
-                    next_chunk_task = None
 
-                if is_first_token:
-                    record_ttft(
-                        authorized_chat_request,
-                        time.perf_counter() - start_time,
+                    try:
+                        chunk = next_chunk_task.result()
+                    except StopAsyncIteration:
+                        break
+                    except httpx.ReadError:
+                        if disconnect_event.is_set() or await request.is_disconnected():
+                            disconnect_event.set()
+                            result = PrometheusResult.ABORT
+                            log.info(_client_disconnected_msg)
+                            break
+                        raise
+                    finally:
+                        next_chunk_task = None
+
+                    if is_first_token:
+                        record_ttft(
+                            authorized_chat_request,
+                            time.perf_counter() - start_time,
+                        )
+                        is_first_token = False
+                        streaming_started = True
+
+                    try:
+                        chunk_str = chunk.decode("utf-8")
+                        for line in chunk_str.split("\n"):
+                            if line.startswith("data: ") and line != "data: [DONE]":
+                                data = json.loads(line[6:])
+                                if "usage" in data:
+                                    usage = data["usage"]
+                                    prompt_tokens = usage.get("prompt_tokens", 0)
+                                    completion_tokens = usage.get(
+                                        "completion_tokens", 0
+                                    )
+                                    if "prompt_tokens" not in usage:
+                                        log.warning(
+                                            f"Missing 'prompt_tokens' in usage for model {authorized_chat_request.model}"
+                                        )
+                                    if "completion_tokens" not in usage:
+                                        log.warning(
+                                            f"Missing 'completion_tokens' in usage for model {authorized_chat_request.model}"
+                                        )
+                                for tc in (
+                                    data.get("choices", [{}])[0]
+                                    .get("delta", {})
+                                    .get("tool_calls", [])
+                                ):
+                                    idx = tc.get("index", len(tool_calls_accum))
+                                    if idx not in tool_calls_accum:
+                                        tool_calls_accum[idx] = {
+                                            "function": {"name": ""}
+                                        }
+                                    name = tc.get("function", {}).get("name")
+                                    if name:
+                                        tool_calls_accum[idx]["function"]["name"] = (
+                                            tool_calls_accum[idx]["function"]["name"]
+                                            or name
+                                        )
+                    except (json.JSONDecodeError, UnicodeDecodeError, KeyError):
+                        pass
+
+                    yield chunk
+
+                if result == PrometheusResult.ABORT:
+                    return
+
+                if not streaming_started:
+                    availability_reason = AvailabilityReason.EMPTY_RESPONSE
+                    yield raise_and_log(
+                        RuntimeError("LiteLLM returned an empty response"),
+                        True,
+                        502,
+                        "Empty response from upstream",
+                        log=log,
                     )
-                    is_first_token = False
-                    streaming_started = True
+                    return
 
-                try:
-                    chunk_str = chunk.decode("utf-8")
-                    for line in chunk_str.split("\n"):
-                        if line.startswith("data: ") and line != "data: [DONE]":
-                            data = json.loads(line[6:])
-                            if "usage" in data:
-                                usage = data["usage"]
-                                prompt_tokens = usage.get("prompt_tokens", 0)
-                                completion_tokens = usage.get("completion_tokens", 0)
-                                if "prompt_tokens" not in usage:
-                                    log.warning(
-                                        f"Missing 'prompt_tokens' in usage for model {authorized_chat_request.model}"
-                                    )
-                                if "completion_tokens" not in usage:
-                                    log.warning(
-                                        f"Missing 'completion_tokens' in usage for model {authorized_chat_request.model}"
-                                    )
-                            for tc in (
-                                data.get("choices", [{}])[0]
-                                .get("delta", {})
-                                .get("tool_calls", [])
-                            ):
-                                idx = tc.get("index", len(tool_calls_accum))
-                                if idx not in tool_calls_accum:
-                                    tool_calls_accum[idx] = {"function": {"name": ""}}
-                                name = tc.get("function", {}).get("name")
-                                if name:
-                                    tool_calls_accum[idx]["function"]["name"] = (
-                                        tool_calls_accum[idx]["function"]["name"]
-                                        or name
-                                    )
-                except (json.JSONDecodeError, UnicodeDecodeError, KeyError):
-                    pass
-
-                yield chunk
-
-            if result == PrometheusResult.ABORT:
-                return
-
-            if not streaming_started:
-                availability_reason = AvailabilityReason.EMPTY_RESPONSE
-                yield raise_and_log(
-                    RuntimeError("LiteLLM returned an empty response"),
-                    True,
-                    502,
-                    "Empty response from upstream",
-                    log=log,
+                tool_names = extract_tool_names(
+                    tool_calls_accum[i] for i in sorted(tool_calls_accum)
                 )
-                return
-
-            tool_names = extract_tool_names(
-                tool_calls_accum[i] for i in sorted(tool_calls_accum)
-            )
-            record_completion_success(
-                authorized_chat_request,
-                prompt_tokens=prompt_tokens,
-                completion_tokens=completion_tokens,
-                tool_names=tool_names,
-                snapshot=litellm_routing_snapshot,
-            )
-            result = PrometheusResult.SUCCESS
-            availability_reason = AvailabilityReason.VALID_RESPONSE
+                record_completion_success(
+                    authorized_chat_request,
+                    prompt_tokens=prompt_tokens,
+                    completion_tokens=completion_tokens,
+                    tool_names=tool_names,
+                    snapshot=litellm_routing_snapshot,
+                )
+                result = PrometheusResult.SUCCESS
+                availability_reason = AvailabilityReason.VALID_RESPONSE
     except (GeneratorExit, asyncio.CancelledError):
         # Client went away mid-stream: Starlette tears the generator down by
         # throwing GeneratorExit (or cancelling the task) at the paused
@@ -340,13 +362,18 @@ async def stream_completion(
         )
 
 
-async def get_completion(authorized_chat_request: AuthorizedChatRequest):
+async def get_completion(
+    request: Request,
+    authorized_chat_request: AuthorizedChatRequest,
+):
     """Bind request log fields onto the loguru contextvar, then proxy."""
     with logger.contextualize(**authorized_chat_request.log_fields):
-        return await _get_completion(authorized_chat_request)
+        return await _get_completion(request, authorized_chat_request)
 
 
-async def _get_completion(authorized_chat_request: AuthorizedChatRequest):
+async def _get_completion(
+    request: Request, authorized_chat_request: AuthorizedChatRequest
+):
     """
     Proxies a non-streaming request to LiteLLM.
     """
@@ -361,11 +388,12 @@ async def _get_completion(authorized_chat_request: AuthorizedChatRequest):
     usage = None
     try:
         client = get_http_client()
-        response = await client.post(
-            LITELLM_COMPLETIONS_URL,
-            headers=LITELLM_VIRTUAL_AUTH_HEADERS,
-            json=body,
-        )
+        with measure("upstream", request):
+            response = await client.post(
+                LITELLM_COMPLETIONS_URL,
+                headers=LITELLM_VIRTUAL_AUTH_HEADERS,
+                json=body,
+            )
         try:
             response.raise_for_status()
         except httpx.HTTPStatusError as e:
@@ -416,6 +444,7 @@ async def _get_completion(authorized_chat_request: AuthorizedChatRequest):
         )
         result = PrometheusResult.SUCCESS
         availability_reason = AvailabilityReason.VALID_RESPONSE
+
         return data
     except HTTPException:
         raise

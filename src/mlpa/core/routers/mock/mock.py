@@ -3,7 +3,7 @@ import json
 from typing import Annotated
 
 import jwt
-from fastapi import APIRouter, Depends, Header, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from fxa.errors import TrustError
 
@@ -74,6 +74,7 @@ async def mock_stream():
     tags=["Mock"],
 )
 async def chat_completion(
+    request: Request,
     authorized_chat_request: Annotated[
         AuthorizedChatRequest, Depends(authorize_chat_request)
     ],
@@ -85,7 +86,9 @@ async def chat_completion(
             detail={"error": "User not found from authorization response."},
         )
 
-    user, _ = await get_or_create_user_for_completion(user_id, authorized_chat_request)
+    user, _ = await get_or_create_user_for_completion(
+        request, user_id, authorized_chat_request
+    )
     if user.get("blocked"):
         raise HTTPException(status_code=403, detail={"error": "User is blocked."})
 

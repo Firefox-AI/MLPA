@@ -1,7 +1,7 @@
 import time
 
 import httpx
-from fastapi import HTTPException
+from fastapi import HTTPException, Request
 
 from mlpa.core.classes import AuthorizedSearchRequest
 from mlpa.core.config import (
@@ -13,17 +13,22 @@ from mlpa.core.http_client import get_http_client
 from mlpa.core.logger import logger
 from mlpa.core.metrics import record_search_latency, record_search_request_rejection
 from mlpa.core.prometheus_metrics import PrometheusResult
+from mlpa.core.request_timings import measure
 from mlpa.core.sanitization import sanitize_request_body, sanitize_response_body
 from mlpa.core.utils import raise_and_log
 
 
-async def get_search(authorized_search_request: AuthorizedSearchRequest):
+async def get_search(
+    request: Request, authorized_search_request: AuthorizedSearchRequest
+):
     """Bind request log fields onto the loguru contextvar, then proxy."""
     with logger.contextualize(**authorized_search_request.log_fields):
-        return await _get_search(authorized_search_request)
+        return await _get_search(request, authorized_search_request)
 
 
-async def _get_search(authorized_search_request: AuthorizedSearchRequest):
+async def _get_search(
+    request: Request, authorized_search_request: AuthorizedSearchRequest
+):
     start_time = time.perf_counter()
     body = sanitize_request_body(
         authorized_search_request.model_dump(
@@ -37,11 +42,12 @@ async def _get_search(authorized_search_request: AuthorizedSearchRequest):
     )
     try:
         client = get_http_client()
-        response = await client.post(
-            f"{LITELLM_SEARCH_URL}/exa-search",
-            headers=LITELLM_VIRTUAL_AUTH_HEADERS,
-            json=body,
-        )
+        with measure("upstream", request):
+            response = await client.post(
+                f"{LITELLM_SEARCH_URL}/exa-search",
+                headers=LITELLM_VIRTUAL_AUTH_HEADERS,
+                json=body,
+            )
         try:
             response.raise_for_status()
         except httpx.HTTPStatusError as e:

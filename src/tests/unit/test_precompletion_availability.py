@@ -307,7 +307,9 @@ async def test_signup_cap_records_excluded_alongside_rejection(mocker, metrics_s
     )
 
     with pytest.raises(HTTPException) as exc_info:
-        await get_or_create_user_for_completion(SAMPLE_REQUEST.user, SAMPLE_REQUEST)
+        await get_or_create_user_for_completion(
+            _make_request(), SAMPLE_REQUEST.user, SAMPLE_REQUEST
+        )
 
     assert exc_info.value.status_code == 403
     assert (
@@ -337,7 +339,9 @@ async def test_provisioning_failure_records_failure(mocker, metrics_spy):
     )
 
     with pytest.raises(HTTPException) as exc_info:
-        await get_or_create_user_for_completion(SAMPLE_REQUEST.user, SAMPLE_REQUEST)
+        await get_or_create_user_for_completion(
+            _make_request(), SAMPLE_REQUEST.user, SAMPLE_REQUEST
+        )
 
     assert exc_info.value.status_code == 500
     assert (
@@ -369,7 +373,7 @@ async def test_global_budget_exceeded_records_failure(mocker, metrics_spy):
     mocker.patch("mlpa.core.completions.get_http_client", return_value=mock_client)
 
     with pytest.raises(HTTPException) as exc_info:
-        await get_completion(SAMPLE_REQUEST)
+        await get_completion(_make_request(), SAMPLE_REQUEST)
 
     assert exc_info.value.status_code == 500
     assert exc_info.value.detail == {"error": ERROR_CODE_GLOBAL_BUDGET_LIMIT_EXCEEDED}
@@ -411,7 +415,9 @@ async def test_non_signup_non_5xx_records_nothing(mocker, metrics_spy):
     )
 
     with pytest.raises(HTTPException) as exc_info:
-        await get_or_create_user_for_completion(SAMPLE_REQUEST.user, SAMPLE_REQUEST)
+        await get_or_create_user_for_completion(
+            _make_request(), SAMPLE_REQUEST.user, SAMPLE_REQUEST
+        )
 
     assert exc_info.value.status_code == 400
     assert "chat_availability" not in metrics_spy.touched()
@@ -431,7 +437,9 @@ async def test_search_request_records_no_chat_availability(mocker, metrics_spy):
     )
 
     with pytest.raises(HTTPException):
-        await get_or_create_user_for_completion(search_req.user, search_req)
+        await get_or_create_user_for_completion(
+            _make_request(), search_req.user, search_req
+        )
 
     assert "chat_availability" not in metrics_spy.touched()
 

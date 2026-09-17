@@ -9,6 +9,7 @@ from tests.metrics_spy import metrics_spy  # noqa: F401 — re-export as fixture
 @pytest.fixture
 def mock_request():
     req = MagicMock()
+    req.headers = {}
     req.is_disconnected = AsyncMock(return_value=False)
     return req
 

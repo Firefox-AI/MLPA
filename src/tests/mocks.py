@@ -100,7 +100,7 @@ async def mock_get_or_create_user(mock_litellm_pg, mock_app_attest_pg, user_id: 
     return user, False
 
 
-async def mock_get_completion(authorized_chat_request: AuthorizedChatRequest):
+async def mock_get_completion(request, authorized_chat_request: AuthorizedChatRequest):
     return SUCCESSFUL_CHAT_RESPONSE
 
 
