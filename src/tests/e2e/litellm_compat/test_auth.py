@@ -66,7 +66,7 @@ class TestMlpaAuthenticatesToLiteLLM:
         }
 
         with patch(
-            "mlpa.core.completions.LITELLM_VIRTUAL_AUTH_HEADERS",
+            "mlpa.core.config.LITELLM_VIRTUAL_AUTH_HEADERS",
             bad_headers,
         ):
             response = client.post(
