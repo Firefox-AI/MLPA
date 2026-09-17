@@ -8,7 +8,7 @@ on:
       - main
 
 jobs:
-  lint-and-test:
+  lint:
     runs-on: ubuntu-latest
     steps:
       - name: Check out repository
@@ -18,11 +18,6 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-
-      - name: Set up Node
-        uses: actions/setup-node@v4
-        with:
-          node-version: "22"
 
       - name: Install uv
         run: pip install uv==0.10.8
@@ -36,13 +31,89 @@ jobs:
       - name: Run linters
         run: uv run pre-commit run --all-files --verbose
 
+  unit-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        run: pip install uv==0.10.8
+
+      - name: Sync dependencies
+        run: |
+          uv venv
+          uv sync --all-groups
+          uv pip install --no-cache-dir -e .
+
       - name: Run unit tests
-        run: uv run pytest src/tests/unit -v
+        run: uv run pytest src/tests/unit -v --junit-xml=unit-results.xml
+
+      - name: Summarize failures
+        if: always()
+        run: uv run python scripts/ci_failure_summary.py unit-results.xml
+
+  # Tests a real FastAPI TestClient wired to mocked LiteLLM/app_attest
+  # services (mocked_client_integration) -- no real backend, no docker.
+  component-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        run: pip install uv==0.10.8
+
+      - name: Sync dependencies
+        run: |
+          uv venv
+          uv sync --all-groups
+          uv pip install --no-cache-dir -e .
+
+      - name: Run component tests
+        run: uv run pytest src/tests/component -v --junit-xml=component-results.xml
+
+      - name: Summarize failures
+        if: always()
+        run: uv run python scripts/ci_failure_summary.py component-results.xml
+
+  # Tests MLPA against the real, pinned LiteLLM + Postgres + Redis stack --
+  # this is what actually exercises a LiteLLM version bump
+  # (test_litellm_contract's old job, AIPLAT-910, folded in here).
+  litellm-compatibility-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        run: pip install uv==0.10.8
+
+      - name: Sync dependencies
+        run: |
+          uv venv
+          uv sync --all-groups
+          uv pip install --no-cache-dir -e .
 
       - name: Configure LiteLLM env
         run: echo "MASTER_KEY=sk-default" > .env
 
-      - name: Start LiteLLM + Postgres
+      - name: Start LiteLLM + Postgres + Redis
         run: docker compose -f litellm_docker_compose.yaml up -d
 
       - name: Wait for LiteLLM to be ready
@@ -66,12 +137,18 @@ jobs:
       - name: Create MLPA virtual key
         run: uv run python scripts/create-and-set-virtual-key.py
 
-      - name: Run integration tests
+      - name: Run LiteLLM compatibility tests
         env:
           MLPA_TEST_REQUIRE_REAL_BACKEND: "true"
-        run: uv run pytest src/tests/integration -v
+        run: uv run pytest src/tests/litellm_compatibility -v --junit-xml=litellm-compatibility-results.xml
 
-      - name: Stop LiteLLM + Postgres
+      - name: Summarize failures
+        if: always()
+        run: |
+          uv run python scripts/ci_failure_summary.py litellm-compatibility-results.xml \
+            "> A failure here usually means the pinned LiteLLM version broke a documented contract -- see the checks below for what each one verifies."
+
+      - name: Stop LiteLLM + Postgres + Redis
         if: always()
         run: docker compose -f litellm_docker_compose.yaml down -v
 
@@ -106,6 +183,10 @@ jobs:
       - name: Verify docs are up to date
         run: git diff --exit-code -- docs/index.html
 
+  # Narrow, fast happy-path checks for auth + data-flow response shape
+  # (pytest.mark.smoke). Runs against a mocked client here; the same suite
+  # can point at a live deployment instead via SMOKE_BASE_URL (post-deploy
+  # sanity check), see src/tests/smoke/conftest.py.
   smoke-tests:
     runs-on: ubuntu-latest
     steps:
