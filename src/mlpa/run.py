@@ -179,18 +179,20 @@ async def chat_completion(
             status_code=400,
             detail={"error": "User not found from authorization response."},
         )
-    user, _ = await get_or_create_user_for_completion(user_id, authorized_chat_request)
+    user, _ = await get_or_create_user_for_completion(
+        request, user_id, authorized_chat_request
+    )
     if user.get("blocked"):
         record_chat_availability(authorized_chat_request, AvailabilityReason.BLOCKED)
         raise HTTPException(status_code=403, detail={"error": "User is blocked."})
 
     if authorized_chat_request.stream:
         return StreamingResponse(
-            stream_completion(authorized_chat_request, request),
+            stream_completion(request, authorized_chat_request),
             media_type="text/event-stream",
         )
     else:
-        return await get_completion(authorized_chat_request)
+        return await get_completion(request, authorized_chat_request)
 
 
 @app.post(
@@ -225,12 +227,12 @@ async def search(
             detail={"error": "User not found from authorization response."},
         )
     user, _ = await get_or_create_user_for_completion(
-        user_id, authorized_search_request
+        request, user_id, authorized_search_request
     )
     if user.get("blocked"):
         raise HTTPException(status_code=403, detail={"error": "User is blocked."})
 
-    return await get_search(authorized_search_request)
+    return await get_search(request, authorized_search_request)
 
 
 @app.exception_handler(HTTPException)

@@ -176,7 +176,7 @@ async def test_non_stream_completion_uses_expected_auth(
     mock_client.post.return_value = mock_response
     mocker.patch("mlpa.core.completions.get_http_client", return_value=mock_client)
 
-    await get_completion(_chat_request(litellm_virtual_key=key))
+    await get_completion(_make_request(), _chat_request(litellm_virtual_key=key))
 
     _, call_kwargs = mock_client.post.call_args
     assert call_kwargs["headers"]["Authorization"] == expected_auth
@@ -193,13 +193,14 @@ async def test_search_uses_the_custom_key(mocker):
     mocker.patch("mlpa.core.search.get_http_client", return_value=mock_client)
 
     await get_search(
+        _make_request(),
         AuthorizedSearchRequest(
             user="test-user-123:search",
             service_type="search",
             query="q",
             max_results=3,
             litellm_virtual_key=CUSTOM_KEY,
-        )
+        ),
     )
 
     _, call_kwargs = mock_client.post.call_args
@@ -227,13 +228,14 @@ async def test_key_is_not_forwarded_in_the_search_body(mocker):
     mocker.patch("mlpa.core.search.get_http_client", return_value=mock_client)
 
     await get_search(
+        _make_request(),
         AuthorizedSearchRequest(
             user="test-user-123:search",
             service_type="search",
             query="q",
             max_results=3,
             litellm_virtual_key=CUSTOM_KEY,
-        )
+        ),
     )
 
     _, call_kwargs = mock_client.post.call_args

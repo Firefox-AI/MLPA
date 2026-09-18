@@ -1,5 +1,7 @@
 import json
 
+import pytest
+
 from mlpa.core.config import (
     PRIVACY_FILTER_MASTER_AUTH_HEADERS,
     PRIVACY_FILTER_URL,
@@ -8,8 +10,9 @@ from mlpa.core.config import (
 from tests.consts import TEST_FXA_TOKEN
 
 
+@pytest.mark.parametrize("debug", [False, True])
 def test_filter_forwards_items_to_privacy_filter(
-    mocked_client_integration, httpx_mock, mocker
+    mocked_client_integration, httpx_mock, mocker, debug
 ):
     mocker.patch.object(env, "PRIVACY_FILTER_ENABLED", True)
     upstream_response = {
@@ -37,14 +40,21 @@ def test_filter_forwards_items_to_privacy_filter(
         json=upstream_response,
     )
 
+    headers = {"authorization": f"Bearer {TEST_FXA_TOKEN}"}
+    if debug:
+        headers["debug-timing"] = "true"
     response = mocked_client_integration.post(
         "/privacy-filter/",
-        headers={"authorization": f"Bearer {TEST_FXA_TOKEN}"},
+        headers=headers,
         json={"items": ["email me at jane@example.com"]},
     )
 
     assert response.status_code == 200
-    assert response.json() == upstream_response
+    data = response.json()
+    if debug:
+        spans = data.pop("spans")
+        assert [span["name"] for span in spans] == ["total", "auth", "upstream"]
+    assert data == upstream_response
 
     request = httpx_mock.get_request()
     assert request is not None

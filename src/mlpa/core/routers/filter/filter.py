@@ -15,6 +15,7 @@ from mlpa.core.http_client import get_http_client
 from mlpa.core.prometheus_metrics import (
     PrometheusResult,
 )
+from mlpa.core.request_timings import measure
 from mlpa.core.sanitization import sanitize_response_body
 from mlpa.core.utils import raise_and_log
 
@@ -67,13 +68,14 @@ async def privacy_filter(
         result = PrometheusResult.ERROR
 
         client = get_http_client()
-        response = await client.post(
-            PRIVACY_FILTER_URL,
-            headers=PRIVACY_FILTER_MASTER_AUTH_HEADERS,
-            json=authorized_filter_request.model_dump(
-                exclude={"user"}, exclude_none=True
-            ),
-        )
+        with measure("upstream", request):
+            response = await client.post(
+                PRIVACY_FILTER_URL,
+                headers=PRIVACY_FILTER_MASTER_AUTH_HEADERS,
+                json=authorized_filter_request.model_dump(
+                    exclude={"user"}, exclude_none=True
+                ),
+            )
         try:
             response.raise_for_status()
             data = sanitize_response_body(response.json())

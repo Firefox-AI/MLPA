@@ -18,6 +18,7 @@ from mlpa.core.config import ERROR_CODE_INVALID_MODEL_NAME, env
 from mlpa.core.logger import logger
 from mlpa.core.metrics import record_chat_availability_for
 from mlpa.core.prometheus_metrics import AvailabilityReason
+from mlpa.core.request_timings import measure
 from mlpa.core.routers.appattest import app_attest_auth
 from mlpa.core.utils import (
     extract_user_from_play_integrity_jwt,
@@ -145,94 +146,96 @@ async def authorize_chat_request(
     use_play_integrity: Annotated[bool | None, Header()] = None,
     litellm_virtual_key: Annotated[str | None, Header()] = None,
 ) -> AuthorizedChatRequest:
-    client_country = get_client_country(request)
-    custom_virtual_key = _resolve_custom_virtual_key(litellm_virtual_key)
+    with measure("auth", request):
+        client_country = get_client_country(request)
+        custom_virtual_key = _resolve_custom_virtual_key(litellm_virtual_key)
 
-    # Charset/length check runs before any auth, DB, or LiteLLM work below, so
-    # fuzzed/scanner model values are rejected without that cost.
-    if not is_valid_model_name(chat_request.model):
-        record_chat_availability_for(
-            AvailabilityReason.INVALID_MODEL_NAME,
-            model=chat_request.model,
-            service_type=service_type.value,
-            purpose=purpose or "",
-            client_country=client_country,
-        )
-        raise HTTPException(
-            status_code=400,
-            detail={"error": ERROR_CODE_INVALID_MODEL_NAME},
-        )
-
-    is_service_type_valid = env.valid_service_type_for_model(
-        service_type.value, chat_request.model
-    )
-
-    if not is_service_type_valid:
-        valid_service_types = env.forced_model_service_type_pairs.get(
-            chat_request.model
-        )
-        if valid_service_types is not None:
-            detail = f"Invalid service-type value for model {chat_request.model}. Should be one of {valid_service_types}"
-        else:
-            valid_models = [
-                model
-                for model, service_types in env.forced_model_service_type_pairs.items()
-                if service_type.value in service_types
-            ]
-            detail = f"Invalid service-type value {service_type.value} for model {chat_request.model}. Service type {service_type.value} is only valid for models {valid_models}"
-        record_chat_availability_for(
-            AvailabilityReason.INVALID_SERVICE_TYPE_FOR_MODEL,
-            model=chat_request.model,
-            service_type=service_type.value,
-            purpose=purpose or "",
-            client_country=client_country,
-        )
-        raise HTTPException(
-            status_code=400,
-            detail=detail,
-        )
-
-    try:
-        return await _authorize_common_request(
-            request=request,
-            build_authorized_request=lambda user, purpose_value: AuthorizedChatRequest(
-                user=user,
+        # Charset/length check runs before any auth, DB, or LiteLLM work below, so
+        # fuzzed/scanner model values are rejected without that cost.
+        if not is_valid_model_name(chat_request.model):
+            record_chat_availability_for(
+                AvailabilityReason.INVALID_MODEL_NAME,
+                model=chat_request.model,
                 service_type=service_type.value,
-                purpose=purpose_value,
+                purpose=purpose or "",
                 client_country=client_country,
-                litellm_virtual_key=custom_virtual_key,
-                **chat_request.model_dump(exclude_unset=True),
-            ),
-            authorization=authorization,
-            service_type=service_type,
-            purpose=purpose,
-            x_dev_authorization=x_dev_authorization,
-            use_app_attest=use_app_attest,
-            use_qa_certificates=use_qa_certificates,
-            use_play_integrity=use_play_integrity,
+            )
+            raise HTTPException(
+                status_code=400,
+                detail={"error": ERROR_CODE_INVALID_MODEL_NAME},
+            )
+
+        is_service_type_valid = env.valid_service_type_for_model(
+            service_type.value, chat_request.model
         )
-    except HTTPException as exc:
-        # Only record terminal HTTP failures from the shared auth call:
-        # - 401: expected or normalized auth rejection (bad creds, expired token, etc.)
-        # - 400: client error to the auth layer (invalid purpose, or malformed App
-        #        Attest base64 decoded in app_attest_auth before its try block)
-        # - anything else (e.g. App Attest's explicit 500): re-raised unrecorded;
-        #   auth-system-failure capture is left to a follow-on auth backend change
-        # Non-HTTPException errors are not caught here and propagate unrecorded.
-        if exc.status_code == 401:
-            reason = AvailabilityReason.AUTH_REJECTED
-        elif exc.status_code == 400:
-            reason = AvailabilityReason.INVALID_AUTH_REQUEST
-        else:
+
+        if not is_service_type_valid:
+            valid_service_types = env.forced_model_service_type_pairs.get(
+                chat_request.model
+            )
+            if valid_service_types is not None:
+                detail = f"Invalid service-type value for model {chat_request.model}. Should be one of {valid_service_types}"
+            else:
+                valid_models = [
+                    model
+                    for model, service_types in env.forced_model_service_type_pairs.items()
+                    if service_type.value in service_types
+                ]
+                detail = f"Invalid service-type value {service_type.value} for model {chat_request.model}. Service type {service_type.value} is only valid for models {valid_models}"
+            record_chat_availability_for(
+                AvailabilityReason.INVALID_SERVICE_TYPE_FOR_MODEL,
+                model=chat_request.model,
+                service_type=service_type.value,
+                purpose=purpose or "",
+                client_country=client_country,
+            )
+            raise HTTPException(
+                status_code=400,
+                detail=detail,
+            )
+
+        try:
+            return await _authorize_common_request(
+                request=request,
+                build_authorized_request=lambda user,
+                purpose_value: AuthorizedChatRequest(
+                    user=user,
+                    service_type=service_type.value,
+                    purpose=purpose_value,
+                    client_country=client_country,
+                    litellm_virtual_key=custom_virtual_key,
+                    **chat_request.model_dump(exclude_unset=True),
+                ),
+                authorization=authorization,
+                service_type=service_type,
+                purpose=purpose,
+                x_dev_authorization=x_dev_authorization,
+                use_app_attest=use_app_attest,
+                use_qa_certificates=use_qa_certificates,
+                use_play_integrity=use_play_integrity,
+            )
+        except HTTPException as exc:
+            # Only record terminal HTTP failures from the shared auth call:
+            # - 401: expected or normalized auth rejection (bad creds, expired token, etc.)
+            # - 400: client error to the auth layer (invalid purpose, or malformed App
+            #        Attest base64 decoded in app_attest_auth before its try block)
+            # - anything else (e.g. App Attest's explicit 500): re-raised unrecorded;
+            #   auth-system-failure capture is left to a follow-on auth backend change
+            # Non-HTTPException errors are not caught here and propagate unrecorded.
+            if exc.status_code == 401:
+                reason = AvailabilityReason.AUTH_REJECTED
+            elif exc.status_code == 400:
+                reason = AvailabilityReason.INVALID_AUTH_REQUEST
+            else:
+                raise
+            record_chat_availability_for(
+                reason,
+                model=chat_request.model,
+                service_type=service_type.value,
+                purpose=purpose or "",
+                client_country=client_country,
+            )
             raise
-        record_chat_availability_for(
-            reason,
-            model=chat_request.model,
-            service_type=service_type.value,
-            purpose=purpose or "",
-            client_country=client_country,
-        )
-        raise
 
 
 async def authorize_search_request(
@@ -247,26 +250,28 @@ async def authorize_search_request(
     use_play_integrity: Annotated[bool | None, Header()] = None,
     litellm_virtual_key: Annotated[str | None, Header()] = None,
 ) -> AuthorizedSearchRequest:
-    client_country = get_client_country(request)
-    custom_virtual_key = _resolve_custom_virtual_key(litellm_virtual_key)
-    return await _authorize_common_request(
-        request=request,
-        build_authorized_request=lambda user, purpose_value: AuthorizedSearchRequest(
-            user=user,
-            service_type=service_type.value,
-            purpose=purpose_value,
-            client_country=client_country,
-            litellm_virtual_key=custom_virtual_key,
-            **search_request.model_dump(exclude_unset=True),
-        ),
-        authorization=authorization,
-        service_type=service_type,
-        purpose=purpose,
-        x_dev_authorization=x_dev_authorization,
-        use_app_attest=use_app_attest,
-        use_qa_certificates=use_qa_certificates,
-        use_play_integrity=use_play_integrity,
-    )
+    with measure("auth", request):
+        client_country = get_client_country(request)
+        custom_virtual_key = _resolve_custom_virtual_key(litellm_virtual_key)
+        return await _authorize_common_request(
+            request=request,
+            build_authorized_request=lambda user,
+            purpose_value: AuthorizedSearchRequest(
+                user=user,
+                service_type=service_type.value,
+                purpose=purpose_value,
+                client_country=client_country,
+                litellm_virtual_key=custom_virtual_key,
+                **search_request.model_dump(exclude_unset=True),
+            ),
+            authorization=authorization,
+            service_type=service_type,
+            purpose=purpose,
+            x_dev_authorization=x_dev_authorization,
+            use_app_attest=use_app_attest,
+            use_qa_certificates=use_qa_certificates,
+            use_play_integrity=use_play_integrity,
+        )
 
 
 async def authorize_filter_request(
@@ -274,18 +279,19 @@ async def authorize_filter_request(
     filter_request: PrivacyFilterRequest,
     authorization: Annotated[str, Header()],
 ) -> AuthorizedFilterRequest:
-    if not env.PRIVACY_FILTER_ENABLED:
-        raise HTTPException(
-            status_code=503,
-            detail={"error": "Privacy Filter is disabled."},
+    with measure("auth", request):
+        if not env.PRIVACY_FILTER_ENABLED:
+            raise HTTPException(
+                status_code=503,
+                detail={"error": "Privacy Filter is disabled."},
+            )
+
+        if not authorization:
+            raise HTTPException(status_code=401, detail="Missing authorization header")
+
+        fxa_user_id = await fxa_auth(authorization)
+        if not fxa_user_id or fxa_user_id.get("error"):
+            raise HTTPException(status_code=401, detail=fxa_user_id["error"])
+        return AuthorizedFilterRequest(
+            user=fxa_user_id["user"], **filter_request.model_dump(exclude_unset=True)
         )
-
-    if not authorization:
-        raise HTTPException(status_code=401, detail="Missing authorization header")
-
-    fxa_user_id = await fxa_auth(authorization)
-    if not fxa_user_id or fxa_user_id.get("error"):
-        raise HTTPException(status_code=401, detail=fxa_user_id["error"])
-    return AuthorizedFilterRequest(
-        user=fxa_user_id["user"], **filter_request.model_dump(exclude_unset=True)
-    )

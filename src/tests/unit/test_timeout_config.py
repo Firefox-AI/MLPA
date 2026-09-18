@@ -81,7 +81,7 @@ async def test_stream_completion_uses_configurable_timeout(
     mock_env.STREAMING_TIMEOUT_SECONDS = custom_timeout
     mock_env.DISCONNECT_POLL_INTERVAL_SECONDS = 0.1
 
-    async for _ in stream_completion(SAMPLE_REQUEST, mock_request):
+    async for _ in stream_completion(mock_request, SAMPLE_REQUEST):
         pass
 
     requests = httpx_mock.get_requests()
@@ -103,7 +103,7 @@ async def test_stream_completion_uses_default_timeout(
         status_code=200,
     )
 
-    async for _ in stream_completion(SAMPLE_REQUEST, mock_request):
+    async for _ in stream_completion(mock_request, SAMPLE_REQUEST):
         pass
 
     from mlpa.core.completions import env

@@ -3,7 +3,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import httpx
 import pytest
-from fastapi import HTTPException
+from fastapi import HTTPException, Request
 
 from mlpa.core.classes import AuthorizedSearchRequest
 from mlpa.core.config import (
@@ -48,7 +48,7 @@ async def test_get_search_handles_unpaired_surrogate(mocker):
         max_results=5,
     )
 
-    await get_search(req)
+    await get_search(Request({"type": "http", "headers": []}), req)
 
     _, call_kwargs = mock_client.post.call_args
     sent_json = call_kwargs["json"]
@@ -79,7 +79,7 @@ async def test_get_search_excludes_internal_fields_from_upstream_body(mocker):
         max_results=5,
     )
 
-    await get_search(req)
+    await get_search(Request({"type": "http", "headers": []}), req)
 
     _, call_kwargs = mock_client.post.call_args
     sent_json = call_kwargs["json"]
@@ -110,7 +110,7 @@ async def test_get_search_sanitizes_response_surrogates(mocker):
         max_results=5,
     )
 
-    data = await get_search(req)
+    data = await get_search(Request({"type": "http", "headers": []}), req)
 
     assert "\ud83e" not in data["results"][0]["title"]
     _httpx_encode_json(data)  # must not raise
@@ -164,7 +164,7 @@ async def test_get_search_budget_limit_exceeded_records_rejection(mocker, metric
     mocker.patch("mlpa.core.search.get_http_client", return_value=mock_client)
 
     with pytest.raises(HTTPException) as exc_info:
-        await get_search(req)
+        await get_search(Request({"type": "http", "headers": []}), req)
 
     assert exc_info.value.status_code == 429
     assert exc_info.value.detail == {"error": ERROR_CODE_BUDGET_LIMIT_EXCEEDED}
@@ -204,7 +204,7 @@ async def test_get_search_global_budget_limit_exceeded_records_rejection(
     mocker.patch("mlpa.core.search.get_http_client", return_value=mock_client)
 
     with pytest.raises(HTTPException) as exc_info:
-        await get_search(req)
+        await get_search(Request({"type": "http", "headers": []}), req)
 
     assert exc_info.value.status_code == 500
     assert exc_info.value.detail == {"error": ERROR_CODE_GLOBAL_BUDGET_LIMIT_EXCEEDED}
@@ -244,7 +244,7 @@ async def test_get_search_context_window_exceeded_records_rejection(
     mocker.patch("mlpa.core.search.get_http_client", return_value=mock_client)
 
     with pytest.raises(HTTPException) as exc_info:
-        await get_search(req)
+        await get_search(Request({"type": "http", "headers": []}), req)
 
     assert exc_info.value.status_code == 413
     assert exc_info.value.detail == {"error": ERROR_CODE_REQUEST_TOO_LARGE}
@@ -256,6 +256,26 @@ async def test_get_search_context_window_exceeded_records_rejection(
         == 1
     )
     assert _search_latency_count(metrics_spy, PrometheusResult.ERROR) == 1
+
+
+async def test_search_records_upstream_span(mocker):
+    request = Request(
+        {
+            "type": "http",
+            "headers": [(b"debug-timing", b"true")],
+        }
+    )
+    authorized = AuthorizedSearchRequest(
+        user="test-user:search", service_type="search", query="weather", max_results=5
+    )
+    response = httpx.Response(
+        200, json={"results": []}, request=httpx.Request("POST", "http://upstream/")
+    )
+    client = AsyncMock()
+    client.post.return_value = response
+    mocker.patch("mlpa.core.search.get_http_client", return_value=client)
+    assert await get_search(request, authorized) == {"results": []}
+    assert [span["name"] for span in request.state.debug_spans] == ["upstream"]
 
 
 @pytest.mark.parametrize(
@@ -318,10 +338,13 @@ async def test_search_updates_traffic_contracts(
     try:
         if failure:
             with pytest.raises(HTTPException) as exc:
-                await get_search(request)
+                await get_search(Request({"type": "http", "headers": []}), request)
             assert exc.value.status_code == (429 if failure == "budget" else 502)
         else:
-            assert await get_search(request) == body
+            assert (
+                await get_search(Request({"type": "http", "headers": []}), request)
+                == body
+            )
         assert len(tasks) == 1
     finally:
         await asyncio.gather(*tasks)
