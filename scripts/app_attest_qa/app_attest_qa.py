@@ -29,7 +29,7 @@ from cryptography.x509.oid import NameOID
 from pyattest.testutils.factories.certificates import key_usage
 
 from mlpa.core.config import env
-from mlpa.core.pg_services.services import app_attest_pg
+from mlpa.core.services.services import app_attest_pg
 from tests.consts import MOCK_MODEL_NAME
 
 app = typer.Typer(

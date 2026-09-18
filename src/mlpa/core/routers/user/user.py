@@ -14,7 +14,7 @@ from mlpa.core.config import (
 )
 from mlpa.core.http_client import get_http_client
 from mlpa.core.logger import logger
-from mlpa.core.pg_services.services import app_attest_pg, litellm_pg
+from mlpa.core.services.services import app_attest_pg, litellm_pg
 from mlpa.core.utils import raise_and_log
 
 router = APIRouter()
@@ -130,7 +130,7 @@ async def update_user_budget(
                 f"Valid values: {', '.join(env.valid_service_types)}"
             },
         )
-    budget_id = env.user_feature_budget[payload.service_type]["budget_id"]
+    budget_id = env.service_type_config[payload.service_type]["budget_id"]
     user = await litellm_pg.update_user_budget(user_id, budget_id)
     return {
         "user_id": user["user_id"],

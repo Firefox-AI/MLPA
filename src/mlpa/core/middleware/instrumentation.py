@@ -2,6 +2,7 @@ import time
 
 from fastapi import Request
 
+from mlpa.core.consts import TrafficContractKeyType, TrafficContractMode
 from mlpa.core.logger import logger
 from mlpa.core.prometheus_metrics import metrics
 from mlpa.core.utils import (
@@ -11,6 +12,22 @@ from mlpa.core.utils import (
     clamp_service_type,
     parse_firefox_major_version_from_user_agent,
 )
+
+
+def _traffic_contract_mode_label(
+    request: Request,
+    key_type: TrafficContractKeyType,
+) -> str:
+    mode = getattr(
+        request.state,
+        f"traffic_contract_{key_type.value}_mode",
+        "N/A",
+    )
+    if isinstance(mode, TrafficContractMode):
+        mode = mode.value
+    if isinstance(mode, str) and mode in {mode.value for mode in TrafficContractMode}:
+        return mode
+    return "N/A"
 
 
 async def instrument_requests_middleware(request: Request, call_next):
@@ -47,6 +64,12 @@ async def instrument_requests_middleware(request: Request, call_next):
                 service_type=clamp_service_type(service_type),
                 purpose=clamp_purpose(purpose),
                 major_fx_version=clamp_major_fx_version(major_fx_version),
+                traffic_contract_rpm_mode=_traffic_contract_mode_label(
+                    request, TrafficContractKeyType.RPM
+                ),
+                traffic_contract_tpm_mode=_traffic_contract_mode_label(
+                    request, TrafficContractKeyType.TPM
+                ),
             ).inc()
             metrics.response_status_codes.labels(status_code=response.status_code).inc()
             return response

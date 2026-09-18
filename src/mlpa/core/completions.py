@@ -33,6 +33,7 @@ from mlpa.core.prometheus_metrics import (
     PrometheusResult,
 )
 from mlpa.core.sanitization import sanitize_request_body, sanitize_response_body
+from mlpa.core.services.services import redis_service
 from mlpa.core.utils import (
     get_or_create_user,
     raise_and_log,
@@ -144,6 +145,7 @@ async def stream_completion(
 
     watch_task = asyncio.create_task(_watch_disconnect())
     next_chunk_task: asyncio.Task[bytes] | None = None
+    usage = None
     try:
         client = get_http_client()
         async with client.stream(
@@ -339,6 +341,11 @@ async def stream_completion(
             authorized_chat_request, result, time.perf_counter() - start_time
         )
         record_chat_availability(authorized_chat_request, availability_reason)
+        asyncio.create_task(
+            redis_service.update_contracts(
+                service_type=authorized_chat_request.service_type, usage=usage
+            )
+        )
 
 
 async def get_completion(authorized_chat_request: AuthorizedChatRequest):
@@ -359,6 +366,7 @@ async def _get_completion(authorized_chat_request: AuthorizedChatRequest):
     logger.debug(
         f"Starting a non-stream completion using {authorized_chat_request.model}, for user {authorized_chat_request.user}",
     )
+    usage = None
     try:
         client = get_http_client()
         response = await client.post(
@@ -428,3 +436,9 @@ async def _get_completion(authorized_chat_request: AuthorizedChatRequest):
             authorized_chat_request, result, time.perf_counter() - start_time
         )
         record_chat_availability(authorized_chat_request, availability_reason)
+        asyncio.create_task(
+            redis_service.update_contracts(
+                service_type=authorized_chat_request.service_type,
+                usage=usage,
+            )
+        )

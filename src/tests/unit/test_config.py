@@ -1,15 +1,13 @@
 import os
 from unittest.mock import patch
 
-import pytest
-
 from mlpa.core.config import Env
 
 
 def test_user_feature_budget_includes_memories():
     """Test that user_feature_budget property includes memories service type."""
     env = Env()
-    budgets = env.user_feature_budget
+    budgets = env.service_type_config
 
     # Verify memories is present
     assert "memories" in budgets
@@ -27,7 +25,7 @@ def test_user_feature_budget_includes_memories():
 def test_user_feature_budget_memories_default_values():
     """Test that memories budget configuration has correct default values."""
     env = Env()
-    memories_config = env.user_feature_budget["memories"]
+    memories_config = env.service_type_config["memories"]
 
     assert memories_config["budget_id"] == "end-user-budget-memories"
     assert memories_config["max_budget"] == 0.1
@@ -48,7 +46,7 @@ def test_user_feature_budget_memories_from_env():
 
     with patch.dict(os.environ, env_vars):
         env = Env()
-        memories_config = env.user_feature_budget["memories"]
+        memories_config = env.service_type_config["memories"]
 
         assert memories_config["budget_id"] == "custom-memories-budget-id"
         assert memories_config["max_budget"] == 0.5
@@ -60,7 +58,7 @@ def test_user_feature_budget_memories_from_env():
 def test_user_feature_budget_liner_answer_default_values():
     """Test that liner-answer budget configuration has correct default values."""
     env = Env()
-    liner_config = env.user_feature_budget["liner-answer"]
+    liner_config = env.service_type_config["liner-answer"]
 
     assert liner_config["budget_id"] == "end-user-budget-liner-answer"
     assert liner_config["max_budget"] == 0.06
@@ -82,7 +80,7 @@ def test_user_feature_budget_liner_answer_from_env():
     with patch.dict(os.environ, env_vars):
         env = Env()
 
-        liner_config = env.user_feature_budget["liner-answer"]
+        liner_config = env.service_type_config["liner-answer"]
         assert liner_config["budget_id"] == "custom-liner-budget-id"
         assert liner_config["max_budget"] == 0.5
         assert liner_config["rpm_limit"] == 20
@@ -93,8 +91,9 @@ def test_user_feature_budget_liner_answer_from_env():
 def test_user_feature_budget_sw_answer_default_values():
     """Test that sw-answer budget configuration has correct default values."""
     env = Env()
-    sw_answer_config = env.user_feature_budget["sw-answer"]
+    sw_answer_config = env.service_type_config["sw-answer"]
 
+    assert sw_answer_config["feature"] == env.FEATURE_SMART_WINDOW
     assert sw_answer_config["budget_id"] == "end-user-budget-sw-answer"
     assert sw_answer_config["max_budget"] == 0.1
     assert sw_answer_config["rpm_limit"] == 10
@@ -115,7 +114,8 @@ def test_user_feature_budget_sw_answer_from_env():
     with patch.dict(os.environ, env_vars):
         env = Env()
 
-        sw_answer_config = env.user_feature_budget["sw-answer"]
+        sw_answer_config = env.service_type_config["sw-answer"]
+        assert sw_answer_config["feature"] == env.FEATURE_SMART_WINDOW
         assert sw_answer_config["budget_id"] == "custom-sw-answer-budget-id"
         assert sw_answer_config["max_budget"] == 0.5
         assert sw_answer_config["rpm_limit"] == 20
@@ -143,9 +143,9 @@ def test_valid_major_fx_versions_set_uses_string_range():
 def test_user_feature_budget_dev_service_types_default_values():
     """Test that ai-dev, memories-dev, and mochi-dev have correct default values."""
     env = Env()
-    ai_dev_config = env.user_feature_budget["ai-dev"]
-    memories_dev_config = env.user_feature_budget["memories-dev"]
-    mochi_dev_config = env.user_feature_budget["mochi-dev"]
+    ai_dev_config = env.service_type_config["ai-dev"]
+    memories_dev_config = env.service_type_config["memories-dev"]
+    mochi_dev_config = env.service_type_config["mochi-dev"]
 
     assert ai_dev_config["budget_id"] == "end-user-budget-ai-dev"
     assert ai_dev_config["max_budget"] == 1.0
@@ -289,7 +289,7 @@ def test_valid_model_labels_are_explicit_metric_allowlist():
 def test_user_feature_budget_structure_consistency():
     """Test that all service types have the same structure in user_feature_budget."""
     env = Env()
-    budgets = env.user_feature_budget
+    budgets = env.service_type_config
 
     # Get the keys from one service type as reference
     reference_keys = set(budgets["ai"].keys())
@@ -319,10 +319,55 @@ def test_user_feature_budget_structure_consistency():
         )
 
 
+def test_service_type_config_values_are_defined():
+    """Every service type must have complete feature, budget, and rate config."""
+    env = Env()
+    required_keys = {
+        "feature",
+        "budget_id",
+        "budget_duration",
+        "max_budget",
+        "rpm_limit",
+        "tpm_limit",
+    }
+
+    for service_type, config in env.service_type_config.items():
+        assert set(config.keys()) == required_keys, (
+            f"{service_type} service_type_config keys differ from required keys"
+        )
+        assert isinstance(config["feature"], str)
+        assert config["feature"], f"{service_type} feature must be defined"
+        assert isinstance(config["budget_id"], str)
+        assert config["budget_id"], f"{service_type} budget_id must be defined"
+        assert isinstance(config["budget_duration"], str)
+        assert config["budget_duration"], (
+            f"{service_type} budget_duration must be defined"
+        )
+        assert isinstance(config["max_budget"], float)
+        assert config["max_budget"] >= 0
+        assert isinstance(config["rpm_limit"], int)
+        assert config["rpm_limit"] >= 0
+        assert isinstance(config["tpm_limit"], int)
+        assert config["tpm_limit"] >= 0
+
+
+def test_traffic_contract_config_defined_for_each_service_type():
+    env = Env()
+
+    assert set(env.traffic_contract_config) == set(env.service_type_config)
+    for service_type, contract in env.traffic_contract_config.items():
+        service_config = env.service_type_config[service_type]
+        assert contract["feature"] == service_config["feature"]
+        assert isinstance(contract["rpm_limit"], int)
+        assert contract["rpm_limit"] >= 0
+        assert isinstance(contract["tpm_limit"], int)
+        assert contract["tpm_limit"] >= 0
+
+
 def test_user_feature_budget_memories_type_validation():
     """Test that memories budget configuration values have correct types."""
     env = Env()
-    memories_config = env.user_feature_budget["memories"]
+    memories_config = env.service_type_config["memories"]
 
     assert isinstance(memories_config["budget_id"], str)
     assert isinstance(memories_config["max_budget"], float)

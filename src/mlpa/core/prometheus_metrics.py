@@ -215,7 +215,15 @@ def build_metrics(registry: CollectorRegistry = REGISTRY) -> PrometheusMetrics:
         requests_total=Counter(
             "mlpa_requests_total",
             "Total number of requests handled by the proxy.",
-            ["method", "endpoint", "service_type", "purpose", "major_fx_version"],
+            [
+                "method",
+                "endpoint",
+                "service_type",
+                "purpose",
+                "major_fx_version",
+                "traffic_contract_rpm_mode",
+                "traffic_contract_tpm_mode",
+            ],
             registry=registry,
         ),
         requests_by_country_total=Counter(

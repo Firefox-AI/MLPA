@@ -2,7 +2,7 @@ from fastapi import HTTPException
 
 from mlpa.core.config import env
 from mlpa.core.logger import logger
-from mlpa.core.pg_services.pg_service import PGService
+from mlpa.core.services.pg_service import PGService
 
 
 class LiteLLMPGService(PGService):
@@ -197,9 +197,8 @@ class LiteLLMPGService(PGService):
         If a budget already exists, it will be overwritten with the new values.
         Returns a list of created/updated budget records.
         """
-        user_feature_budgets = env.user_feature_budget
 
-        for service_type, budget_config in user_feature_budgets.items():
+        for service_type, budget_config in env.service_type_config.items():
             try:
                 # Fast single-row PK upsert: a plain autocommit call won't hit
                 # the pool statement_timeout.

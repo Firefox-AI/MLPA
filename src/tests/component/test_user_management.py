@@ -1,5 +1,3 @@
-from fastapi import HTTPException
-
 from mlpa.core.config import env
 from tests.consts import TEST_USER_ID
 
