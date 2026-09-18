@@ -22,6 +22,7 @@ from mlpa.core.completions import (
 from mlpa.core.config import (
     ERROR_RESPONSES,
     SENSITIVE_FIELDS_TO_SCRUB_FROM_SENTRY,
+    SENSITIVE_HEADERS_TO_SCRUB_FROM_SENTRY,
     env,
 )
 from mlpa.core.consts.openapi import (
@@ -97,6 +98,17 @@ def sentry_scrub_sensitive_fields(event, hint):
                     body[field] = "[Filtered]"
 
             event["request"]["data"] = body
+        except Exception:
+            pass
+
+    if "request" in event and "headers" in event["request"]:
+        try:
+            # A dict, per sentry_sdk's _filter_headers; reassigning a value in
+            # place never resizes it, so iterating it directly is safe.
+            headers = event["request"]["headers"]
+            for name in headers:
+                if name.lower() in SENSITIVE_HEADERS_TO_SCRUB_FROM_SENTRY:
+                    headers[name] = "[Filtered]"
         except Exception:
             pass
 
