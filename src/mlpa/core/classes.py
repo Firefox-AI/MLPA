@@ -111,6 +111,10 @@ class AuthorizedRequestLogMixin(BaseModel):
     # requests_by_country_total for both chat and search, and additionally by
     # the latency/TTFT/availability by-country metrics (AIPLAT-1266) for chat.
     client_country: str = ""
+    # Caller-supplied LiteLLM virtual key from the `litellm-virtual-key` header,
+    # to allow custom mock_responses and max_budget configurations for load tests.
+    # Can only be passed upstream when ALLOW_CUSTOM_VIRTUAL_KEY set to true
+    litellm_virtual_key: str | None = None
 
     @property
     def log_fields(self) -> dict[str, str]:

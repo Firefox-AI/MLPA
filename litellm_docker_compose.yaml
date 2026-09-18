@@ -1,11 +1,11 @@
-# The `litellm:` image tag below is the LiteLLM version this whole file (and
-# every test in src/tests/integration, incl. the contract test,
-# AIPLAT-910) runs against locally and in CI. Dependabot bumps it
-# automatically (.github/dependabot.yml, "docker-compose" ecosystem) --
-# review the diff on that PR like any other version bump.
+# The `litellm:` image tag below is the LiteLLM version
+# src/tests/litellm_compatibility (AIPLAT-910, AIPLAT-1337) runs against
+# locally and in CI. Dependabot bumps it automatically
+# (.github/dependabot.yml, "docker-compose" ecosystem) -- review the diff
+# on that PR like any other version bump.
 services:
   postgres:
-    image: postgres:15
+    image: postgres:18
     container_name: litellm_postgres
     restart: always
     environment:
@@ -14,8 +14,12 @@ services:
       POSTGRES_DB: litellm
     ports:
       - "5432:5432"
+    # Mounted at the /var/lib/postgresql parent, not .../data: Postgres 18+
+    # images store data in a major-version-specific subdirectory and refuse
+    # to start against an old-style .../data mount. The parent mount works
+    # on both 15 and 18, so this survives the next major-version bump too.
     volumes:
-      - pg_data:/var/lib/postgresql/data
+      - pg_data:/var/lib/postgresql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U litellm -d litellm"]
       interval: 5s
@@ -23,7 +27,7 @@ services:
       retries: 5
 
   redis:
-    image: redis:7-alpine
+    image: redis:8-alpine
     container_name: litellm_redis
     restart: always
     ports:
