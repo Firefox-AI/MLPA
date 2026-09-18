@@ -30,6 +30,7 @@ from mlpa.core.middleware.security_headers import security_headers_middleware
 from mlpa.core.middleware.set_json_content_type import (
     set_json_content_type_middleware,
 )
+from mlpa.core.request_timings import RequestTimingsMiddleware
 
 # Define middleware execution order explicitly (innermost to outermost)
 # This is the DESIRED execution order from request to handler
@@ -71,3 +72,6 @@ def register_middleware(app):
     # So we reverse MIDDLEWARE_EXECUTION_ORDER to get the correct execution order
     for middleware_func in reversed(MIDDLEWARE_EXECUTION_ORDER):
         app.middleware("http")(middleware_func)
+
+    # Outermost user middleware: includes body streaming and early rejections.
+    app.add_middleware(RequestTimingsMiddleware)

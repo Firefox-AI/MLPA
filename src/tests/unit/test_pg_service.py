@@ -1,9 +1,7 @@
 import asyncio
 from unittest.mock import AsyncMock
 
-import pytest
-
-from mlpa.core.pg_services.pg_service import PGService
+from mlpa.core.services.pg_service import PGService
 
 
 def _make_service(pool, connected=True):

@@ -31,14 +31,14 @@ from tests.helpers import (
 
 
 class TestBudgetProvisioningInPostgres:
-    @pytest.mark.parametrize("service_type", sorted(env.user_feature_budget))
+    @pytest.mark.parametrize("service_type", sorted(env.service_type_config))
     async def test_configured_budget_is_written_to_litellms_schema(
         self, litellm_db, service_type
     ):
         """Every service type MLPA configures must have a matching row.
         Parametrised so a single missing or wrong budget names itself
         instead of hiding behind an aggregate assertion."""
-        expected = env.user_feature_budget[service_type]
+        expected = env.service_type_config[service_type]
 
         row = await litellm_db.fetchrow(
             f"SELECT max_budget, rpm_limit, tpm_limit, budget_duration "
@@ -77,7 +77,7 @@ class TestBudgetProvisioningInPostgres:
             user_id,
         )
 
-        assert budget_id == env.user_feature_budget[SERVICE_TYPE]["budget_id"], (
+        assert budget_id == env.service_type_config[SERVICE_TYPE]["budget_id"], (
             f"End user {user_id!r} is not linked to its budget -- MLPA's "
             f"UPDATE against {END_USER_TABLE} did not take effect."
         )
@@ -109,7 +109,7 @@ class TestUserManagementAdminEndpoints:
         )
         assert block_response.status_code == 200, block_response.text
 
-        new_budget_id = env.user_feature_budget["memories-dev"]["budget_id"]
+        new_budget_id = env.service_type_config["memories-dev"]["budget_id"]
         budget_response = client.post(
             f"/user/{user_id}/budget",
             headers={"master_key": f"Bearer {env.MASTER_KEY}"},

@@ -5,9 +5,8 @@ import cbor2
 from cryptography.hazmat.primitives import serialization
 from cryptography.x509 import load_der_x509_certificate
 from fastapi import HTTPException
-from pyattest.testutils.factories.attestation import apple as apple_factory
 
-from mlpa.core.classes import AuthorizedChatRequest, ChatRequest
+from mlpa.core.classes import AuthorizedChatRequest
 from mlpa.core.config import ERROR_CODE_MAX_USERS_REACHED, env
 from mlpa.core.logger import logger
 from mlpa.core.routers.appattest.appattest import validate_challenge
@@ -100,7 +99,7 @@ async def mock_get_or_create_user(mock_litellm_pg, mock_app_attest_pg, user_id: 
     return user, False
 
 
-async def mock_get_completion(authorized_chat_request: AuthorizedChatRequest):
+async def mock_get_completion(request, authorized_chat_request: AuthorizedChatRequest):
     return SUCCESSFUL_CHAT_RESPONSE
 
 

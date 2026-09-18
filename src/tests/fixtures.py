@@ -97,13 +97,13 @@ def mocked_client_integration(mocker, use_real_get_or_create_user):
     if not use_real_get_or_create_user:
         mocker.patch(
             "mlpa.run.get_or_create_user_for_completion",
-            lambda user_id, req: mock_get_or_create_user(
+            lambda request, user_id, req: mock_get_or_create_user(
                 mock_litellm_pg, mock_app_attest_pg, user_id
             ),
         )
         mocker.patch(
             "mlpa.core.routers.mock.mock.get_or_create_user_for_completion",
-            lambda user_id, req: mock_get_or_create_user(
+            lambda request, user_id, req: mock_get_or_create_user(
                 mock_litellm_pg, mock_app_attest_pg, user_id
             ),
         )

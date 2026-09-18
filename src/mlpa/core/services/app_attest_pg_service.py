@@ -2,8 +2,8 @@ from fastapi import HTTPException
 
 from mlpa.core.config import env
 from mlpa.core.logger import logger
-from mlpa.core.pg_services.litellm_pg_service import LiteLLMPGService
-from mlpa.core.pg_services.pg_service import PGService
+from mlpa.core.services.litellm_pg_service import LiteLLMPGService
+from mlpa.core.services.pg_service import PGService
 
 
 class AppAttestPGService(PGService):

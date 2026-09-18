@@ -9,6 +9,7 @@ from tests.metrics_spy import metrics_spy  # noqa: F401 — re-export as fixture
 @pytest.fixture
 def mock_request():
     req = MagicMock()
+    req.headers = {}
     req.is_disconnected = AsyncMock(return_value=False)
     return req
 
@@ -17,10 +18,12 @@ def mock_request():
 def _force_mlpa_debug_false():
     monkeypatch = pytest.MonkeyPatch()
     monkeypatch.setenv("MLPA_DEBUG", "false")
+    monkeypatch.setenv("ENABLE_TRAFFIC_CONTRACT_ENFORCEMENT", "false")
     monkeypatch.setenv("ADDITIONAL_FXA_SCOPE_1", "")
     monkeypatch.setenv("ADDITIONAL_FXA_SCOPE_2", "")
     monkeypatch.setenv("ADDITIONAL_FXA_SCOPE_3", "")
     env.MLPA_DEBUG = False
+    env.ENABLE_TRAFFIC_CONTRACT_ENFORCEMENT = False
     env.ADDITIONAL_FXA_SCOPE_1 = ""
     env.ADDITIONAL_FXA_SCOPE_2 = ""
     env.ADDITIONAL_FXA_SCOPE_3 = ""

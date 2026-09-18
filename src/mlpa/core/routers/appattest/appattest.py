@@ -1,7 +1,5 @@
 import asyncio
 import binascii
-import hashlib
-import json
 import os
 import time
 from functools import lru_cache
@@ -21,8 +19,8 @@ from pyattest.configs.apple import AppleConfig
 from mlpa.core.app_attest import QA_CERT_DIR, ensure_qa_certificates
 from mlpa.core.config import env
 from mlpa.core.logger import logger
-from mlpa.core.pg_services.services import app_attest_pg
 from mlpa.core.prometheus_metrics import PrometheusResult, metrics
+from mlpa.core.services.services import app_attest_pg
 from mlpa.core.utils import b64decode_safe
 
 challenge_store = {}

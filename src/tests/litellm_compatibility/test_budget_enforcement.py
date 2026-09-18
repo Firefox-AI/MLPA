@@ -41,7 +41,7 @@ class TestChatCompletionBudgetEnforcement:
         info = wait_for_spend(proxy, user_id)
         assert (
             info["litellm_budget_table"]["budget_id"]
-            == env.user_feature_budget[BUDGET_SERVICE_TYPE]["budget_id"]
+            == env.service_type_config[BUDGET_SERVICE_TYPE]["budget_id"]
         )
 
     def test_chat_completion_enforces_rpm_budget(self, real_backend_client):
@@ -52,7 +52,7 @@ class TestChatCompletionBudgetEnforcement:
         so it would have caught #243 regardless of which field was dropped.
         """
         client, token, _base_identity = real_backend_client
-        rpm_limit = env.user_feature_budget[BUDGET_SERVICE_TYPE]["rpm_limit"]
+        rpm_limit = env.service_type_config[BUDGET_SERVICE_TYPE]["rpm_limit"]
         headers = mlpa_headers(
             token, service_type=BUDGET_SERVICE_TYPE, purpose=BUDGET_PURPOSE
         )

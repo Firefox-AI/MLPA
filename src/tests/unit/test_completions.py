@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import httpx
 import pytest
-from fastapi import HTTPException
+from fastapi import HTTPException, Request
 from pytest_httpx import HTTPXMock, IteratorStream
 
 from mlpa.core.classes import AuthorizedChatRequest
@@ -226,7 +226,9 @@ async def test_get_completion_success(mocker, metrics_spy):
     mock_client.post.return_value = mock_response
     mocker.patch("mlpa.core.completions.get_http_client", return_value=mock_client)
 
-    result_data = await get_completion(SAMPLE_REQUEST)
+    result_data = await get_completion(
+        Request({"type": "http", "headers": []}), SAMPLE_REQUEST
+    )
 
     mock_client.post.assert_awaited_once()
     _, call_kwargs = mock_client.post.call_args
@@ -324,7 +326,7 @@ async def test_get_completion_litellm_routing_with_fallback(mocker, metrics_spy)
     mock_client.post.return_value = mock_response
     mocker.patch("mlpa.core.completions.get_http_client", return_value=mock_client)
 
-    await get_completion(SAMPLE_REQUEST)
+    await get_completion(Request({"type": "http", "headers": []}), SAMPLE_REQUEST)
 
     routing = {
         "requested_model": SAMPLE_REQUEST.model,
@@ -356,7 +358,7 @@ async def test_get_completion_litellm_routing_skips_invalid_optional_headers(
     mock_client.post.return_value = mock_response
     mocker.patch("mlpa.core.completions.get_http_client", return_value=mock_client)
 
-    await get_completion(SAMPLE_REQUEST)
+    await get_completion(Request({"type": "http", "headers": []}), SAMPLE_REQUEST)
 
     assert "litellm_reported_duration_seconds" not in metrics_spy.touched()
     assert "litellm_reported_cost_usd_total" not in metrics_spy.touched()
@@ -376,7 +378,7 @@ async def test_get_completion_litellm_routing_skips_negative_duration_ms(
     mock_client.post.return_value = mock_response
     mocker.patch("mlpa.core.completions.get_http_client", return_value=mock_client)
 
-    await get_completion(SAMPLE_REQUEST)
+    await get_completion(Request({"type": "http", "headers": []}), SAMPLE_REQUEST)
 
     assert "litellm_reported_duration_seconds" not in metrics_spy.touched()
 
@@ -397,7 +399,7 @@ async def test_get_completion_http_error(mocker, metrics_spy):
     mocker.patch.object(env, "MLPA_DEBUG", False)
 
     with pytest.raises(HTTPException) as exc_info:
-        await get_completion(SAMPLE_REQUEST)
+        await get_completion(Request({"type": "http", "headers": []}), SAMPLE_REQUEST)
 
     assert exc_info.value.status_code == 500
     assert exc_info.value.detail["error"] == "Upstream service returned an error"
@@ -427,7 +429,7 @@ async def test_get_completion_network_error(mocker, metrics_spy):
     mocker.patch.object(env, "MLPA_DEBUG", True)
 
     with pytest.raises(HTTPException) as exc_info:
-        await get_completion(SAMPLE_REQUEST)
+        await get_completion(Request({"type": "http", "headers": []}), SAMPLE_REQUEST)
 
     assert exc_info.value.status_code == 502
     assert exc_info.value.detail["error"] == "Connection timed out"
@@ -456,7 +458,7 @@ async def test_stream_completion_success(
     )
 
     received_chunks = [
-        chunk async for chunk in stream_completion(SAMPLE_REQUEST, mock_request)
+        chunk async for chunk in stream_completion(mock_request, SAMPLE_REQUEST)
     ]
 
     assert received_chunks == mock_chunks
@@ -554,7 +556,7 @@ async def test_stream_completion_litellm_routing_with_fallback(
     )
 
     received_chunks = [
-        chunk async for chunk in stream_completion(SAMPLE_REQUEST, mock_request)
+        chunk async for chunk in stream_completion(mock_request, SAMPLE_REQUEST)
     ]
     assert received_chunks == mock_chunks
 
@@ -589,7 +591,7 @@ async def test_get_completion_budget_limit_exceeded_429(mocker, metrics_spy):
     mocker.patch("mlpa.core.completions.get_http_client", return_value=mock_client)
 
     with pytest.raises(HTTPException) as exc_info:
-        await get_completion(SAMPLE_REQUEST)
+        await get_completion(Request({"type": "http", "headers": []}), SAMPLE_REQUEST)
 
     assert exc_info.value.status_code == 429
     assert exc_info.value.detail == {"error": 1}
@@ -640,7 +642,7 @@ async def test_get_completion_budget_limit_exceeded_400(mocker, metrics_spy):
     mocker.patch("mlpa.core.completions.get_http_client", return_value=mock_client)
 
     with pytest.raises(HTTPException) as exc_info:
-        await get_completion(SAMPLE_REQUEST)
+        await get_completion(Request({"type": "http", "headers": []}), SAMPLE_REQUEST)
 
     assert exc_info.value.status_code == 429
     assert exc_info.value.detail == {"error": 1}
@@ -671,7 +673,7 @@ async def test_get_completion_global_budget_limit_exceeded(mocker, metrics_spy):
     mocker.patch("mlpa.core.completions.get_http_client", return_value=mock_client)
 
     with pytest.raises(HTTPException) as exc_info:
-        await get_completion(SAMPLE_REQUEST)
+        await get_completion(Request({"type": "http", "headers": []}), SAMPLE_REQUEST)
 
     assert exc_info.value.status_code == 500
     assert exc_info.value.detail == {"error": ERROR_CODE_GLOBAL_BUDGET_LIMIT_EXCEEDED}
@@ -713,7 +715,7 @@ async def test_get_completion_rate_limit_exceeded(mocker, metrics_spy):
     mocker.patch("mlpa.core.completions.get_http_client", return_value=mock_client)
 
     with pytest.raises(HTTPException) as exc_info:
-        await get_completion(SAMPLE_REQUEST)
+        await get_completion(Request({"type": "http", "headers": []}), SAMPLE_REQUEST)
 
     assert exc_info.value.status_code == 429
     assert exc_info.value.detail == {"error": 2}
@@ -762,7 +764,7 @@ async def test_get_completion_400_non_rate_limit_error(mocker, metrics_spy):
     mocker.patch.object(env, "MLPA_DEBUG", False)
 
     with pytest.raises(HTTPException) as exc_info:
-        await get_completion(SAMPLE_REQUEST)
+        await get_completion(Request({"type": "http", "headers": []}), SAMPLE_REQUEST)
 
     assert exc_info.value.status_code == 400
     assert exc_info.value.detail == {"error": "Upstream service returned an error"}
@@ -792,7 +794,7 @@ async def test_get_completion_429_non_rate_limit_error(mocker, metrics_spy):
     mocker.patch.object(env, "MLPA_DEBUG", False)
 
     with pytest.raises(HTTPException) as exc_info:
-        await get_completion(SAMPLE_REQUEST)
+        await get_completion(Request({"type": "http", "headers": []}), SAMPLE_REQUEST)
 
     assert exc_info.value.status_code == 429
     assert exc_info.value.detail == {"error": "Upstream service returned an error"}
@@ -822,7 +824,7 @@ async def test_get_completion_upstream_rate_limit_error(mocker, metrics_spy):
     mocker.patch.object(env, "MLPA_DEBUG", False)
 
     with pytest.raises(HTTPException) as exc_info:
-        await get_completion(SAMPLE_REQUEST)
+        await get_completion(Request({"type": "http", "headers": []}), SAMPLE_REQUEST)
 
     assert exc_info.value.status_code == 429
     assert exc_info.value.detail == {"error": ERROR_CODE_UPSTREAM_RATE_LIMIT_EXCEEDED}
@@ -865,7 +867,7 @@ async def test_get_completion_context_window_exceeded(mocker, metrics_spy):
     mock_logger = mocker.patch("mlpa.core.completions.logger")
 
     with pytest.raises(HTTPException) as exc_info:
-        await get_completion(SAMPLE_REQUEST)
+        await get_completion(Request({"type": "http", "headers": []}), SAMPLE_REQUEST)
 
     assert exc_info.value.status_code == 413
     assert exc_info.value.detail == {"error": ERROR_CODE_REQUEST_TOO_LARGE}
@@ -906,7 +908,7 @@ async def test_get_completion_invalid_model_name(mocker, metrics_spy):
     mock_logger = mocker.patch("mlpa.core.completions.logger")
 
     with pytest.raises(HTTPException) as exc_info:
-        await get_completion(SAMPLE_REQUEST)
+        await get_completion(Request({"type": "http", "headers": []}), SAMPLE_REQUEST)
 
     assert exc_info.value.status_code == 400
     assert exc_info.value.detail == {"error": ERROR_CODE_INVALID_MODEL_NAME}
@@ -946,7 +948,7 @@ async def test_get_completion_invalid_request_vertex(mocker, metrics_spy):
     mock_logger = mocker.patch("mlpa.core.completions.logger")
 
     with pytest.raises(HTTPException) as exc_info:
-        await get_completion(SAMPLE_REQUEST)
+        await get_completion(Request({"type": "http", "headers": []}), SAMPLE_REQUEST)
 
     assert exc_info.value.status_code == 400
     assert exc_info.value.detail == {"error": ERROR_CODE_INVALID_REQUEST}
@@ -979,7 +981,7 @@ async def test_get_completion_429_invalid_json(mocker, metrics_spy):
     mocker.patch.object(env, "MLPA_DEBUG", False)
 
     with pytest.raises(HTTPException) as exc_info:
-        await get_completion(SAMPLE_REQUEST)
+        await get_completion(Request({"type": "http", "headers": []}), SAMPLE_REQUEST)
 
     assert exc_info.value.status_code == 429
     assert exc_info.value.detail == {"error": "Upstream service returned an error"}
@@ -1015,7 +1017,7 @@ async def test_stream_completion_budget_limit_exceeded_429(
     mock_logger.bind.return_value = mock_logger
 
     received_chunks = [
-        chunk async for chunk in stream_completion(SAMPLE_REQUEST, mock_request)
+        chunk async for chunk in stream_completion(mock_request, SAMPLE_REQUEST)
     ]
     assert len(received_chunks) == 1
     assert (
@@ -1068,7 +1070,7 @@ async def test_stream_completion_budget_limit_exceeded_400(
     mock_logger.bind.return_value = mock_logger
 
     received_chunks = [
-        chunk async for chunk in stream_completion(SAMPLE_REQUEST, mock_request)
+        chunk async for chunk in stream_completion(mock_request, SAMPLE_REQUEST)
     ]
 
     assert len(received_chunks) == 1
@@ -1113,7 +1115,7 @@ async def test_stream_completion_rate_limit_exceeded(
     mock_logger.bind.return_value = mock_logger
 
     received_chunks = [
-        chunk async for chunk in stream_completion(SAMPLE_REQUEST, mock_request)
+        chunk async for chunk in stream_completion(mock_request, SAMPLE_REQUEST)
     ]
 
     assert len(received_chunks) == 1
@@ -1153,7 +1155,7 @@ async def test_stream_completion_context_window_exceeded(
     mock_logger.bind.return_value = mock_logger
 
     received_chunks = [
-        chunk async for chunk in stream_completion(SAMPLE_REQUEST, mock_request)
+        chunk async for chunk in stream_completion(mock_request, SAMPLE_REQUEST)
     ]
 
     assert len(received_chunks) == 1
@@ -1197,7 +1199,7 @@ async def test_stream_completion_invalid_model_name(
     mock_logger.bind.return_value = mock_logger
 
     received_chunks = [
-        chunk async for chunk in stream_completion(SAMPLE_REQUEST, mock_request)
+        chunk async for chunk in stream_completion(mock_request, SAMPLE_REQUEST)
     ]
 
     assert len(received_chunks) == 1
@@ -1240,7 +1242,7 @@ async def test_stream_completion_invalid_request_vertex(
     mock_logger.bind.return_value = mock_logger
 
     received_chunks = [
-        chunk async for chunk in stream_completion(SAMPLE_REQUEST, mock_request)
+        chunk async for chunk in stream_completion(mock_request, SAMPLE_REQUEST)
     ]
 
     assert len(received_chunks) == 1
@@ -1286,7 +1288,7 @@ async def test_stream_completion_400_non_rate_limit_error(
     mocker.patch.object(env, "MLPA_DEBUG", False)
 
     received_chunks = [
-        chunk async for chunk in stream_completion(SAMPLE_REQUEST, mock_request)
+        chunk async for chunk in stream_completion(mock_request, SAMPLE_REQUEST)
     ]
 
     assert len(received_chunks) == 1
@@ -1323,7 +1325,7 @@ async def test_stream_completion_429_non_rate_limit_error(
     mocker.patch.object(env, "MLPA_DEBUG", False)
 
     received_chunks = [
-        chunk async for chunk in stream_completion(SAMPLE_REQUEST, mock_request)
+        chunk async for chunk in stream_completion(mock_request, SAMPLE_REQUEST)
     ]
 
     assert len(received_chunks) == 1
@@ -1355,7 +1357,7 @@ async def test_stream_completion_upstream_rate_limit_error(
     )
 
     received_chunks = [
-        chunk async for chunk in stream_completion(SAMPLE_REQUEST, mock_request)
+        chunk async for chunk in stream_completion(mock_request, SAMPLE_REQUEST)
     ]
 
     assert received_chunks == [
@@ -1388,7 +1390,7 @@ async def test_stream_completion_429_invalid_json(
     mocker.patch.object(env, "MLPA_DEBUG", False)
 
     received_chunks = [
-        chunk async for chunk in stream_completion(SAMPLE_REQUEST, mock_request)
+        chunk async for chunk in stream_completion(mock_request, SAMPLE_REQUEST)
     ]
 
     assert len(received_chunks) == 1
@@ -1417,7 +1419,7 @@ async def test_stream_completion_exception_after_streaming_started(
     )
 
     received_chunks = []
-    async for chunk in stream_completion(SAMPLE_REQUEST, mock_request):
+    async for chunk in stream_completion(mock_request, SAMPLE_REQUEST):
         received_chunks.append(chunk)
 
     assert len(received_chunks) == 1
@@ -1474,7 +1476,7 @@ async def test_get_completion_preserves_tools(mocker, metrics_spy):
     mock_client.post.return_value = mock_response
     mocker.patch("mlpa.core.completions.get_http_client", return_value=mock_client)
 
-    await get_completion(request_with_tools)
+    await get_completion(Request({"type": "http", "headers": []}), request_with_tools)
 
     mock_client.post.assert_awaited_once()
     _, call_kwargs = mock_client.post.call_args
@@ -1541,7 +1543,7 @@ async def test_stream_completion_preserves_tools(
     )
 
     received_chunks = [
-        chunk async for chunk in stream_completion(request_with_tools, mock_request)
+        chunk async for chunk in stream_completion(mock_request, request_with_tools)
     ]
 
     request = httpx_mock.get_request()
@@ -1621,7 +1623,7 @@ async def test_stream_sends_error_sse_on_exception_after_streaming_started(
 
     _patch_mock_stream_client(mocker, _failing_aiter_bytes)
 
-    received = [c async for c in stream_completion(SAMPLE_REQUEST, mock_request)]
+    received = [c async for c in stream_completion(mock_request, SAMPLE_REQUEST)]
 
     assert len(received) == 2, (
         f"Expected [role_chunk, error_SSE], got {len(received)} chunk(s)."
@@ -1645,7 +1647,7 @@ async def test_stream_sends_error_sse_on_empty_200_response(
         headers=_sample_litellm_response_headers(),
     )
 
-    received = [c async for c in stream_completion(SAMPLE_REQUEST, mock_request)]
+    received = [c async for c in stream_completion(mock_request, SAMPLE_REQUEST)]
 
     assert len(received) == 1, (
         f"Expected exactly one error SSE chunk, got {len(received)}."
@@ -1684,7 +1686,7 @@ async def test_stream_completion_client_disconnect_records_abort(
 
     _patch_mock_stream_client(mocker, _aiter_bytes)
 
-    gen = stream_completion(SAMPLE_REQUEST, mock_request)
+    gen = stream_completion(mock_request, SAMPLE_REQUEST)
     first = await gen.__anext__()
     assert first == role_chunk
 
@@ -1719,7 +1721,7 @@ async def test_stream_uses_httpx_timeout_object_preserving_pool_timeout(
 
     _patch_mock_stream_client(mocker, _empty_aiter_bytes, capture=captured)
 
-    _ = [c async for c in stream_completion(SAMPLE_REQUEST, mock_request)]
+    _ = [c async for c in stream_completion(mock_request, SAMPLE_REQUEST)]
 
     timeout = captured.get("timeout")
     assert isinstance(timeout, httpx.Timeout), (
@@ -1835,7 +1837,9 @@ async def test_get_completion_sanitizes_response_surrogates(mocker):
     mock_client.post.return_value = mock_response
     mocker.patch("mlpa.core.completions.get_http_client", return_value=mock_client)
 
-    data = await get_completion(SAMPLE_REQUEST)
+    data = await get_completion(
+        Request({"type": "http", "headers": []}), SAMPLE_REQUEST
+    )
 
     assert "\ud83e" not in data["choices"][0]["message"]["content"]
     assert data["choices"][0]["message"]["content"].startswith("done ")
@@ -1857,7 +1861,9 @@ async def test_get_completion_empty_message_transport_error_is_diagnosable(mocke
 
     with _capture_logs() as records:
         with pytest.raises(HTTPException) as exc_info:
-            await get_completion(SAMPLE_REQUEST)
+            await get_completion(
+                Request({"type": "http", "headers": []}), SAMPLE_REQUEST
+            )
 
     assert exc_info.value.status_code == 502
 
@@ -1898,7 +1904,7 @@ async def test_stream_mid_stream_error_binds_request_fields(
     mocker.patch.object(env, "MLPA_DEBUG", False)
 
     with _capture_logs() as records:
-        received = [c async for c in stream_completion(SAMPLE_REQUEST, mock_request)]
+        received = [c async for c in stream_completion(mock_request, SAMPLE_REQUEST)]
 
     assert any(b'"error"' in chunk for chunk in received)
 
@@ -1929,7 +1935,7 @@ async def test_stream_completion_aclose_from_separate_task_does_not_crash(
 
     _patch_mock_stream_client(mocker, _aiter_bytes)
 
-    gen = stream_completion(SAMPLE_REQUEST, mock_request)
+    gen = stream_completion(mock_request, SAMPLE_REQUEST)
     first = await gen.__anext__()
     assert first == role_chunk
 
@@ -1951,7 +1957,7 @@ async def test_response_aclose_called_once_on_disconnect(mocker, mock_request):
     _patch_mock_stream_client(mocker, _aiter_bytes, capture)
     mock_request.is_disconnected = AsyncMock(side_effect=[False, True])
 
-    received = [c async for c in stream_completion(SAMPLE_REQUEST, mock_request)]
+    received = [c async for c in stream_completion(mock_request, SAMPLE_REQUEST)]
 
     assert received == [role_chunk]
     assert capture.get("close_count") == 1, (
@@ -1974,7 +1980,7 @@ async def test_pending_task_cancel_runtime_error_suppressed(mocker, mock_request
     mock_request.is_disconnected = AsyncMock(return_value=False)
 
     async def _consume():
-        async for _ in stream_completion(SAMPLE_REQUEST, mock_request):
+        async for _ in stream_completion(mock_request, SAMPLE_REQUEST):
             pass
 
     records = []
