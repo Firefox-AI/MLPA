@@ -2,7 +2,7 @@
 FROM python:3.12-slim
 
 RUN apt-get update && \
-    apt-get install -y postgresql-client && \
+    apt-get install -y postgresql-client libjemalloc2 && \
     rm -rf /var/lib/apt/lists/*
 
 # Set the working directory
@@ -27,5 +27,6 @@ RUN uv pip install --system --editable .
 # Expose the application port
 EXPOSE 8080
 
-# Run the mlpa command using its full path inside the container
-CMD ["/usr/local/bin/mlpa"]
+RUN chmod +x /app/docker-entrypoint.sh
+
+CMD ["/app/docker-entrypoint.sh"]
