@@ -35,17 +35,17 @@ def _get_service_account_credentials():
     return credentials
 
 
-def _get_play_integrity_access_token() -> str:
+async def _get_play_integrity_access_token() -> str:
     credentials = _get_service_account_credentials()
     if not credentials.valid:
-        credentials.refresh(Request())
+        await run_in_threadpool(credentials.refresh, Request())
     if not credentials.token:
         raise HTTPException(status_code=500, detail="Failed to fetch access token")
     return credentials.token
 
 
 async def _decode_integrity_token(integrity_token: str, package_name: str) -> dict:
-    access_token = await run_in_threadpool(_get_play_integrity_access_token)
+    access_token = await _get_play_integrity_access_token()
     client = get_http_client()
     if not package_name in env.ALLOWED_PACKAGE_NAMES:
         raise HTTPException(status_code=403, detail="Package name not allowed")
