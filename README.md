@@ -16,13 +16,35 @@ make setup
 
 This creates a virtual environment in `.venv/`, installs dependencies, and installs the tool locally in editable mode.
 
+MLPA requires Python 3.12 (pinned in `.python-version`). `jwtoxide` has no wheels for newer versions and fails to build from source.
+
 # Running MLPA locally with Docker
+
+### Prerequisites
+
+- `.env` in the repo root with at least:
+
+    ```bash
+    MASTER_KEY=sk-<any-value>   # LiteLLM master key
+    MLPA_DEBUG=true
+    ```
+
+    `OPENAI_API_KEY` and `EXA_API_KEY` are only needed for those models.
+
+- `service_account.json` in the repo root, with Vertex AI access to `fx-gen-ai-sandbox`. Either a service account key or your own credentials:
+
+    ```bash
+    gcloud auth application-default login
+    cp ~/.config/gcloud/application_default_credentials.json service_account.json
+    ```
+
+    Create it before starting Docker. Otherwise Docker creates an empty directory in its place and LiteLLM fails to start.
 
 ### Run LiteLLM and PostgreSQL
 
 1. `docker compose -f litellm_docker_compose.yaml up -d`
 
-    (`docker compose -f litellm_docker_compose.yaml down --volumes --remove-orphans` to remove all)
+    To stop: `docker compose -f litellm_docker_compose.yaml down`. Adding `--volumes` also deletes the database data.
 
     Privacy Filter is disabled by default in MLPA. To run it locally, set
     `PRIVACY_FILTER_ENABLED=true` in `.env`; `start.sh` reads this and enables
@@ -31,33 +53,37 @@ This creates a virtual environment in `.venv/`, installs dependencies, and insta
 
     When disabled, MLPA also skips the Privacy Filter dependency in `/health/readiness`.
 
-### Create and migrate appattest database
+### Create and migrate the app_attest database
 
-2. `sh ./scripts/create-app-attest-database.sh`
+2. `bash scripts/migrate-app-attest-database-local.sh`
 
-3. Migrate app_attest (repo root): `bash scripts/migrate-app-attest-database-local.sh` or `uv run alembic upgrade head`
-
-4. Set `MLPA_DEBUG=true` in the `config.py` or `.env` file
+    Creates the database if needed, runs Alembic, and seeds the user capacity row.
 
 ### Create a virtual LiteLLM key
 
-5. Run `python scripts/create-and-set-virtual-key.py` (also sets the value in `.env`)
+3. `uv run python scripts/create-and-set-virtual-key.py`
+
+    Writes `MLPA_VIRTUAL_KEY` to `.env`.
 
 ### Run MLPA
 
-6. Install it as a library:
+4. `.venv/bin/mlpa` (or `make mlpa`)
+
+    Serves on `http://localhost:8080`. Swagger is at `/api/docs`.
+
+`make docker-up` runs steps 1–3.
+
+### Send a test request
+
+Without a real FxA token, sign a local MLPA access token with the default dev secret:
 
 ```bash
-pip install --no-cache-dir -e .
+TOKEN=$(uv run python -c "from mlpa.core.utils import issue_mlpa_access_token as t; print(t('local-test-user'))")
+curl localhost:8080/v1/chat/completions \
+  -H "Authorization: Bearer $TOKEN" -H 'use-play-integrity: true' -H 'service-type: ai' \
+  -H 'Content-Type: application/json' \
+  -d '{"model":"vertex_ai/mistral-small-2503","messages":[{"role":"user","content":"hi"}]}'
 ```
-
-7. Run the binary
-
-```bash
-mlpa
-```
-
-Navigate to
 
 ## Config (see [LiteLLM Documentation](https://docs.litellm.ai/docs/simple_proxy_old_doc) for more config options)
 

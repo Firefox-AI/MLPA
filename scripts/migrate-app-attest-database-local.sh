@@ -58,7 +58,7 @@ echo "[mlpa-appattest-migrate-local] Running Alembic upgrade head (Alembic messa
 uv run alembic --raiseerr -c alembic.ini -x sqlalchemy.url="${APP_ATTEST_DATABASE_URL}" upgrade head 2>&1
 
 echo "[mlpa-appattest-migrate] Seeding mlpa_user_capacity max_identities=${MLPA_MAX_SIGNED_IN_USERS}"
-psql -d "${APP_ATTEST_DB_NAME}" -c "
+docker exec "${CONTAINER_NAME}" psql -U "${DB_USERNAME}" -d "${APP_ATTEST_DB_NAME}" -c "
   INSERT INTO mlpa_user_capacity (id, max_identities, current_identities)
   VALUES (1, ${MLPA_MAX_SIGNED_IN_USERS}, 0)
   ON CONFLICT (id) DO UPDATE SET
