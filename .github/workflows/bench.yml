@@ -1,0 +1,60 @@
+name: bench
+
+# Compares the auth benchmarks (src/tests/bench) between the PR and its base
+# branch. See the README "Auth benchmarks" section.
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize, ready_for_review]
+    paths:
+      - "src/**"
+      - "pyproject.toml"
+      - "uv.lock"
+      - "scripts/bench_compare.py"
+      - ".github/workflows/bench.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: bench-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  auth-benchmarks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      # The default ref is the PR merged into its base, so HEAD^1 is the base
+      # branch tip the PR is being measured against.
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        run: pip install uv==0.10.8
+
+      - name: Compare benchmarks (base vs PR)
+        env:
+          BENCH_FAIL_THRESHOLD: ${{ vars.BENCH_FAIL_THRESHOLD }}
+          BENCH_RUNS: ${{ vars.BENCH_RUNS }}
+        run: >-
+          uv run --no-project python scripts/bench_compare.py
+          --base HEAD^1
+          --out "$RUNNER_TEMP/mlpa-bench"
+
+      - name: Write job summary
+        if: always()
+        run: |
+          echo "## MLPA auth benchmarks: base vs PR" >> "$GITHUB_STEP_SUMMARY"
+          if [ -f "$RUNNER_TEMP/mlpa-bench/report.md" ]; then
+            cat "$RUNNER_TEMP/mlpa-bench/report.md" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo "Benchmark comparison unavailable; check the job log." >> "$GITHUB_STEP_SUMMARY"
+          fi
