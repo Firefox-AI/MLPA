@@ -25,6 +25,7 @@ FXA_STUB_TOKEN = "bench-fxa-token"
 
 ACCESS_TOKEN_SECRET = "bench-access-secret"
 DEV_AUTH_TOKEN = "bench-dev-token"
+PLAY_USER_ID = "bench-play-user"
 
 APP_ATTEST_BUNDLE_ID = "org.mozilla.bench"
 
@@ -32,42 +33,37 @@ APP_ATTEST_BUNDLE_ID = "org.mozilla.bench"
 class StubFxAClient:
     """Accepts one token, so only MLPA's own FxA handling is measured."""
 
-    def __init__(self, token: str = FXA_STUB_TOKEN, user_id: str = FXA_USER_ID):
-        self._token = token
-        self._user_id = user_id
-
     def verify_token(self, token, scope=None, include_verification_source=False):
-        if token != self._token:
+        if token != FXA_STUB_TOKEN:
             raise ValueError("invalid token")
-        return {
-            "user": self._user_id,
-            "client_id": "bench-client",
-            "scope": [FXA_SCOPE],
-            "verification_source": "local",
-        }
+        return {"user": FXA_USER_ID, "verification_source": "local"}
 
 
 class FakeAppAttestPG:
-    """In-memory replacement for AppAttestPGService (Postgres)."""
+    """In-memory replacement for the AppAttestPGService calls on the auth path.
+
+    `set_challenge` and `set_key` seed test data; they are not part of the
+    real service's interface.
+    """
 
     def __init__(self):
         self.challenges: dict[str, dict] = {}
         self.keys: dict[str, dict] = {}
 
-    async def store_challenge(self, key_id_b64: str, challenge: str):
+    def set_challenge(self, key_id_b64: str, challenge: str):
         self.challenges[key_id_b64] = {
             "challenge": challenge,
             "created_at": datetime.now(),
         }
+
+    def set_key(self, key_id_b64: str, public_key_pem: str, counter: int):
+        self.keys[key_id_b64] = {"public_key_pem": public_key_pem, "counter": counter}
 
     async def get_challenge(self, key_id_b64: str):
         return self.challenges.get(key_id_b64)
 
     async def delete_challenge(self, key_id_b64: str):
         self.challenges.pop(key_id_b64, None)
-
-    async def store_key(self, key_id_b64: str, public_key_pem: str, counter: int):
-        self.keys[key_id_b64] = {"public_key_pem": public_key_pem, "counter": counter}
 
     async def get_key(self, key_id_b64: str):
         return self.keys.get(key_id_b64)
@@ -85,11 +81,11 @@ class FxASigner:
             jwt.algorithms.RSAAlgorithm.to_jwk(self._key.public_key())
         ) | {"kid": "bench-key", "alg": "RS256", "use": "sig"}
 
-    def token(self, user_id: str = FXA_USER_ID, scope: str = FXA_SCOPE) -> str:
+    def token(self) -> str:
         claims = {
-            "sub": user_id,
+            "sub": FXA_USER_ID,
             "client_id": "bench-client",
-            "scope": scope,
+            "scope": FXA_SCOPE,
             "iat": ISSUED_AT,
             "exp": EXPIRES_AT,
         }
@@ -101,10 +97,10 @@ class FxASigner:
         )
 
 
-def play_access_token(user_id: str = "bench-play-user") -> str:
+def play_access_token() -> str:
     """An MLPA access token as issued after a Play Integrity check."""
     claims = {
-        "sub": user_id,
+        "sub": PLAY_USER_ID,
         "iat": ISSUED_AT,
         "exp": EXPIRES_AT,
         "iss": "mlpa",

@@ -34,12 +34,10 @@ def pg(monkeypatch):
     return pg
 
 
-def _reset_keys(loop, pg, devices):
+def _reset_keys(pg, devices):
     # Assertions carry counter 1, so the stored counter must start below it.
     for device in devices:
-        loop.run_until_complete(
-            pg.store_key(device.key_id_b64, device.public_key_pem, 0)
-        )
+        pg.set_key(device.key_id_b64, device.public_key_pem, 0)
 
 
 def test_verify_assert(benchmark, loop, pg, devices):
@@ -56,13 +54,7 @@ def test_verify_assert(benchmark, loop, pg, devices):
         )
         assert result == {"status": "success"}
 
-    run_async(
-        benchmark,
-        loop,
-        verify,
-        OPS,
-        setup=lambda: _reset_keys(loop, pg, devices),
-    )
+    run_async(benchmark, loop, verify, OPS, setup=lambda: _reset_keys(pg, devices))
 
 
 def test_app_attest_auth(benchmark, loop, pg, devices):
@@ -76,9 +68,9 @@ def test_app_attest_auth(benchmark, loop, pg, devices):
         auths.append(AssertionAuth(**claims))
 
     def setup():
-        _reset_keys(loop, pg, devices)
+        _reset_keys(pg, devices)
         for device, challenge in zip(devices, challenges):
-            loop.run_until_complete(pg.store_challenge(device.key_id_b64, challenge))
+            pg.set_challenge(device.key_id_b64, challenge)
 
     async def verify(i):
         result = await middleware_module.app_attest_auth(auths[i], REQUEST_HASH, False)

@@ -33,13 +33,6 @@ def pytest_collection_modifyitems(config, items):
             item.add_marker(skip)
 
 
-def pytest_benchmark_update_machine_info(config, machine_info):
-    # CPU frequency changes run to run and only adds noise to saved results.
-    cpu = machine_info.get("cpu", {})
-    for key in ("hz_actual", "hz_actual_friendly", "hz_advertised_friendly"):
-        cpu.pop(key, None)
-
-
 @pytest.fixture(autouse=True)
 def _spin_up_cpu():
     # Busy-wait briefly so a bench that follows a mostly-idle one (e.g. a
@@ -69,6 +62,4 @@ def _bench_env(monkeypatch):
 
 @pytest.fixture
 def stub_fxa_client(monkeypatch):
-    client = StubFxAClient()
-    monkeypatch.setattr(fxa_module, "client", client)
-    return client
+    monkeypatch.setattr(fxa_module, "client", StubFxAClient())

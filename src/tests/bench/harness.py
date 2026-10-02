@@ -48,7 +48,7 @@ def run_async(benchmark, loop, make_coro, ops: int, setup=None):
     )
 
 
-def run_sync(benchmark, fn, ops: int, setup=None):
+def run_sync(benchmark, fn, ops: int):
     """Benchmark `ops` sequential calls of `fn(i)` per round."""
 
     def batch():
@@ -56,4 +56,4 @@ def run_sync(benchmark, fn, ops: int, setup=None):
             fn(i)
 
     benchmark.extra_info["operations_per_round"] = ops
-    benchmark.pedantic(batch, setup=setup, rounds=ROUNDS, warmup_rounds=WARMUP_ROUNDS)
+    benchmark.pedantic(batch, rounds=ROUNDS, warmup_rounds=WARMUP_ROUNDS)

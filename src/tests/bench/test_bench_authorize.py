@@ -15,6 +15,8 @@ from tests.bench.fakes import (
     APP_ATTEST_BUNDLE_ID,
     DEV_AUTH_TOKEN,
     FXA_STUB_TOKEN,
+    FXA_USER_ID,
+    PLAY_USER_ID,
     AppAttestDevice,
     play_access_token,
 )
@@ -28,11 +30,11 @@ CHAT_REQUEST = ChatRequest(
 
 
 async def _fxa_auth(authorization):
-    return {"user": "bench-fxa-user"}
+    return {"user": FXA_USER_ID}
 
 
 async def _auth_with_key(x_dev_authorization, authorization):
-    return {"user": "bench-fxa-user"}
+    return {"user": FXA_USER_ID}
 
 
 async def _app_attest_auth(assertion_auth, expected_hash, use_qa_certificates):
@@ -40,7 +42,7 @@ async def _app_attest_auth(assertion_auth, expected_hash, use_qa_certificates):
 
 
 def _extract_user(authorization):
-    return "bench-play-user"
+    return PLAY_USER_ID
 
 
 def _app_attest_header():

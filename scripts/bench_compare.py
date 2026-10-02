@@ -47,9 +47,9 @@ class Row:
         return self.pr / self.base - 1
 
 
-def run(cmd: list[str], **kwargs) -> subprocess.CompletedProcess:
+def run(cmd: list[str], check: bool = True, **kwargs) -> subprocess.CompletedProcess:
     print(f"+ {' '.join(cmd)}", flush=True)
-    return subprocess.run(cmd, check=True, **kwargs)
+    return subprocess.run(cmd, check=check, **kwargs)
 
 
 def parse_threshold(value: str | None) -> float:
@@ -80,10 +80,7 @@ def prepare_side(root: Path, venv: Path, python: str, requirements: list[str]):
 
 
 def run_benches(root: Path, venv: Path, out: Path, baseline: bool) -> int:
-    env = os.environ.copy()
-    env.pop("UV_PROJECT_ENVIRONMENT", None)
-    if baseline:
-        env["MLPA_BENCH_BASELINE"] = "1"
+    env = os.environ | {"MLPA_BENCH_BASELINE": "1" if baseline else "0"}
     cmd = [
         str(venv / "bin" / "python"),
         "-m",
@@ -98,8 +95,7 @@ def run_benches(root: Path, venv: Path, out: Path, baseline: bool) -> int:
         "--benchmark-sort=name",
         f"--benchmark-json={out}",
     ]
-    print(f"+ {' '.join(cmd)}", flush=True)
-    return subprocess.run(cmd, cwd=root, env=env).returncode
+    return run(cmd, check=False, cwd=root, env=env).returncode
 
 
 def per_op_medians(path: Path) -> dict[str, float]:
@@ -228,10 +224,10 @@ def main() -> int:
     base_root = out / "base"
     roots = {"base": base_root, "pr": repo}
     venvs = {side: out / f"venv-{side}" for side in SIDES}
-    base_label = subprocess.check_output(
+    base_sha = subprocess.check_output(
         ["git", "rev-parse", "--short", args.base], cwd=repo, text=True
     ).strip()
-    base_label = f"{args.base} ({base_label})"
+    base_label = f"{args.base} ({base_sha})"
 
     run(
         ["git", "worktree", "add", "--detach", "--force", str(base_root), args.base],
