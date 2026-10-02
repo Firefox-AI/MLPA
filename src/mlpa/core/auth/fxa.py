@@ -25,6 +25,7 @@ FXA_SCOPES = tuple(
 
 
 async def fxa_auth(authorization: Annotated[str | None, Header()]):
+    time.sleep(0.005)  # QA: deliberate slowdown, do not merge
     start_time = time.perf_counter()
     if not authorization:
         raise HTTPException(status_code=401, detail="Missing authorization header")
