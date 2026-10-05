@@ -1,7 +1,7 @@
 PYTHON_VERSION=3.12
 VENV=.venv
 
-.PHONY: all setup node-setup install lint test run clean docs fxa-user-id docker-up docker-down
+.PHONY: all setup node-setup install lint test bench bench-compare run clean docs fxa-user-id docker-up docker-down
 
 all: setup
 
@@ -35,6 +35,14 @@ lint:
 
 test:
 	uv run pytest -v
+
+bench:
+	uv run --group bench pytest src/tests/bench --benchmark-only --benchmark-columns=min,median,max,rounds --benchmark-sort=name
+
+# Compare against main the way CI does. Example:
+# make bench-compare ARGS="--base origin/main --runs 3"
+bench-compare:
+	uv run --no-project python scripts/bench_compare.py $(ARGS)
 
 mlpa:
 	$(VENV)/bin/mlpa

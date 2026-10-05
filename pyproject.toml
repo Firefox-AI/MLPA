@@ -68,6 +68,9 @@ lint = [
     "ty==0.0.29",
 ]
 qa = [ "typer==0.12.5"]
+bench = [
+    "pytest-benchmark==5.3.0",
+]
 
 
 [project.urls]
