@@ -40,38 +40,35 @@ MLPA requires Python 3.12 (pinned in `.python-version`). `jwtoxide` has no wheel
 
     Create it before starting Docker. Otherwise Docker creates an empty directory in its place and LiteLLM fails to start.
 
-### Run LiteLLM and PostgreSQL
+### Start everything
+
+```bash
+./start.sh
+```
+
+Starts LiteLLM, PostgreSQL and Redis, migrates the app_attest database, creates a virtual LiteLLM key in `.env`, and runs MLPA on `http://localhost:8080` (Swagger at `/api/docs`).
+
+> [!WARNING]
+> `start.sh` runs `docker compose down --volumes` first, so each run starts with empty databases. To restart without losing data:
+>
+> ```bash
+> docker compose -f litellm_docker_compose.yaml up -d
+> .venv/bin/mlpa
+> ```
+
+Privacy Filter is disabled by default. To run it, build the [privacy-filter](https://github.com/Firefox-AI/privacy-filter) image and set `PRIVACY_FILTER_ENABLED=true` in `.env`; `start.sh` then enables the `privacy-filter` Compose profile. When disabled, `/health/readiness` skips it.
+
+<details>
+<summary>Manual steps</summary>
 
 1. `docker compose -f litellm_docker_compose.yaml up -d`
-
-    To stop: `docker compose -f litellm_docker_compose.yaml down`. Adding `--volumes` also deletes the database data.
-
-    Privacy Filter is disabled by default in MLPA. To run it locally, set
-    `PRIVACY_FILTER_ENABLED=true` in `.env`; `start.sh` reads this and enables
-    the Docker Compose `privacy-filter` profile automatically.
-    For this you'll need to first build the [privacy-filter](https://github.com/Firefox-AI/privacy-filter) image yourself.
-
-    When disabled, MLPA also skips the Privacy Filter dependency in `/health/readiness`.
-
-### Create and migrate the app_attest database
-
-2. `bash scripts/migrate-app-attest-database-local.sh`
-
-    Creates the database if needed, runs Alembic, and seeds the user capacity row.
-
-### Create a virtual LiteLLM key
-
-3. `uv run python scripts/create-and-set-virtual-key.py`
-
-    Writes `MLPA_VIRTUAL_KEY` to `.env`.
-
-### Run MLPA
-
-4. `.venv/bin/mlpa` (or `make mlpa`)
-
-    Serves on `http://localhost:8080`. Swagger is at `/api/docs`.
+2. `bash scripts/migrate-app-attest-database-local.sh`: creates the database if needed, runs Alembic, and seeds the user capacity row.
+3. `uv run python scripts/create-and-set-virtual-key.py`: writes `MLPA_VIRTUAL_KEY` to `.env`.
+4. `.venv/bin/mlpa`
 
 `make docker-up` runs steps 1–3.
+
+</details>
 
 ### Send a test request
 
