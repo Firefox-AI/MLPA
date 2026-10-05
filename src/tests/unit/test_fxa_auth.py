@@ -4,8 +4,6 @@ from fastapi import HTTPException
 from mlpa.core.auth import fxa as fxa_module
 from mlpa.core.prometheus_metrics import PrometheusResult
 
-SCOPES = ("profile:uid", "scope-a", "scope-b")
-
 
 def patch_verify(mocker, result=None, error=None):
     """Replace run_in_threadpool so verify_token runs inline; return the call log."""
@@ -17,7 +15,7 @@ def patch_verify(mocker, result=None, error=None):
             raise error
         return result
 
-    mocker.patch.object(fxa_module, "FXA_SCOPES", SCOPES)
+    mocker.patch.object(fxa_module, "FXA_SCOPES", ("profile:uid", "scope-a", "scope-b"))
     mocker.patch.object(fxa_module, "run_in_threadpool", new=fake_run_in_threadpool)
     return calls
 

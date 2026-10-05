@@ -33,18 +33,16 @@ async def fxa_auth(authorization: Annotated[str | None, Header()]):
     verification_source = "unknown"
     try:
         try:
-            # scope=None: pyfxa verifies and caches the token once, then we
-            # check the scopes ourselves (no per-scope fan-out, one thread).
+            # scope=None: pyfxa verifies and caches once, we check scopes ourselves.
             profile = await run_in_threadpool(
                 client.verify_token, token, include_verification_source=True
             )
+            if not any(scope_matches(profile["scope"], scope) for scope in FXA_SCOPES):
+                raise ValueError(
+                    f"token scopes {profile['scope']} match none of {FXA_SCOPES}"
+                )
         except Exception as e:
             logger.error(f"FxA auth error: {e}")
-            raise HTTPException(status_code=401, detail="Invalid FxA auth")
-        if not any(scope_matches(profile["scope"], scope) for scope in FXA_SCOPES):
-            logger.error(
-                f"FxA auth error: token scopes {profile['scope']} match none of {FXA_SCOPES}"
-            )
             raise HTTPException(status_code=401, detail="Invalid FxA auth")
         result = PrometheusResult.SUCCESS
         verification_source = profile.get("verification_source", "unknown")
