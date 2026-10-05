@@ -1,8 +1,7 @@
 # Memory Profiling (memray)
 
-How to find what holds memory in a running MLPA pod. Built for [AIPLAT-1392](https://mozilla-hub.atlassian.net/browse/AIPLAT-1392) (pods climb to 100% memory and get OOM-killed).
 
-We use [memray](https://github.com/bloomberg/memray). It records every allocation, including native (C) ones, so it also sees leaks that Python-only tools miss.
+We use [memray](https://github.com/bloomberg/memray)
 
 ## Enable
 
@@ -17,14 +16,18 @@ Use it on one stage pod only. memray adds CPU and memory overhead.
 
 ## Disk usage
 
-The file records every allocation and free, so it grows with allocation volume, not with leak size. It has no size limit.
+The file records every allocation, so it grows with allocation volume. It has no size limit.
 
 1. Check the size 15 and 30 min after enabling: `kubectl -n llm-proxy-stage exec <pod> -c <mlpa-container> -- ls -la /tmp/memray/`
 2. Extrapolate to 48h. If it gets too big, turn the profiler off (unset `MEMRAY_ENABLED`).
 
 A container restart (for example an OOM kill) wipes `/tmp`. Copy the file out before the pod gets close to 100% memory.
 
+Don't leave the memray enabled without your supervision.
+
 ## Get the file
+
+We need to copy a file from the pod to analyze it
 
 ```
 kubectl -n llm-proxy-stage cp -c <mlpa-container> <pod>:/tmp/memray/mlpa.bin ./mlpa.bin
