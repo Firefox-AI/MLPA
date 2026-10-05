@@ -1,5 +1,6 @@
 """Helpers for writing auth benchmarks. See the README "Auth benchmarks" section."""
 
+import asyncio
 import importlib
 import os
 
@@ -29,13 +30,19 @@ def require(module: str, name: str):
         raise
 
 
-def run_async(benchmark, loop, make_coro, ops: int, setup=None):
-    """Benchmark `ops` sequential awaits of `make_coro(i)` per round.
+def run_async(
+    benchmark, loop, make_coro, ops: int, setup=None, concurrent: bool = False
+):
+    """Benchmark `ops` awaits of `make_coro(i)` per round.
 
+    They run one after another, or all at once with `concurrent=True`.
     `setup` runs before every round, outside the timed section.
     """
 
     async def batch():
+        if concurrent:
+            await asyncio.gather(*(make_coro(i) for i in range(ops)))
+            return
         for i in range(ops):
             await make_coro(i)
 

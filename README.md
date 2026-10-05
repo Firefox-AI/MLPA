@@ -76,6 +76,7 @@ After running, Swagger can be viewed at `http://localhost:<PORT>/api/docs`
 `src/tests/bench/` times each auth path with [pytest-benchmark](https://pytest-benchmark.readthedocs.io/). FxA, Google, Apple and Postgres are replaced with in-memory fakes, but the real crypto runs (RS256 FxA tokens, HS256 MLPA access tokens, App Attest ECDSA assertions). The suite covers:
 
 - `fxa_auth` with a stub client (MLPA's own overhead) and with the real pyfxa client, both on a cache miss and on a cache hit
+- `fxa_auth` under concurrent requests to a client that blocks for 5 ms, which catches FxA calls that block the event loop (this one does not track CPU cost)
 - dev auth (`auth_with_key`)
 - the MLPA access-token check used after Play Integrity
 - App Attest `verify_assert` and the full `app_attest_auth`, including the challenge check

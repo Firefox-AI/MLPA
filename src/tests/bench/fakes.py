@@ -8,6 +8,7 @@ may differ between the two sides.
 import base64
 import hashlib
 import json
+import time
 from datetime import datetime
 
 import cbor2
@@ -36,7 +37,21 @@ class StubFxAClient:
     def verify_token(self, token, scope=None, include_verification_source=False):
         if token != FXA_STUB_TOKEN:
             raise ValueError("invalid token")
-        return {"user": FXA_USER_ID, "verification_source": "local"}
+        return {
+            "user": FXA_USER_ID,
+            "scope": [FXA_SCOPE],
+            "verification_source": "local",
+        }
+
+
+class BlockingFxAClient(StubFxAClient):
+    """Blocks its thread like a real network round trip to FxA."""
+
+    DELAY_SECONDS = 0.005
+
+    def verify_token(self, *args, **kwargs):
+        time.sleep(self.DELAY_SECONDS)
+        return super().verify_token(*args, **kwargs)
 
 
 class FakeAppAttestPG:

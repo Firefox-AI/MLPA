@@ -6,7 +6,13 @@ import pytest
 from mlpa.core.auth import fxa as fxa_module
 from mlpa.core.auth.dev_auth import auth_with_key
 from mlpa.core.auth.fxa import fxa_auth
-from tests.bench.fakes import DEV_AUTH_TOKEN, FXA_STUB_TOKEN, FXA_USER_ID, FxASigner
+from tests.bench.fakes import (
+    DEV_AUTH_TOKEN,
+    FXA_STUB_TOKEN,
+    FXA_USER_ID,
+    BlockingFxAClient,
+    FxASigner,
+)
 from tests.bench.harness import run_async
 
 OPS = 20
@@ -63,6 +69,19 @@ def test_fxa_auth_pyfxa_cache_hit(benchmark, loop, monkeypatch, signer):
     header = f"Bearer {signer.token()}"
     loop.run_until_complete(_check(fxa_auth(header)))
     run_async(benchmark, loop, lambda _: _check(fxa_auth(header)), OPS)
+
+
+def test_fxa_auth_concurrent_blocking_client(benchmark, loop, monkeypatch):
+    """Concurrent requests to an FxA client that blocks for 5 ms each.
+
+    The blocking calls overlap only if they stay off the event loop. Calling
+    FxA directly on the loop runs them one by one (~OPS times slower), even
+    though it looks faster in the sequential benches. The 5 ms dominates the
+    time, so this bench does not track MLPA's CPU cost.
+    """
+    monkeypatch.setattr(fxa_module, "client", BlockingFxAClient())
+    header = f"Bearer {FXA_STUB_TOKEN}"
+    run_async(benchmark, loop, lambda _: _check(fxa_auth(header)), OPS, concurrent=True)
 
 
 def test_dev_auth_stub_client(benchmark, loop, stub_fxa_client):
