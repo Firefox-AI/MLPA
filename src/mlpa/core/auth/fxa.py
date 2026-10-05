@@ -1,9 +1,9 @@
-import asyncio
 import time
 from typing import Annotated
 
 from fastapi import Header, HTTPException
 from fastapi.concurrency import run_in_threadpool
+from fxa._utils import scope_matches
 
 from mlpa.core.config import env
 from mlpa.core.logger import logger
@@ -31,38 +31,27 @@ async def fxa_auth(authorization: Annotated[str | None, Header()]):
     token = authorization.removeprefix("Bearer ").split()[0]
     result = PrometheusResult.ERROR
     verification_source = "unknown"
-    errors = []
     try:
-        tasks = [
-            asyncio.create_task(
-                run_in_threadpool(
-                    client.verify_token,
-                    token,
-                    scope=scope,
-                    include_verification_source=True,
-                )
-            )
-            for scope in FXA_SCOPES
-        ]
         try:
-            for task in asyncio.as_completed(tasks):
-                try:
-                    profile = await task
-                    result = PrometheusResult.SUCCESS
-                    verification_source = profile.get("verification_source", "unknown")
-                    metrics.fxa_verifications_total.labels(
-                        verification_source=verification_source
-                    ).inc()
-                    return profile
-                except Exception as e:
-                    errors.append(e)
-        finally:
-            for task in tasks:
-                if not task.done():
-                    task.cancel()
-            await asyncio.gather(*tasks, return_exceptions=True)
-        logger.error(f"FxA auth error: {errors}")
-        raise HTTPException(status_code=401, detail="Invalid FxA auth")
+            # scope=None: pyfxa verifies and caches the token once, then we
+            # check the scopes ourselves (no per-scope fan-out, one thread).
+            profile = await run_in_threadpool(
+                client.verify_token, token, include_verification_source=True
+            )
+        except Exception as e:
+            logger.error(f"FxA auth error: {e}")
+            raise HTTPException(status_code=401, detail="Invalid FxA auth")
+        if not any(scope_matches(profile["scope"], scope) for scope in FXA_SCOPES):
+            logger.error(
+                f"FxA auth error: token scopes {profile['scope']} match none of {FXA_SCOPES}"
+            )
+            raise HTTPException(status_code=401, detail="Invalid FxA auth")
+        result = PrometheusResult.SUCCESS
+        verification_source = profile.get("verification_source", "unknown")
+        metrics.fxa_verifications_total.labels(
+            verification_source=verification_source
+        ).inc()
+        return profile
     finally:
         metrics.validate_fxa_latency.labels(
             result=result, verification_source=verification_source
