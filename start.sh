@@ -28,7 +28,6 @@ COMPOSE_PROFILES="${compose_profiles}" docker compose \
     -f litellm_docker_compose.yaml \
     up -d
 
-bash scripts/create-app-attest-database.sh
 bash scripts/migrate-app-attest-database-local.sh
 
 until curl -fsS http://localhost:4000/health/readiness >/dev/null; do
@@ -43,4 +42,4 @@ set -a
 . ./.env
 set +a
 
-mlpa
+uv run mlpa

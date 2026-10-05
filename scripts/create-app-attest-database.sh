@@ -1,3 +1,3 @@
 # !/bin/bash
 
-docker exec -it litellm_postgres psql -U litellm -c "CREATE DATABASE app_attest;"
+docker exec litellm_postgres psql -U litellm -c "CREATE DATABASE app_attest;"
