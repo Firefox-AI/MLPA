@@ -1,5 +1,3 @@
-import asyncio
-
 import pytest
 from fastapi import HTTPException
 
@@ -7,24 +5,29 @@ from mlpa.core.auth import fxa as fxa_module
 from mlpa.core.prometheus_metrics import PrometheusResult
 
 
-async def test_fxa_auth_returns_first_successful_scope(mocker, metrics_spy):
-    scopes = ("profile:uid", "scope-a", "scope-b")
-    mocker.patch.object(fxa_module, "FXA_SCOPES", scopes)
+def patch_verify(mocker, result=None, error=None):
+    """Replace run_in_threadpool so verify_token runs inline; return the call log."""
+    calls = []
 
-    async def fake_run_in_threadpool(
-        _fn, _token, *, scope, include_verification_source
-    ):
-        if scope == "scope-b":
-            await asyncio.sleep(0.01)
-            return {"user": "ok", "verification_source": "local"}
-        await asyncio.sleep(0.02)
-        raise Exception(f"invalid-{scope}")
+    async def fake_run_in_threadpool(fn, token, **kwargs):
+        calls.append((token, kwargs))
+        if error:
+            raise error
+        return result
 
+    mocker.patch.object(fxa_module, "FXA_SCOPES", ("profile:uid", "scope-a", "scope-b"))
     mocker.patch.object(fxa_module, "run_in_threadpool", new=fake_run_in_threadpool)
+    return calls
 
-    profile = await fxa_module.fxa_auth("Bearer test-token")
 
-    assert profile == {"user": "ok", "verification_source": "local"}
+async def test_fxa_auth_accepts_token_with_one_of_the_scopes(mocker, metrics_spy):
+    profile = {"user": "ok", "scope": ["scope-b"], "verification_source": "local"}
+    calls = patch_verify(mocker, result=profile)
+
+    assert await fxa_module.fxa_auth("Bearer test-token") == profile
+
+    # one verify call per request, no per-scope fan-out
+    assert calls == [("test-token", {"include_verification_source": True})]
     metrics_spy.assert_only({"validate_fxa_latency", "fxa_verifications_total"})
     assert (
         metrics_spy.histogram_count(
@@ -39,17 +42,11 @@ async def test_fxa_auth_returns_first_successful_scope(mocker, metrics_spy):
     )
 
 
-async def test_fxa_auth_raises_when_all_scopes_fail(mocker, metrics_spy):
-    scopes = ("profile:uid", "scope-a")
-    mocker.patch.object(fxa_module, "FXA_SCOPES", scopes)
-
-    async def fake_run_in_threadpool(
-        _fn, _token, *, scope, include_verification_source
-    ):
-        await asyncio.sleep(0.01)
-        raise Exception(f"invalid-{scope}")
-
-    mocker.patch.object(fxa_module, "run_in_threadpool", new=fake_run_in_threadpool)
+async def test_fxa_auth_raises_when_token_has_none_of_the_scopes(mocker, metrics_spy):
+    patch_verify(
+        mocker,
+        result={"user": "ok", "scope": ["other"], "verification_source": "local"},
+    )
 
     with pytest.raises(HTTPException) as exc_info:
         await fxa_module.fxa_auth("Bearer test-token")
@@ -64,3 +61,13 @@ async def test_fxa_auth_raises_when_all_scopes_fail(mocker, metrics_spy):
         )
         == 1
     )
+
+
+async def test_fxa_auth_raises_when_verification_fails(mocker, metrics_spy):
+    patch_verify(mocker, error=Exception("invalid token"))
+
+    with pytest.raises(HTTPException) as exc_info:
+        await fxa_module.fxa_auth("Bearer test-token")
+
+    assert exc_info.value.status_code == 401
+    metrics_spy.assert_only({"validate_fxa_latency"})
