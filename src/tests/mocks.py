@@ -325,7 +325,7 @@ class MockFxAService:
         self, token: str, scope: str = "profile:uid", include_verification_source=False
     ):
         if token == self._token:
-            result = {"user": self._user_id}
+            result = {"user": self._user_id, "scope": ["profile:uid"]}
             if include_verification_source:
                 result["verification_source"] = "local"
             return result
