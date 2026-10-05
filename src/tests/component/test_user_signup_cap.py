@@ -78,7 +78,7 @@ def test_managed_cap_rejects_new_identities_and_s2s_bypasses(
         i = call_idx["i"]
         call_idx["i"] = i + 1
         user = user_ids[i]
-        result = {"user": user}
+        result = {"user": user, "scope": ["profile:uid"]}
         if include_verification_source:
             result["verification_source"] = "local"
         return result
@@ -171,7 +171,7 @@ def test_release_reserved_slot_when_litellm_user_creation_fails(
             i = call_idx["i"]
             call_idx["i"] = i + 1
             user = user_ids[i]
-            result = {"user": user}
+            result = {"user": user, "scope": ["profile:uid"]}
             if include_verification_source:
                 result["verification_source"] = "local"
             return result
