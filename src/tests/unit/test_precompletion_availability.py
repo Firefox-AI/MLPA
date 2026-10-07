@@ -33,7 +33,7 @@ from tests.consts import MOCK_LITELLM_GLOBAL_BUDGET_ERROR_TEXT, SAMPLE_REQUEST
 
 # A model/service-type pair that is valid together, so the wrapper passes its own
 # check and reaches the shared auth call.
-_VALID_MODEL = "gpt-oss-120b"
+_VALID_MODEL = "mistral-small-2603"
 _AI = authorize_module.ServiceType.ai
 
 

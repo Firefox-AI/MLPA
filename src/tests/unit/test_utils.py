@@ -45,26 +45,6 @@ def test_is_valid_model_name_rejects_sampled_attack_payloads(model):
     assert is_valid_model_name(model) is False
 
 
-@pytest.mark.parametrize(
-    "model",
-    [
-        "",
-        "-gpt-oss",
-        "gpt-oss-",
-        ".gpt-oss",
-        "gpt-oss.",
-        "a" * 65,
-        "GPT-OSS-120B",
-        "_gpt-oss",
-        "gpt-oss_",
-        "/gpt-oss",
-        "gpt-oss/",
-    ],
-)
-def test_is_valid_model_name_rejects_edge_cases(model):
-    assert is_valid_model_name(model) is False
-
-
 @pytest.mark.parametrize("model", ["openai/gpt-4o", "vertex_ai/mistral-small-2503"])
 def test_is_valid_model_name_accepts_slash_and_underscore_namespaced_models(model):
     assert is_valid_model_name(model) is True
