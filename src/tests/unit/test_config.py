@@ -408,9 +408,11 @@ def test_valid_service_type_for_model_unconfigured_model():
     """Test that unconfigured models reject service types forced to other models."""
     env = Env()
 
-    assert env.valid_service_type_for_model("ai", "gpt-oss-120b") is True
-    assert env.valid_service_type_for_model("answer", "gpt-oss-120b") is False
-    assert env.valid_service_type_for_model("sw-answer", "gpt-oss-120b") is False
-    assert env.valid_service_type_for_model("liner-answer", "gpt-oss-120b") is False
-    assert env.valid_service_type_for_model("search", "gpt-oss-120b") is False
-    assert env.valid_service_type_for_model("search-dev", "gpt-oss-120b") is False
+    assert env.valid_service_type_for_model("ai", "mistral-small-2603") is True
+    assert env.valid_service_type_for_model("answer", "mistral-small-2603") is False
+    assert env.valid_service_type_for_model("sw-answer", "mistral-small-2603") is False
+    assert (
+        env.valid_service_type_for_model("liner-answer", "mistral-small-2603") is False
+    )
+    assert env.valid_service_type_for_model("search", "mistral-small-2603") is False
+    assert env.valid_service_type_for_model("search-dev", "mistral-small-2603") is False
