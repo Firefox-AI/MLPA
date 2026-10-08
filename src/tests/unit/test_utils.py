@@ -7,9 +7,11 @@ from mlpa.core.config import env
 from mlpa.core.utils import (
     b64decode_safe,
     clamp_country,
+    clamp_exa_error_labels,
     clamp_launch_country,
     clamp_purpose,
     clamp_service_type,
+    extract_exa_error_tag,
     is_context_window_error,
     is_invalid_model_name_error,
     is_invalid_request_error,
@@ -19,6 +21,7 @@ from mlpa.core.utils import (
     is_valid_model_name,
     parse_firefox_major_version_from_user_agent,
 )
+from tests.consts import LITELLM_WRAPPED_EXA_OVERLOADED_TEXT
 
 # Sourced from env.valid_model_labels (not hand-copied) so a future model name
 # with an unexpected character is caught here instead of silently 400ing.
@@ -380,3 +383,35 @@ def test_clamp_country(raw, expected):
 )
 def test_clamp_launch_country(raw, expected):
     assert clamp_launch_country(raw) == expected
+
+
+@pytest.mark.parametrize(
+    "error_text,expected",
+    [
+        # Search: LiteLLM returns 500 with Exa's body JSON-escaped in the message.
+        (LITELLM_WRAPPED_EXA_OVERLOADED_TEXT, "SERVICE_OVERLOADED"),
+        # Answer: LiteLLM keeps Exa's status but prints the body as a Python dict.
+        (
+            "OpenAIException - Error code: 401 - {'requestId': 'r1', "
+            "'error': 'Invalid API key', 'tag': 'INVALID_API_KEY'}",
+            "INVALID_API_KEY",
+        ),
+        ("Exa_aiException - upstream exploded", None),
+    ],
+)
+def test_extract_exa_error_tag(error_text, expected):
+    assert extract_exa_error_tag(error_text) == expected
+
+
+@pytest.mark.parametrize(
+    "raw_tag,status_code,expected",
+    [
+        # A known tag reports Exa's status, not LiteLLM's 500.
+        ("SERVICE_OVERLOADED", 500, ("503", "SERVICE_OVERLOADED")),
+        ("BRAND_NEW_TAG", 504, ("504", "other")),
+        (None, 500, ("500", "untagged")),
+        (None, 418, ("other", "untagged")),
+    ],
+)
+def test_clamp_exa_error_labels(raw_tag, status_code, expected):
+    assert clamp_exa_error_labels(raw_tag, status_code) == expected

@@ -120,6 +120,60 @@ def clamp_launch_country(raw: str) -> str:
     return _clamp_to_set(raw, env.MLPA_LAUNCH_COUNTRIES, "other")
 
 
+# Request-level error tags from https://exa.ai/docs/reference/error-codes,
+# mapped to the HTTP status Exa returns with them.
+EXA_ERROR_TAG_STATUS: dict[str, str] = {
+    "INVALID_REQUEST_BODY": "400",
+    "INVALID_REQUEST": "400",
+    "INVALID_NUM_RESULTS": "400",
+    "NUM_RESULTS_EXCEEDED": "400",
+    "INVALID_JSON_SCHEMA": "400",
+    "SUBPAGES_LIMIT_EXCEEDED": "400",
+    "INVALID_API_KEY": "401",
+    "NO_MORE_CREDITS": "402",
+    "API_KEY_BUDGET_EXCEEDED": "402",
+    "TEAM_BUDGET_EXCEEDED": "402",
+    "FEATURE_DISABLED": "403",
+    "PROHIBITED_CONTENT": "403",
+    "CONTENT_FILTER_ERROR": "403",
+    "RATE_LIMIT_EXCEEDED": "429",
+    "SERVICE_OVERLOADED": "503",
+}
+EXA_ERROR_STATUS_CODES = frozenset(
+    {"400", "401", "402", "403", "404", "409", "422", "429", "500", "503", "504"}
+)
+EXA_ERROR_TAG_OTHER = "other"
+EXA_ERROR_TAG_UNTAGGED = "untagged"
+# Quotes may be JSON-escaped (\"tag\") or Python-repr style ('tag').
+_EXA_ERROR_TAG_PATTERN = re.compile(
+    r"""\\*["']tag\\*["']\s*:\s*\\*["']([A-Za-z0-9_]{1,64})\\*["']"""
+)
+
+
+def extract_exa_error_tag(error_text: str) -> str | None:
+    """Raw Exa error ``tag`` embedded in an upstream error body, if any.
+
+    LiteLLM wraps Exa errors as a string inside its own error JSON (and with
+    its own status code, e.g. 500 for an Exa 503), so the tag is matched
+    anywhere in the text rather than parsed from the top-level body.
+    """
+    match = _EXA_ERROR_TAG_PATTERN.search(error_text)
+    return match.group(1) if match else None
+
+
+def clamp_exa_error_labels(raw_tag: str | None, status_code: int) -> tuple[str, str]:
+    """Bound an Exa error to ``(status_code, tag)`` labels.
+
+    A documented tag carries Exa's own status. Otherwise the observed status
+    is clamped to Exa's documented codes, and the tag to "other" (unknown tag)
+    or "untagged" (no Exa body found).
+    """
+    if raw_tag is not None and raw_tag in EXA_ERROR_TAG_STATUS:
+        return EXA_ERROR_TAG_STATUS[raw_tag], raw_tag
+    status = _clamp_to_set(str(status_code), EXA_ERROR_STATUS_CODES, "other")
+    return status, EXA_ERROR_TAG_OTHER if raw_tag else EXA_ERROR_TAG_UNTAGGED
+
+
 def clamp_request_method(method: str) -> str:
     normalized = method.upper()
     return normalized if normalized in KNOWN_HTTP_METHODS else "INVALID"

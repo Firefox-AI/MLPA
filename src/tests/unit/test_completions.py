@@ -40,6 +40,7 @@ from mlpa.core.prometheus_metrics import (
 )
 from mlpa.core.utils import clamp_model
 from tests.consts import (
+    LITELLM_WRAPPED_EXA_OVERLOADED_TEXT,
     MOCK_LITELLM_GLOBAL_BUDGET_ERROR_TEXT,
     SAMPLE_REQUEST,
     SUCCESSFUL_CHAT_RESPONSE,
@@ -2001,3 +2002,95 @@ async def test_pending_task_cancel_runtime_error_suppressed(mocker, mock_request
         "a cancelled request must propagate CancelledError cleanly, not log "
         f"an ERROR for teardown noise, got: {error_records}"
     )
+
+
+EXA_ANSWER_REQUEST = SAMPLE_REQUEST.model_copy(
+    update={"model": "exa", "service_type": "answer", "purpose": ""}
+)
+_EXA_OVERLOADED_LABELS = {
+    "model": "exa",
+    "status_code": "503",
+    "tag": "SERVICE_OVERLOADED",
+}
+
+
+async def test_get_completion_exa_error_records_exa_error(mocker, metrics_spy):
+    mock_response = MagicMock()
+    mock_response.text = LITELLM_WRAPPED_EXA_OVERLOADED_TEXT
+    mock_response.status_code = 500
+    mock_response.raise_for_status.side_effect = httpx.HTTPStatusError(
+        "Internal Server Error", request=MagicMock(), response=mock_response
+    )
+    mock_client = AsyncMock()
+    mock_client.post.return_value = mock_response
+    mocker.patch("mlpa.core.completions.get_http_client", return_value=mock_client)
+
+    with pytest.raises(HTTPException) as exc_info:
+        await get_completion(
+            Request({"type": "http", "headers": []}), EXA_ANSWER_REQUEST
+        )
+
+    assert exc_info.value.status_code == 500
+    metrics_spy.assert_only(
+        _expect_metrics("chat_completion_latency", "chat_availability", "exa_errors")
+    )
+    assert metrics_spy.value("exa_errors", **_EXA_OVERLOADED_LABELS) == 1
+
+
+async def test_stream_completion_exa_error_records_exa_error(
+    httpx_mock: HTTPXMock, mocker, mock_request, metrics_spy
+):
+    httpx_mock.add_response(
+        method="POST",
+        url=LITELLM_COMPLETIONS_URL,
+        content=LITELLM_WRAPPED_EXA_OVERLOADED_TEXT.encode(),
+        status_code=500,
+    )
+    mocker.patch.object(env, "MLPA_DEBUG", False)
+
+    received_chunks = [
+        chunk async for chunk in stream_completion(mock_request, EXA_ANSWER_REQUEST)
+    ]
+
+    assert len(received_chunks) == 1
+    metrics_spy.assert_only(
+        _expect_metrics("chat_completion_latency", "chat_availability", "exa_errors")
+    )
+    assert metrics_spy.value("exa_errors", **_EXA_OVERLOADED_LABELS) == 1
+
+
+async def test_get_completion_exa_budget_rejection_skips_exa_error(mocker, metrics_spy):
+    """LiteLLM-side budget rejections on the exa model never reached Exa."""
+    mock_response = MagicMock()
+    mock_response.text = MOCK_LITELLM_GLOBAL_BUDGET_ERROR_TEXT
+    mock_response.status_code = 400
+    mock_response.raise_for_status.side_effect = httpx.HTTPStatusError(
+        "Bad Request", request=MagicMock(), response=mock_response
+    )
+    mock_client = AsyncMock()
+    mock_client.post.return_value = mock_response
+    mocker.patch("mlpa.core.completions.get_http_client", return_value=mock_client)
+
+    with pytest.raises(HTTPException):
+        await get_completion(
+            Request({"type": "http", "headers": []}), EXA_ANSWER_REQUEST
+        )
+
+    assert "exa_errors" not in metrics_spy.touched()
+
+
+async def test_get_completion_non_exa_model_skips_exa_error(mocker, metrics_spy):
+    mock_response = MagicMock()
+    mock_response.text = LITELLM_WRAPPED_EXA_OVERLOADED_TEXT
+    mock_response.status_code = 500
+    mock_response.raise_for_status.side_effect = httpx.HTTPStatusError(
+        "Internal Server Error", request=MagicMock(), response=mock_response
+    )
+    mock_client = AsyncMock()
+    mock_client.post.return_value = mock_response
+    mocker.patch("mlpa.core.completions.get_http_client", return_value=mock_client)
+
+    with pytest.raises(HTTPException):
+        await get_completion(Request({"type": "http", "headers": []}), SAMPLE_REQUEST)
+
+    assert "exa_errors" not in metrics_spy.touched()
