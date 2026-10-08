@@ -10,6 +10,7 @@ from mlpa.core.utils import (
     clamp_launch_country,
     clamp_purpose,
     clamp_service_type,
+    get_fxa_client,
     is_context_window_error,
     is_invalid_model_name_error,
     is_invalid_request_error,
@@ -380,3 +381,13 @@ def test_clamp_country(raw, expected):
 )
 def test_clamp_launch_country(raw, expected):
     assert clamp_launch_country(raw) == expected
+
+
+@pytest.mark.parametrize("debug", [True, False])
+def test_get_fxa_client_always_uses_prod_fxa(mocker, debug):
+    mocker.patch.object(env, "MLPA_DEBUG", debug)
+    get_fxa_client.cache_clear()
+    try:
+        assert get_fxa_client().server_url == "https://oauth.accounts.firefox.com/v1"
+    finally:
+        get_fxa_client.cache_clear()
