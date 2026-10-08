@@ -12,7 +12,12 @@ from mlpa.core.config import (
 from mlpa.core.errors import classify_upstream_error
 from mlpa.core.http_client import get_http_client
 from mlpa.core.logger import logger
-from mlpa.core.metrics import record_search_latency, record_search_request_rejection
+from mlpa.core.metrics import (
+    SEARCH_MODEL,
+    record_exa_error,
+    record_search_latency,
+    record_search_request_rejection,
+)
 from mlpa.core.prometheus_metrics import PrometheusResult
 from mlpa.core.request_timings import measure
 from mlpa.core.sanitization import sanitize_request_body, sanitize_response_body
@@ -65,6 +70,12 @@ async def _get_search(
                 error_text=e.response.text,
                 status_code=e.response.status_code,
                 user=authorized_search_request.user,
+            )
+            record_exa_error(
+                model=SEARCH_MODEL,
+                status_code=e.response.status_code,
+                error_text=e.response.text,
+                rejected=match is not None,
             )
             if match is not None:
                 if match.log_message:

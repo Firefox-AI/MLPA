@@ -15,13 +15,17 @@ from mlpa.core.prometheus_metrics import (
 )
 from mlpa.core.utils import (
     clamp_country,
+    clamp_exa_error_labels,
     clamp_launch_country,
     clamp_model,
     clamp_purpose,
     clamp_service_type,
+    extract_exa_error_tag,
 )
 
 SEARCH_MODEL = "exa-search"
+EXA_ANSWER_MODEL = "exa"
+EXA_MODELS = frozenset({SEARCH_MODEL, EXA_ANSWER_MODEL})
 
 
 def _chat_labels(
@@ -127,6 +131,23 @@ def record_ttft(req: AuthorizedChatRequest, elapsed_seconds: float) -> None:
 
 def record_search_latency(result: PrometheusResult, elapsed_seconds: float) -> None:
     metrics.search_latency.labels(result=result).observe(elapsed_seconds)
+
+
+def record_exa_error(
+    *, model: str, status_code: int, error_text: str, rejected: bool
+) -> None:
+    """Count an upstream error on an Exa-backed model.
+
+    ``rejected`` means MLPA classified the error itself (budget, rate limit,
+    ...). Those are LiteLLM-side unless the body carries an Exa error tag.
+    """
+    if model not in EXA_MODELS:
+        return
+    raw_tag = extract_exa_error_tag(error_text)
+    if raw_tag is None and rejected:
+        return
+    status, tag = clamp_exa_error_labels(raw_tag, status_code)
+    metrics.exa_errors.labels(model=model, status_code=status, tag=tag).inc()
 
 
 def extract_tool_names(items: Iterable[dict]) -> list[str]:

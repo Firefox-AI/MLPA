@@ -24,6 +24,7 @@ from mlpa.core.metrics import (
     record_chat_request_rejection,
     record_completion_latency,
     record_completion_success,
+    record_exa_error,
     record_request_with_tools,
     record_ttft,
 )
@@ -183,6 +184,12 @@ async def stream_completion(
                         error_text=error_text_str,
                         status_code=e.response.status_code,
                         user=authorized_chat_request.user,
+                    )
+                    record_exa_error(
+                        model=authorized_chat_request.model,
+                        status_code=e.response.status_code,
+                        error_text=error_text_str,
+                        rejected=match is not None,
                     )
                     if match is not None:
                         if match.log_message:
@@ -406,6 +413,12 @@ async def _get_completion(
                 error_text=e.response.text,
                 status_code=e.response.status_code,
                 user=authorized_chat_request.user,
+            )
+            record_exa_error(
+                model=authorized_chat_request.model,
+                status_code=e.response.status_code,
+                error_text=e.response.text,
+                rejected=match is not None,
             )
             if match is not None:
                 if match.log_message:

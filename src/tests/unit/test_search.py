@@ -14,7 +14,10 @@ from mlpa.core.config import (
 from mlpa.core.metrics import SEARCH_MODEL
 from mlpa.core.prometheus_metrics import PrometheusRejectionReason, PrometheusResult
 from mlpa.core.search import get_search
-from tests.consts import MOCK_LITELLM_GLOBAL_BUDGET_ERROR_TEXT
+from tests.consts import (
+    LITELLM_WRAPPED_EXA_OVERLOADED_TEXT,
+    MOCK_LITELLM_GLOBAL_BUDGET_ERROR_TEXT,
+)
 
 
 def _httpx_encode_json(body: dict) -> bytes:
@@ -256,6 +259,78 @@ async def test_get_search_context_window_exceeded_records_rejection(
         == 1
     )
     assert _search_latency_count(metrics_spy, PrometheusResult.ERROR) == 1
+
+
+def _mock_search_client_error(mocker, status_code: int, text: str) -> None:
+    mock_response = MagicMock()
+    mock_response.text = text
+    mock_response.status_code = status_code
+    mock_response.raise_for_status.side_effect = httpx.HTTPStatusError(
+        "Upstream error", request=MagicMock(), response=mock_response
+    )
+    mock_client = AsyncMock()
+    mock_client.post.return_value = mock_response
+    mocker.patch("mlpa.core.search.get_http_client", return_value=mock_client)
+
+
+@pytest.mark.parametrize(
+    "status_code,text,expected_labels",
+    [
+        # LiteLLM reports an Exa 503 as a 500; the Exa tag restores the real status.
+        (
+            500,
+            LITELLM_WRAPPED_EXA_OVERLOADED_TEXT,
+            {"status_code": "503", "tag": "SERVICE_OVERLOADED"},
+        ),
+        (500, "Internal Server Error", {"status_code": "500", "tag": "untagged"}),
+    ],
+)
+async def test_get_search_upstream_error_records_exa_error(
+    mocker, metrics_spy, status_code, text, expected_labels
+):
+    _mock_search_client_error(mocker, status_code, text)
+    req = AuthorizedSearchRequest(
+        user="test-user:search", service_type="search", query="weather", max_results=5
+    )
+
+    with pytest.raises(HTTPException) as exc_info:
+        await get_search(Request({"type": "http", "headers": []}), req)
+
+    assert exc_info.value.status_code == status_code
+    metrics_spy.assert_only({"exa_errors", "search_latency"})
+    assert metrics_spy.value("exa_errors", model=SEARCH_MODEL, **expected_labels) == 1
+    assert _search_latency_count(metrics_spy, PrometheusResult.ERROR) == 1
+
+
+async def test_get_search_exa_rate_limit_records_rejection_and_exa_error(
+    mocker, metrics_spy
+):
+    """An Exa 429 that MLPA classifies as an upstream rate limit is still an Exa error."""
+    _mock_search_client_error(
+        mocker,
+        429,
+        "litellm.RateLimitError: Exa_aiException - "
+        '{"requestId":"r1","error":"Rate limit exceeded","tag":"RATE_LIMIT_EXCEEDED"}',
+    )
+    req = AuthorizedSearchRequest(
+        user="test-user:search", service_type="search", query="weather", max_results=5
+    )
+
+    with pytest.raises(HTTPException):
+        await get_search(Request({"type": "http", "headers": []}), req)
+
+    metrics_spy.assert_only(
+        {"exa_errors", "search_request_rejections", "search_latency"}
+    )
+    assert (
+        metrics_spy.value(
+            "exa_errors",
+            model=SEARCH_MODEL,
+            status_code="429",
+            tag="RATE_LIMIT_EXCEEDED",
+        )
+        == 1
+    )
 
 
 async def test_search_records_upstream_span(mocker):
