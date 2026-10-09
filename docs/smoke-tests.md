@@ -17,19 +17,9 @@ path via mocked mock `mock`.
 ## Remote FxA Tokens
 
 When `SMOKE_BASE_URL` is set, the FxA, SmartWindow, and memories smoke
-tests use a real FxA bearer token. If `SMOKE_FXA_TOKEN` is provided, the
-suite uses that token directly.
-
-If `SMOKE_FXA_TOKEN` is not provided, the suite creates one FxA test user,
-fetches the verification email through `TestEmailAccount`, retrieves a bearer
-token, reuses that token across the FxA-backed smoke tests, and deletes the test
-user during pytest teardown. The default target is FxA stage.
-
-Useful overrides:
-
-- `SMOKE_FXA_ENV`: `stage`;
-- `SMOKE_FXA_CLIENT_ID`: OAuth client id; defaults to the smoke client
-- `SMOKE_FXA_SCOPES`: space-separated scopes; defaults to `profile`
+tests use a real FxA bearer token from `SMOKE_FXA_TOKEN`. Every deployment
+verifies tokens against prod FxA, so this must be a prod FxA token. The suite
+fails if it is not set.
 
 ## Play Integrity
 
