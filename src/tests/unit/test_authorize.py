@@ -35,7 +35,7 @@ async def test_authorize_chat_request_returns_authorized_chat_request(mocker):
     result = await authorize_module.authorize_chat_request(
         request=_make_request("/v1/chat/completions"),
         chat_request=ChatRequest(
-            model="gpt-oss-120b", messages=[{"role": "user", "content": "hello"}]
+            model="mistral-small-2603", messages=[{"role": "user", "content": "hello"}]
         ),
         authorization="Bearer token",
         service_type=authorize_module.ServiceType.ai,
@@ -109,7 +109,7 @@ async def test_authorize_chat_request_captures_client_country(mocker):
     result = await authorize_module.authorize_chat_request(
         request=_make_request("/v1/chat/completions", headers={"X-Geo-Country": "FR"}),
         chat_request=ChatRequest(
-            model="gpt-oss-120b", messages=[{"role": "user", "content": "hello"}]
+            model="mistral-small-2603", messages=[{"role": "user", "content": "hello"}]
         ),
         authorization="Bearer token",
         service_type=authorize_module.ServiceType.ai,
@@ -129,7 +129,7 @@ async def test_authorize_chat_request_missing_geo_header_defaults_to_empty(mocke
     result = await authorize_module.authorize_chat_request(
         request=_make_request("/v1/chat/completions"),
         chat_request=ChatRequest(
-            model="gpt-oss-120b", messages=[{"role": "user", "content": "hello"}]
+            model="mistral-small-2603", messages=[{"role": "user", "content": "hello"}]
         ),
         authorization="Bearer token",
         service_type=authorize_module.ServiceType.ai,
@@ -184,7 +184,7 @@ async def test_authorize_chat_request_rejects_answer_for_non_exa_model():
     with pytest.raises(HTTPException) as exc_info:
         await authorize_module.authorize_chat_request(
             request=_make_request("/v1/chat/completions"),
-            chat_request=ChatRequest(model="gpt-oss-120b", messages=[]),
+            chat_request=ChatRequest(model="mistral-small-2603", messages=[]),
             authorization="Bearer token",
             service_type=authorize_module.ServiceType.answer,
             purpose=None,
@@ -193,7 +193,7 @@ async def test_authorize_chat_request_rejects_answer_for_non_exa_model():
     assert exc_info.value.status_code == 400
     assert (
         exc_info.value.detail
-        == "Invalid service-type value answer for model gpt-oss-120b. "
+        == "Invalid service-type value answer for model mistral-small-2603. "
         "Service type answer is only valid for models ['exa']"
     )
 
@@ -223,7 +223,7 @@ async def test_authorize_chat_request_rejects_sw_answer_for_non_exa_model():
     with pytest.raises(HTTPException) as exc_info:
         await authorize_module.authorize_chat_request(
             request=_make_request("/v1/chat/completions"),
-            chat_request=ChatRequest(model="gpt-oss-120b", messages=[]),
+            chat_request=ChatRequest(model="mistral-small-2603", messages=[]),
             authorization="Bearer token",
             service_type=authorize_module.ServiceType("sw-answer"),
             purpose=None,
@@ -232,7 +232,7 @@ async def test_authorize_chat_request_rejects_sw_answer_for_non_exa_model():
     assert exc_info.value.status_code == 400
     assert (
         exc_info.value.detail
-        == "Invalid service-type value sw-answer for model gpt-oss-120b. "
+        == "Invalid service-type value sw-answer for model mistral-small-2603. "
         "Service type sw-answer is only valid for models ['exa']"
     )
 

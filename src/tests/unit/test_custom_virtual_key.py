@@ -92,7 +92,7 @@ async def test_authorize_chat_request_carries_the_key(allow_custom_virtual_key, 
     result = await authorize_module.authorize_chat_request(
         request=_make_request(),
         chat_request=ChatRequest(
-            model="gpt-oss-120b", messages=[{"role": "user", "content": "hello"}]
+            model="mistral-small-2603", messages=[{"role": "user", "content": "hello"}]
         ),
         authorization="Bearer token",
         service_type=authorize_module.ServiceType.ai,
@@ -133,7 +133,7 @@ async def test_authorize_chat_request_drops_key_when_disabled(mocker):
     result = await authorize_module.authorize_chat_request(
         request=_make_request(),
         chat_request=ChatRequest(
-            model="gpt-oss-120b", messages=[{"role": "user", "content": "hello"}]
+            model="mistral-small-2603", messages=[{"role": "user", "content": "hello"}]
         ),
         authorization="Bearer token",
         service_type=authorize_module.ServiceType.ai,

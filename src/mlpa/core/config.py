@@ -468,7 +468,6 @@ class Env(BaseSettings):
             "exa-search",
             "gemini-2.5-flash-lite",
             "gemini-3.1-flash-lite",
-            "gpt-oss-120b",
             "liner-answers",
             "openai/gpt-4o",
             "mistral-small-2503",
