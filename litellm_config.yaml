@@ -19,6 +19,15 @@ model_list:
       model: openai/exa
       api_base: https://api.exa.ai
       api_key: os.environ/EXA_API_KEY
+  # Same provider as `exa`, but pointed at the always-failing exa_stub
+  # service (litellm_docker_compose.yaml) for the compatibility tests.
+  - model_name: exa-stub
+    litellm_params:
+      model: openai/exa
+      api_base: http://exa_stub:8080
+      api_key: exa-stub
+      max_retries: 0
+      cooldown_time: 0
   # Note this model requires a custom provider map to handle liner requests
   #- model_name: liner
   #  litellm_params:
@@ -35,6 +44,11 @@ search_tools:
     litellm_params:
       search_provider: exa_ai
       api_key: os.environ/EXA_API_KEY
+  - search_tool_name: exa-search-stub
+    litellm_params:
+      search_provider: exa_ai
+      api_base: http://exa_stub:8080
+      api_key: exa-stub
 
 general_settings:
   store_model_in_db: true

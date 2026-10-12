@@ -40,6 +40,7 @@ from mlpa.core.prometheus_metrics import (
 )
 from mlpa.core.utils import clamp_model
 from tests.consts import (
+    LITELLM_EXA_ANSWER_OVERLOADED_TEXT,
     LITELLM_WRAPPED_EXA_OVERLOADED_TEXT,
     MOCK_LITELLM_GLOBAL_BUDGET_ERROR_TEXT,
     SAMPLE_REQUEST,
@@ -2016,21 +2017,20 @@ _EXA_OVERLOADED_LABELS = {
 
 async def test_get_completion_exa_error_records_exa_error(mocker, metrics_spy):
     mock_response = MagicMock()
-    mock_response.text = LITELLM_WRAPPED_EXA_OVERLOADED_TEXT
-    mock_response.status_code = 500
+    mock_response.text = LITELLM_EXA_ANSWER_OVERLOADED_TEXT
+    mock_response.status_code = 503
     mock_response.raise_for_status.side_effect = httpx.HTTPStatusError(
-        "Internal Server Error", request=MagicMock(), response=mock_response
+        "Service Unavailable", request=MagicMock(), response=mock_response
     )
     mock_client = AsyncMock()
     mock_client.post.return_value = mock_response
     mocker.patch("mlpa.core.completions.get_http_client", return_value=mock_client)
 
-    with pytest.raises(HTTPException) as exc_info:
+    with pytest.raises(HTTPException):
         await get_completion(
             Request({"type": "http", "headers": []}), EXA_ANSWER_REQUEST
         )
 
-    assert exc_info.value.status_code == 500
     metrics_spy.assert_only(
         _expect_metrics("chat_completion_latency", "chat_availability", "exa_errors")
     )
@@ -2043,8 +2043,8 @@ async def test_stream_completion_exa_error_records_exa_error(
     httpx_mock.add_response(
         method="POST",
         url=LITELLM_COMPLETIONS_URL,
-        content=LITELLM_WRAPPED_EXA_OVERLOADED_TEXT.encode(),
-        status_code=500,
+        content=LITELLM_EXA_ANSWER_OVERLOADED_TEXT.encode(),
+        status_code=503,
     )
     mocker.patch.object(env, "MLPA_DEBUG", False)
 

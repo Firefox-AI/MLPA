@@ -101,3 +101,21 @@ LITELLM_WRAPPED_EXA_OVERLOADED_TEXT = json.dumps(
         }
     }
 )
+
+# Shape of a LiteLLM 503 for the `exa` answer model: Exa's status is kept and
+# its body is a Python repr inside `error.message`.
+LITELLM_EXA_ANSWER_OVERLOADED_TEXT = json.dumps(
+    {
+        "error": {
+            "message": (
+                "litellm.ServiceUnavailableError: ServiceUnavailableError: "
+                "OpenAIException - Error code: 503 - {'requestId': 'abc123', "
+                "'error': 'Exa is temporarily over capacity.', "
+                "'tag': 'SERVICE_OVERLOADED'}. Received Model Group=exa"
+            ),
+            "type": None,
+            "param": None,
+            "code": "503",
+        }
+    }
+)
