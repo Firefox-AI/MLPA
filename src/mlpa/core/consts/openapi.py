@@ -22,6 +22,10 @@ TAGS_METADATA = [
         "name": "Play Integrity",
         "description": "Endpoints for verifying Play Integrity payloads.",
     },
+    {
+        "name": "Guest",
+        "description": "Guest tokens for Smart Window users without an account.",
+    },
     {"name": "LiteLLM", "description": "Endpoints for interacting with LiteLLM."},
     {"name": "Mock", "description": "Mock endpoints for testing purposes."},
     {

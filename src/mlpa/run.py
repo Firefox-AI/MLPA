@@ -47,6 +47,7 @@ from mlpa.core.middleware.traffic_contract_enforcer import (
 from mlpa.core.prometheus_metrics import AvailabilityReason
 from mlpa.core.routers.appattest import appattest_router
 from mlpa.core.routers.filter import filter_router
+from mlpa.core.routers.guest import guest_router
 from mlpa.core.routers.health import health_router
 from mlpa.core.routers.mock import mock_router
 from mlpa.core.routers.play import play_router
@@ -143,6 +144,7 @@ async def get_metrics():
 app.include_router(health_router, prefix="/health")
 app.include_router(appattest_router, prefix="/verify")
 app.include_router(play_router, prefix="/verify")
+app.include_router(guest_router, prefix="/verify")
 app.include_router(user_router, prefix="/user")
 app.include_router(filter_router)
 app.include_router(mock_router, prefix="/mock")
