@@ -39,8 +39,33 @@ def issue_guest_token() -> str:
 NO_STORE_HEADERS = {"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"}
 
 
-@router.get("/v1/guest", tags=["Guest"])
-async def get_guest_token(state: str = Query(min_length=1, max_length=256)):
+@router.get(
+    "/v1/guest",
+    tags=["Guest"],
+    status_code=302,
+    response_class=RedirectResponse,
+    responses={
+        302: {
+            "description": "Redirect to `/verify/v1/guest/success#access_token=...&token_type=Bearer&state=...`",
+            "headers": {"Location": {"schema": {"type": "string"}}},
+        }
+    },
+)
+async def get_guest_token(
+    state: str = Query(
+        min_length=1,
+        max_length=256,
+        description="Opaque client value, echoed back in the redirect fragment.",
+    ),
+):
+    """
+    Issue a guest access token.
+
+    Open this URL in a browser tab, Fastly may show a challenge first. Once
+    passed, MLPA redirects to `/verify/v1/guest/success` with the token in the
+    URL fragment. Watch the tab URL for that path, read the fragment, then
+    close the tab. Token expiry is in the JWT `exp` claim.
+    """
     fragment = urlencode(
         {"access_token": issue_guest_token(), "token_type": "Bearer", "state": state}
     )
