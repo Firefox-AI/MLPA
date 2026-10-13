@@ -15,11 +15,12 @@ from mlpa.core.http_client import get_http_client
 from mlpa.core.prometheus_metrics import (
     PrometheusResult,
 )
+from mlpa.core.request_preprocessing import TimingRoute
 from mlpa.core.request_timings import measure
 from mlpa.core.sanitization import sanitize_response_body
 from mlpa.core.utils import raise_and_log
 
-router = APIRouter()
+router = APIRouter(route_class=TimingRoute)
 
 FILTER_SUCCESS_RESPONSE: dict[int | str, dict[str, Any]] = {
     200: {
@@ -67,14 +68,16 @@ async def privacy_filter(
     try:
         result = PrometheusResult.ERROR
 
+        with measure("request_preparation", request):
+            body = authorized_filter_request.model_dump(
+                exclude={"user"}, exclude_none=True
+            )
         client = get_http_client()
         with measure("upstream", request):
             response = await client.post(
                 PRIVACY_FILTER_URL,
                 headers=PRIVACY_FILTER_MASTER_AUTH_HEADERS,
-                json=authorized_filter_request.model_dump(
-                    exclude={"user"}, exclude_none=True
-                ),
+                json=body,
             )
         try:
             response.raise_for_status()

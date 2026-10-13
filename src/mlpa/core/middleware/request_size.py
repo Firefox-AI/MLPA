@@ -5,6 +5,7 @@ from mlpa.core.config import ERROR_CODE_REQUEST_TOO_LARGE, env
 from mlpa.core.logger import logger
 from mlpa.core.metrics import record_chat_availability_for
 from mlpa.core.prometheus_metrics import AvailabilityReason
+from mlpa.core.request_timings import measure
 from mlpa.core.utils import get_client_country
 
 
@@ -14,28 +15,29 @@ async def check_request_size_middleware(request: Request, call_next):
     Validates Content-Length header before processing the request body.
     """
     if request.url.path == "/v1/chat/completions" and request.method == "POST":
-        content_length = request.headers.get("content-length")
-        if content_length:
-            try:
-                size = int(content_length)
-                if size > env.MAX_REQUEST_SIZE_BYTES:
-                    logger.warning(
-                        f"Request size {size} bytes exceeds maximum {env.MAX_REQUEST_SIZE_BYTES} bytes"
-                    )
-                    # `model` is in the request body, which we don't read here.
-                    # We reject on the Content-Length header without parsing it.
-                    record_chat_availability_for(
-                        AvailabilityReason.PAYLOAD_TOO_LARGE,
-                        model="",
-                        service_type=request.headers.get("service-type") or "",
-                        purpose=request.headers.get("purpose") or "",
-                        client_country=get_client_country(request),
-                    )
-                    return JSONResponse(
-                        status_code=413,
-                        content={"error": ERROR_CODE_REQUEST_TOO_LARGE},
-                    )
-            except ValueError:
-                pass
+        with measure("request_size_check", request):
+            content_length = request.headers.get("content-length")
+            if content_length:
+                try:
+                    size = int(content_length)
+                    if size > env.MAX_REQUEST_SIZE_BYTES:
+                        logger.warning(
+                            f"Request size {size} bytes exceeds maximum {env.MAX_REQUEST_SIZE_BYTES} bytes"
+                        )
+                        # `model` is in the request body, which we don't read here.
+                        # We reject on the Content-Length header without parsing it.
+                        record_chat_availability_for(
+                            AvailabilityReason.PAYLOAD_TOO_LARGE,
+                            model="",
+                            service_type=request.headers.get("service-type") or "",
+                            purpose=request.headers.get("purpose") or "",
+                            client_country=get_client_country(request),
+                        )
+                        return JSONResponse(
+                            status_code=413,
+                            content={"error": ERROR_CODE_REQUEST_TOO_LARGE},
+                        )
+                except ValueError:
+                    pass
 
     return await call_next(request)

@@ -79,7 +79,9 @@ class TestRouting:
         actually looks for."""
         response = proxy.post(
             CHAT_COMPLETIONS_PATH,
-            json=chat_request(),
+            # Keep this header check independent of end-user rate limits
+            # exercised by other requests using the same virtual key.
+            json=chat_request(user=f"e2e-routing-{uuid.uuid4().hex}"),
             headers={"Authorization": f"Bearer {env.MLPA_VIRTUAL_KEY}"},
         )
         assert response.status_code == 200, response.text
