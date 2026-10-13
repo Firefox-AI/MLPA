@@ -16,7 +16,12 @@ def test_issue_guest_token(mocked_client_integration):
 
     token = data["access_token"]
     assert jwt.get_unverified_header(token)["typ"] == "at+JWT"
-    claims = jwt.decode(token, options={"verify_signature": False})
+    claims = jwt.decode(
+        token,
+        env.MLPA_GUEST_TOKEN_SIGNING_SECRET,
+        algorithms=["HS256"],
+        audience="mlpa",
+    )
     assert set(claims) == {
         "iss",
         "aud",

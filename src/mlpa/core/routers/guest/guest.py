@@ -26,7 +26,7 @@ def issue_guest_token() -> str:
     }
     return jwt.encode(
         payload,
-        env.MLPA_ACCESS_TOKEN_SECRET,
+        env.MLPA_GUEST_TOKEN_SIGNING_SECRET,
         algorithm="HS256",
         headers={"typ": "at+JWT"},
     )

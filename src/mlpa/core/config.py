@@ -511,6 +511,7 @@ class Env(BaseSettings):
     MLPA_ACCESS_TOKEN_SECRET: str = "mlpa-dev-secret"
     MLPA_ACCESS_TOKEN_TTL_SECONDS: int = 86400
     MLPA_GUEST_TOKEN_TTL_SECONDS: int = 604800
+    MLPA_GUEST_TOKEN_SIGNING_SECRET: str = "mlpa-guest-dev-secret"
 
     # Dev / experimentation auth (x-dev-authorization header)
     MLPA_EXPERIMENTATION_AUTHORIZATION_TOKEN: str = "secret-dev-token"
