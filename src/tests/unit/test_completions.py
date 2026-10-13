@@ -2009,6 +2009,7 @@ EXA_ANSWER_REQUEST = SAMPLE_REQUEST.model_copy(
     update={"model": "exa", "service_type": "answer", "purpose": ""}
 )
 _EXA_OVERLOADED_LABELS = {
+    "endpoint": "/v1/chat/completions",
     "model": "exa",
     "status_code": "503",
     "tag": "SERVICE_OVERLOADED",

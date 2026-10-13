@@ -415,7 +415,7 @@ def build_metrics(registry: CollectorRegistry = REGISTRY) -> PrometheusMetrics:
         exa_errors=Counter(
             "mlpa_exa_errors_total",
             "Errors returned by Exa for search and answer requests, by Exa status code and error tag.",
-            ["model", "status_code", "tag"],
+            ["endpoint", "model", "status_code", "tag"],
             registry=registry,
         ),
         litellm_routed_completions=Counter(

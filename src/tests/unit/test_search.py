@@ -298,7 +298,12 @@ async def test_get_search_upstream_error_records_exa_error(
 
     assert exc_info.value.status_code == status_code
     metrics_spy.assert_only({"exa_errors", "search_latency"})
-    assert metrics_spy.value("exa_errors", model=SEARCH_MODEL, **expected_labels) == 1
+    assert (
+        metrics_spy.value(
+            "exa_errors", endpoint="/v1/search", model=SEARCH_MODEL, **expected_labels
+        )
+        == 1
+    )
     assert _search_latency_count(metrics_spy, PrometheusResult.ERROR) == 1
 
 
@@ -325,6 +330,7 @@ async def test_get_search_exa_rate_limit_records_rejection_and_exa_error(
     assert (
         metrics_spy.value(
             "exa_errors",
+            endpoint="/v1/search",
             model=SEARCH_MODEL,
             status_code="429",
             tag="RATE_LIMIT_EXCEEDED",

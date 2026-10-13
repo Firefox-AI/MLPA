@@ -19,6 +19,7 @@ from mlpa.core.http_client import get_http_client
 from mlpa.core.litellm_routing import parse_litellm_routing_headers
 from mlpa.core.logger import logger
 from mlpa.core.metrics import (
+    CHAT_COMPLETIONS_ENDPOINT,
     extract_tool_names,
     record_chat_availability,
     record_chat_request_rejection,
@@ -186,6 +187,7 @@ async def stream_completion(
                         user=authorized_chat_request.user,
                     )
                     record_exa_error(
+                        endpoint=CHAT_COMPLETIONS_ENDPOINT,
                         model=authorized_chat_request.model,
                         status_code=e.response.status_code,
                         error_text=error_text_str,
@@ -415,6 +417,7 @@ async def _get_completion(
                 user=authorized_chat_request.user,
             )
             record_exa_error(
+                endpoint=CHAT_COMPLETIONS_ENDPOINT,
                 model=authorized_chat_request.model,
                 status_code=e.response.status_code,
                 error_text=e.response.text,

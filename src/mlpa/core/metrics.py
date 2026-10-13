@@ -26,6 +26,9 @@ from mlpa.core.utils import (
 SEARCH_MODEL = "exa-search"
 EXA_ANSWER_MODEL = "exa"
 EXA_MODELS = frozenset({SEARCH_MODEL, EXA_ANSWER_MODEL})
+# Match the `endpoint` label of mlpa_requests_total.
+SEARCH_ENDPOINT = "/v1/search"
+CHAT_COMPLETIONS_ENDPOINT = "/v1/chat/completions"
 
 
 def _chat_labels(
@@ -134,7 +137,7 @@ def record_search_latency(result: PrometheusResult, elapsed_seconds: float) -> N
 
 
 def record_exa_error(
-    *, model: str, status_code: int, error_text: str, rejected: bool
+    *, endpoint: str, model: str, status_code: int, error_text: str, rejected: bool
 ) -> None:
     """Count an upstream error on an Exa-backed model.
 
@@ -147,7 +150,9 @@ def record_exa_error(
     if raw_tag is None and rejected:
         return
     status, tag = clamp_exa_error_labels(raw_tag, status_code)
-    metrics.exa_errors.labels(model=model, status_code=status, tag=tag).inc()
+    metrics.exa_errors.labels(
+        endpoint=endpoint, model=model, status_code=status, tag=tag
+    ).inc()
 
 
 def extract_tool_names(items: Iterable[dict]) -> list[str]:

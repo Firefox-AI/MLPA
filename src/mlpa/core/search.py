@@ -13,6 +13,7 @@ from mlpa.core.errors import classify_upstream_error
 from mlpa.core.http_client import get_http_client
 from mlpa.core.logger import logger
 from mlpa.core.metrics import (
+    SEARCH_ENDPOINT,
     SEARCH_MODEL,
     record_exa_error,
     record_search_latency,
@@ -72,6 +73,7 @@ async def _get_search(
                 user=authorized_search_request.user,
             )
             record_exa_error(
+                endpoint=SEARCH_ENDPOINT,
                 model=SEARCH_MODEL,
                 status_code=e.response.status_code,
                 error_text=e.response.text,
