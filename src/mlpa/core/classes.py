@@ -89,14 +89,6 @@ class PlayIntegrityTokenResponse(BaseModel):
     expires_in: int
 
 
-class GuestTokenResponse(BaseModel):
-    """Guest access token for users without an account."""
-
-    access_token: str
-    token_type: str
-    expires_in: int
-
-
 class AuthorizedRequestLogMixin(BaseModel):
     """Shared structured log fields for authorized requests.
 
