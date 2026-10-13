@@ -32,17 +32,18 @@ async def _get_search(
     request: Request, authorized_search_request: AuthorizedSearchRequest
 ):
     start_time = time.perf_counter()
-    body = sanitize_request_body(
-        authorized_search_request.model_dump(
-            exclude={
-                "client_country",
-                "service_type",
-                "purpose",
-                "litellm_virtual_key",
-            },
-            exclude_none=True,
+    with measure("request_preparation", request):
+        body = sanitize_request_body(
+            authorized_search_request.model_dump(
+                exclude={
+                    "client_country",
+                    "service_type",
+                    "purpose",
+                    "litellm_virtual_key",
+                },
+                exclude_none=True,
+            )
         )
-    )
     result = PrometheusResult.ERROR
     usage = None
     logger.debug(

@@ -15,6 +15,21 @@ def timing_enabled(request: Request) -> bool:
     return request.headers.get("debug-timing", "").strip().lower() == "true"
 
 
+def record_timing(request: Request, name: str, start_time: float) -> None:
+    """Record a completed interval, including a milestone from request entry."""
+    if not timing_enabled(request):
+        return
+    request.state.debug_spans.append(
+        {
+            "name": name,
+            "start_ms": round(
+                (start_time - request.state.debug_timing_start) * 1_000, 2
+            ),
+            "duration_ms": round((time.perf_counter() - start_time) * 1_000, 2),
+        }
+    )
+
+
 class TimingSpan(TypedDict):
     name: str
     start_ms: float
@@ -56,16 +71,7 @@ class RequestDebugTiming:
 
     def __exit__(self, exc_type, exc_value, traceback):
         if self.start_time is not None:
-            span: TimingSpan = {
-                "name": self.name,
-                "start_ms": round(
-                    (self.start_time - self.request.state.debug_timing_start) * 1_000, 2
-                ),
-                "duration_ms": round(
-                    (time.perf_counter() - self.start_time) * 1_000, 2
-                ),
-            }
-            self.request.state.debug_spans.append(span)
+            record_timing(self.request, self.name, self.start_time)
 
 
 measure = RequestDebugTiming
@@ -102,10 +108,12 @@ class RequestTimingsMiddleware:
         body = bytearray()
         is_event_stream = False
         stream_tail = b""
+        first_body_sent = False
 
         async def send_timed(message: Message):
             nonlocal finished_at, status_code, response_start
             nonlocal is_event_stream, stream_tail
+            nonlocal first_body_sent
             if message["type"] == "http.response.start":
                 status_code = message["status"]
                 headers = MutableHeaders(scope=message)
@@ -180,6 +188,13 @@ class RequestTimingsMiddleware:
                         )
                         message = {**message, "body": chunk + separator + event}
             await send(message)
+            if (
+                message["type"] == "http.response.body"
+                and not first_body_sent
+                and message.get("body")
+            ):
+                first_body_sent = True
+                record_timing(request, "first_byte_returned", start_time)
             if message["type"] == "http.response.body" and not message.get(
                 "more_body", False
             ):
