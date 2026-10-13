@@ -214,12 +214,9 @@ def b64decode_safe(data_b64: str, obj_name: str = "object") -> bytes:
 
 @lru_cache(maxsize=1)
 def get_fxa_client():
-    fxa_url = (
-        "https://api-accounts.stage.mozaws.net/v1"
-        if env.MLPA_DEBUG
-        else "https://oauth.accounts.firefox.com/v1"
+    return Client(
+        env.CLIENT_ID, env.CLIENT_SECRET, "https://oauth.accounts.firefox.com/v1"
     )
-    return Client(env.CLIENT_ID, env.CLIENT_SECRET, fxa_url)
 
 
 def is_rate_limit_error(error_response: dict, keywords: list[str]) -> bool:
