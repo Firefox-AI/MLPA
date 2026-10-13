@@ -3,7 +3,7 @@ import uuid
 from urllib.parse import urlencode
 
 import jwt
-from fastapi import APIRouter
+from fastapi import APIRouter, Query
 from fastapi.responses import HTMLResponse, RedirectResponse
 
 from mlpa.core.config import env
@@ -40,13 +40,9 @@ NO_STORE_HEADERS = {"Cache-Control": "no-store", "Referrer-Policy": "no-referrer
 
 
 @router.get("/v1/guest", tags=["Guest"])
-async def get_guest_token():
+async def get_guest_token(state: str = Query(min_length=1, max_length=256)):
     fragment = urlencode(
-        {
-            "access_token": issue_guest_token(),
-            "token_type": "Bearer",
-            "expires_in": env.MLPA_GUEST_TOKEN_TTL_SECONDS,
-        }
+        {"access_token": issue_guest_token(), "token_type": "Bearer", "state": state}
     )
     return RedirectResponse(
         f"/verify/v1/guest/success#{fragment}",

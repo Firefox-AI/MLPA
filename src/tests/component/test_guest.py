@@ -9,7 +9,9 @@ from mlpa.core.utils import extract_user_from_play_integrity_jwt
 
 
 def test_issue_guest_token(mocked_client_integration):
-    response = mocked_client_integration.get("/verify/v1/guest", follow_redirects=False)
+    response = mocked_client_integration.get(
+        "/verify/v1/guest", params={"state": "a b&c"}, follow_redirects=False
+    )
 
     assert response.status_code == 302
     assert response.headers["cache-control"] == "no-store"
@@ -19,7 +21,8 @@ def test_issue_guest_token(mocked_client_integration):
     assert location.query == ""
     data = {k: v[0] for k, v in parse_qs(location.fragment).items()}
     assert data["token_type"] == "Bearer"
-    assert int(data["expires_in"]) == env.MLPA_GUEST_TOKEN_TTL_SECONDS
+    assert data["state"] == "a b&c"
+    assert "expires_in" not in data
 
     token = data["access_token"]
     assert jwt.get_unverified_header(token)["typ"] == "at+JWT"
@@ -53,3 +56,12 @@ def test_guest_success_page(mocked_client_integration):
     assert response.status_code == 200
     assert response.headers["content-type"].startswith("text/html")
     assert response.headers["cache-control"] == "no-store"
+
+
+@pytest.mark.parametrize("params", [{}, {"state": ""}, {"state": "x" * 257}])
+def test_issue_guest_token_rejects_bad_state(mocked_client_integration, params):
+    response = mocked_client_integration.get(
+        "/verify/v1/guest", params=params, follow_redirects=False
+    )
+
+    assert response.status_code == 422
