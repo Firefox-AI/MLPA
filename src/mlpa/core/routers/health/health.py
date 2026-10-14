@@ -9,6 +9,7 @@ from mlpa.core.config import (
     LITELLM_MASTER_AUTH_HEADERS,
     LITELLM_READINESS_URL,
     PRIVACY_FILTER_READINESS_URL,
+    USE_OTARI,
     env,
 )
 from mlpa.core.http_client import get_http_client
@@ -39,6 +40,8 @@ async def get_litellm_version(client):
     litellm_version = (
         litellm_info.get("litellm_version") or litellm_info.get("version") or "N/A"
     )
+    if USE_OTARI and litellm_version != "N/A":
+        litellm_version = f"otari {litellm_version}"
     return litellm_version
 
 
@@ -75,6 +78,10 @@ def _eval_litellm(litellm_http, version) -> tuple[bool, dict]:
     except Exception:
         return False, unreachable
 
+    if USE_OTARI:
+        # Otari answers {"status": "healthy", "database": "connected", "version": ...}.
+        ready = body.get("database") == "connected" and body.get("status") == "healthy"
+        return ready, {**body, "gateway": "otari"}
     ready = (
         body.get("db") == "connected"
         and body.get("status") in _HEALTHY_LITELLM_STATUSES

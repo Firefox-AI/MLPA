@@ -12,12 +12,18 @@ from mlpa.core.config import (
     ERROR_CODE_MAX_GUESTS_REACHED,
     ERROR_CODE_MAX_USERS_REACHED,
     LITELLM_COMPLETIONS_URL,
+    USE_OTARI,
     env,
     resolve_litellm_virtual_auth_headers,
 )
-from mlpa.core.errors import classify_upstream_error
+from mlpa.core.errors import (
+    USER_BLOCKED_DETAIL,
+    classify_otari_stream_error,
+    classify_upstream_error,
+    is_otari_user_blocked,
+)
 from mlpa.core.http_client import get_http_client
-from mlpa.core.litellm_routing import parse_litellm_routing_headers
+from mlpa.core.litellm_routing import parse_litellm_routing_headers, with_usage_cost
 from mlpa.core.logger import logger
 from mlpa.core.metrics import (
     CHAT_COMPLETIONS_ENDPOINT,
@@ -64,13 +70,16 @@ def _build_litellm_body(req: AuthorizedChatRequest, *, stream: bool) -> dict:
         body["stream_options"] = {"include_usage": True}
     # tags would be litellm-native but spend-by-tag reporting is Enterprise-only
     # and tags are flat strings, harder to query in BQ. JSON metadata is OSS and
-    # queryable as a plain key.
+    # queryable as a plain key. Otari reads the same field as its request tags.
     body["metadata"] = {
         "spend_logs_metadata": {
             "purpose": req.purpose,
             "country_code": req.client_country,
         }
     }
+    if USE_OTARI:
+        # Otari serves no mock model.
+        body.pop("mock_response", None)
     return sanitize_request_body(body)
 
 
@@ -137,7 +146,8 @@ async def stream_completion(
     record_request_with_tools(authorized_chat_request)
     with measure("request_preparation", request):
         auth_headers = resolve_litellm_virtual_auth_headers(
-            authorized_chat_request.litellm_virtual_key
+            authorized_chat_request.litellm_virtual_key,
+            authorized_chat_request.service_type,
         )
         body = _build_litellm_body(authorized_chat_request, stream=True)
     result = PrometheusResult.ERROR
@@ -146,6 +156,7 @@ async def stream_completion(
     prompt_tokens = 0
     completion_tokens = 0
     streaming_started = False
+    stream_failed = False
     tool_calls_accum: dict[int, dict] = {}
     log.debug(
         f"Starting a stream completion using {authorized_chat_request.model}, for user {authorized_chat_request.user}",
@@ -200,10 +211,15 @@ async def stream_completion(
                     except Exception:
                         pass
 
+                    if is_otari_user_blocked(e.response.headers):
+                        availability_reason = AvailabilityReason.BLOCKED
+                        yield f"data: {json.dumps(USER_BLOCKED_DETAIL)}\n\n".encode()
+                        return
                     match = classify_upstream_error(
                         error_text=error_text_str,
                         status_code=e.response.status_code,
                         user=authorized_chat_request.user,
+                        headers=e.response.headers,
                     )
                     record_exa_error(
                         endpoint=CHAT_COMPLETIONS_ENDPOINT,
@@ -286,12 +302,27 @@ async def stream_completion(
                         is_first_token = False
                         streaming_started = True
 
+                    stream_rejection = None
                     try:
                         chunk_str = chunk.decode("utf-8")
                         for line in chunk_str.split("\n"):
                             if line.startswith("data: ") and line != "data: [DONE]":
                                 data = json.loads(line[6:])
-                                if "usage" in data:
+                                # Otari ends a stream that fails after its first
+                                # byte with an error event carrying its code.
+                                stream_rejection = (
+                                    stream_rejection
+                                    or classify_otari_stream_error(
+                                        data, authorized_chat_request.user
+                                    )
+                                )
+                                # An error event MLPA has no code for (Otari's
+                                # provider_error) still ends the stream as a failure.
+                                if isinstance(data, dict) and data.get("error"):
+                                    stream_failed = True
+                                # OpenAI-shaped streams (Otari's among them) send
+                                # "usage": null on every chunk but the last.
+                                if data.get("usage"):
                                     usage = data["usage"]
                                     prompt_tokens = usage.get("prompt_tokens", 0)
                                     completion_tokens = usage.get(
@@ -305,17 +336,17 @@ async def stream_completion(
                                         log.warning(
                                             f"Missing 'completion_tokens' in usage for model {authorized_chat_request.model}"
                                         )
-                                for tc in (
-                                    data.get("choices", [{}])[0]
-                                    .get("delta", {})
-                                    .get("tool_calls", [])
-                                ):
+                                # The usage chunk carries "choices": [].
+                                choices = data.get("choices") or [{}]
+                                for tc in (choices[0].get("delta") or {}).get(
+                                    "tool_calls"
+                                ) or []:
                                     idx = tc.get("index", len(tool_calls_accum))
                                     if idx not in tool_calls_accum:
                                         tool_calls_accum[idx] = {
                                             "function": {"name": ""}
                                         }
-                                    name = tc.get("function", {}).get("name")
+                                    name = (tc.get("function") or {}).get("name")
                                     if name:
                                         tool_calls_accum[idx]["function"]["name"] = (
                                             tool_calls_accum[idx]["function"]["name"]
@@ -324,9 +355,25 @@ async def stream_completion(
                     except (json.JSONDecodeError, UnicodeDecodeError, KeyError):
                         pass
 
+                    if stream_rejection is not None:
+                        if stream_rejection.log_message:
+                            log.warning(stream_rejection.log_message)
+                        record_chat_request_rejection(
+                            authorized_chat_request, stream_rejection.reason
+                        )
+                        availability_reason = stream_rejection.availability_reason()
+                        yield f'data: {{"error": {stream_rejection.error_code}}}\n\n'.encode()
+                        return
+
                     yield chunk
 
                 if result == PrometheusResult.ABORT:
+                    return
+
+                if stream_failed:
+                    log.warning(
+                        f"Upstream stream failed for model {authorized_chat_request.model}"
+                    )
                     return
 
                 if not streaming_started:
@@ -348,7 +395,7 @@ async def stream_completion(
                     prompt_tokens=prompt_tokens,
                     completion_tokens=completion_tokens,
                     tool_names=tool_names,
-                    snapshot=litellm_routing_snapshot,
+                    snapshot=with_usage_cost(litellm_routing_snapshot, usage),
                 )
                 result = PrometheusResult.SUCCESS
                 availability_reason = AvailabilityReason.VALID_RESPONSE
@@ -432,17 +479,22 @@ async def _get_completion(
             response = await client.post(
                 LITELLM_COMPLETIONS_URL,
                 headers=resolve_litellm_virtual_auth_headers(
-                    authorized_chat_request.litellm_virtual_key
+                    authorized_chat_request.litellm_virtual_key,
+                    authorized_chat_request.service_type,
                 ),
                 json=body,
             )
         try:
             response.raise_for_status()
         except httpx.HTTPStatusError as e:
+            if is_otari_user_blocked(e.response.headers):
+                availability_reason = AvailabilityReason.BLOCKED
+                raise HTTPException(status_code=403, detail=USER_BLOCKED_DETAIL)
             match = classify_upstream_error(
                 error_text=e.response.text,
                 status_code=e.response.status_code,
                 user=authorized_chat_request.user,
+                headers=e.response.headers,
             )
             record_exa_error(
                 endpoint=CHAT_COMPLETIONS_ENDPOINT,
@@ -467,7 +519,8 @@ async def _get_completion(
             raise_and_log(e)
         litellm_routing_snapshot = parse_litellm_routing_headers(response.headers)
         data = sanitize_response_body(response.json())
-        usage = data.get("usage", {})
+        # A provider that reports no tokens (Liner) gets "usage": null from Otari.
+        usage = data.get("usage") or {}
         prompt_tokens = usage.get("prompt_tokens", 0)
         completion_tokens = usage.get("completion_tokens", 0)
 
@@ -489,7 +542,7 @@ async def _get_completion(
             prompt_tokens=prompt_tokens,
             completion_tokens=completion_tokens,
             tool_names=tool_names,
-            snapshot=litellm_routing_snapshot,
+            snapshot=with_usage_cost(litellm_routing_snapshot, usage),
         )
         result = PrometheusResult.SUCCESS
         availability_reason = AvailabilityReason.VALID_RESPONSE

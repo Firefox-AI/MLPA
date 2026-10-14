@@ -91,6 +91,28 @@ def test_readiness_200_when_all_healthy(
     }
 
 
+def test_readiness_200_when_otari_is_ready(
+    mocked_client_integration, httpx_mock, mocker
+):
+    """Otari's readiness body says `database`, not LiteLLM's `db`."""
+    mocker.patch("mlpa.core.routers.health.health.USE_OTARI", True)
+    mocker.patch.object(env, "PRIVACY_FILTER_ENABLED", False)
+    httpx_mock.add_response(
+        method="GET",
+        url=READINESS_URL,
+        json={"status": "healthy", "database": "connected", "version": "0.24.0"},
+    )
+    httpx_mock.add_response(
+        method="GET", url=INFO_URL, json={"version": "0.24.0"}, is_optional=True
+    )
+
+    response = mocked_client_integration.get("/health/readiness")
+    body = response.json()
+
+    assert response.status_code == 200
+    assert body["litellm"]["gateway"] == "otari"
+
+
 def test_readiness_503_when_litellm_pool_down(
     mocked_client_integration, httpx_mock, mocker, privacy_filter_enabled
 ):
