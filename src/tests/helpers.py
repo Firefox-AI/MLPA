@@ -10,7 +10,7 @@ import time
 import asyncpg
 import httpx
 
-from mlpa.core.config import env
+from mlpa.core.config import OTARI_API_ROOT, env
 
 CHAT_COMPLETIONS_PATH = "/v1/chat/completions"
 
@@ -23,6 +23,10 @@ MOCK_RESPONSE_TEXT = "this is a mocked response"
 # Default service type, and purpose used for validating completions
 SERVICE_TYPE = "ai"
 PURPOSE = "chat"
+
+# otari_config.yaml gives this service type's budget a max_budget below any
+# request's estimated cost, so Otari refuses its very first request.
+OTARI_TINY_BUDGET_SERVICE_TYPE = "mochi-dev"
 
 BUDGET_TABLE = "LiteLLM_BudgetTable"
 END_USER_TABLE = "LiteLLM_EndUserTable"
@@ -50,6 +54,14 @@ def real_backend_available() -> bool:
     except Exception:
         return False
     return _db_reachable(env.LITELLM_DB_NAME) and _db_reachable(env.APP_ATTEST_DB_NAME)
+
+
+def otari_backend_available() -> bool:
+    try:
+        httpx.get(f"{OTARI_API_ROOT}/health/readiness", timeout=2.0).raise_for_status()
+    except Exception:
+        return False
+    return _db_reachable(env.APP_ATTEST_DB_NAME)
 
 
 def chat_request(**overrides) -> dict:
@@ -156,6 +168,33 @@ def wait_for_key_spend(
         "accounting is not working."
     )
     return spend
+
+
+def otari_end_user(otari: httpx.Client, user_id: str) -> dict | None:
+    """Ask Otari itself whether MLPA's service key has this end user."""
+    response = otari.get("/end-users", params={"external_id": user_id})
+    response.raise_for_status()
+    users = response.json()
+    return users[0] if users else None
+
+
+def wait_for_otari_spend(
+    otari: httpx.Client, user_id: str, *, above: float = 0.0, timeout_s: float = 30.0
+) -> dict:
+    """Otari settles a request's cost as it ends, so this rarely waits; polling
+    keeps a slow settle from reading as no spend."""
+    user = _poll(
+        lambda: (lambda u: u if u is not None and u["spend"] > above else None)(
+            otari_end_user(otari, user_id)
+        ),
+        timeout_s=timeout_s,
+    )
+    assert user is not None, (
+        f"Otari recorded no spend above {above} for end user {user_id!r} "
+        f"within {timeout_s}s of a successful completion -- the `user` field "
+        "likely isn't reaching Otari, or the model has no pricing."
+    )
+    return user
 
 
 def list_litellm_container_dir(path: str) -> list[str]:
