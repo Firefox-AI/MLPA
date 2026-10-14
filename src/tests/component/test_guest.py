@@ -8,6 +8,21 @@ from mlpa.core.config import env
 from mlpa.core.utils import extract_user_from_play_integrity_jwt
 
 
+@pytest.fixture(autouse=True)
+def guest_enabled(mocker):
+    mocker.patch.object(env, "MLPA_GUEST_ENABLED", True)
+
+
+def test_guest_token_disabled(mocked_client_integration, mocker):
+    mocker.patch.object(env, "MLPA_GUEST_ENABLED", False)
+    response = mocked_client_integration.get(
+        "/verify/v1/guest", params={"state": "s"}, follow_redirects=False
+    )
+
+    assert response.status_code == 404
+    assert "location" not in response.headers
+
+
 def test_issue_guest_token(mocked_client_integration):
     response = mocked_client_integration.get(
         "/verify/v1/guest", params={"state": "a b&c"}, follow_redirects=False

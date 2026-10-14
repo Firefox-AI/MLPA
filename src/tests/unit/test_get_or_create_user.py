@@ -3,7 +3,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from fastapi import HTTPException
 
-from mlpa.core.config import env
+from mlpa.core.config import GUEST_CAPACITY_ID, USER_CAPACITY_ID, env
 from mlpa.core.utils import get_or_create_user
 
 _USER_ID = "user123:ai"
@@ -86,7 +86,7 @@ async def test_new_user_with_cap_enforcement_admitted(
 
     assert was_created is True
     mock_app_attest_pg.admit_managed_base_identity.assert_awaited_once_with(
-        base_identity=_BASE_IDENTITY
+        base_identity=_BASE_IDENTITY, capacity_id=USER_CAPACITY_ID
     )
 
 
@@ -116,7 +116,7 @@ async def test_new_user_creation_fails_releases_claimed_slot(
 
     assert exc.value.status_code == 500
     mock_app_attest_pg.maybe_release_managed_base_identity_if_no_managed_users.assert_awaited_once_with(
-        base_identity=_BASE_IDENTITY
+        base_identity=_BASE_IDENTITY, capacity_id=USER_CAPACITY_ID
     )
 
 
@@ -165,5 +165,37 @@ async def test_unexpected_exception_with_claimed_identity_releases_slot(
 
     assert exc.value.status_code == 500
     mock_app_attest_pg.maybe_release_managed_base_identity_if_no_managed_users.assert_awaited_once_with(
-        base_identity=_BASE_IDENTITY
+        base_identity=_BASE_IDENTITY, capacity_id=USER_CAPACITY_ID
     )
+
+
+async def test_guest_service_type_admits_into_guest_capacity(
+    mock_litellm_pg, mock_app_attest_pg, mock_http_client
+):
+    mock_litellm_pg.get_user.side_effect = [None, None]
+    mock_app_attest_pg.admit_managed_base_identity.return_value = (True, True)
+
+    with (
+        patch("mlpa.core.utils.env.MLPA_ENFORCE_GUEST_CAP", True),
+        patch("mlpa.core.utils.env.MLPA_GUEST_SERVICE_TYPES", {"ai"}),
+    ):
+        with pytest.raises(HTTPException):
+            await get_or_create_user(_USER_ID)
+
+    mock_app_attest_pg.admit_managed_base_identity.assert_awaited_once_with(
+        base_identity=_BASE_IDENTITY, capacity_id=GUEST_CAPACITY_ID
+    )
+    mock_app_attest_pg.maybe_release_managed_base_identity_if_no_managed_users.assert_awaited_once_with(
+        base_identity=_BASE_IDENTITY, capacity_id=GUEST_CAPACITY_ID
+    )
+
+
+async def test_guest_cap_off_skips_admission(
+    mock_litellm_pg, mock_app_attest_pg, mock_http_client
+):
+    mock_litellm_pg.get_user.side_effect = [None, _DB_USER]
+
+    with patch("mlpa.core.utils.env.MLPA_GUEST_SERVICE_TYPES", {"ai"}):
+        await get_or_create_user(_USER_ID)
+
+    mock_app_attest_pg.admit_managed_base_identity.assert_not_called()

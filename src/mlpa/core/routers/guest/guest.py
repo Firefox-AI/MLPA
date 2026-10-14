@@ -3,7 +3,7 @@ import uuid
 from urllib.parse import urlencode
 
 import jwt
-from fastapi import APIRouter, Query
+from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import HTMLResponse, RedirectResponse
 
 from mlpa.core.config import env
@@ -48,7 +48,8 @@ NO_STORE_HEADERS = {"Cache-Control": "no-store", "Referrer-Policy": "no-referrer
         302: {
             "description": "Redirect to `/verify/v1/guest/success#access_token=...&token_type=Bearer&state=...`",
             "headers": {"Location": {"schema": {"type": "string"}}},
-        }
+        },
+        404: {"description": "Guest tokens are disabled (`MLPA_GUEST_ENABLED=false`)."},
     },
 )
 async def get_guest_token(
@@ -66,6 +67,8 @@ async def get_guest_token(
     URL fragment. Watch the tab URL for that path, read the fragment, then
     close the tab. Token expiry is in the JWT `exp` claim.
     """
+    if not env.MLPA_GUEST_ENABLED:
+        raise HTTPException(status_code=404, detail="Not Found")
     fragment = urlencode(
         {"access_token": issue_guest_token(), "token_type": "Bearer", "state": state}
     )

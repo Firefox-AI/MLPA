@@ -25,6 +25,14 @@ class Env(BaseSettings):
     MLPA_CAPPED_SERVICE_TYPES: set[str] = {"ai", "memories"}
     MLPA_ADMISSION_LOCK_TIMEOUT_MS: int = 5000
 
+    # Guest capacity gate (AIPLAT-1447): same admission as above, own counter
+    # (mlpa_user_capacity row 2). Infra deletes guests older than the token TTL.
+    MLPA_MAX_GUESTS: int = 100000
+    MLPA_ENFORCE_GUEST_CAP: bool = False
+    MLPA_GUEST_SERVICE_TYPES: set[str] = set()
+    # Kill switch for GET /verify/v1/guest
+    MLPA_GUEST_ENABLED: bool = False
+
     # Countries with their own Grafana breakout (AIPLAT-1266). Deliberately a
     # small set, distinct from the full ISO country_codes.COUNTRY_CODES list,
     # so the per-country latency/TTFT/availability metrics stay cheap.
@@ -593,6 +601,34 @@ class Env(BaseSettings):
 
 
 env = Env()
+
+USER_CAPACITY_ID = 1
+GUEST_CAPACITY_ID = 2
+
+
+def capacity_settings(capacity_id: int) -> tuple[bool, int, set[str]]:
+    """(enforced, max identities, service types) for a mlpa_user_capacity row."""
+    if capacity_id == GUEST_CAPACITY_ID:
+        return (
+            env.MLPA_ENFORCE_GUEST_CAP,
+            env.MLPA_MAX_GUESTS,
+            env.MLPA_GUEST_SERVICE_TYPES,
+        )
+    return (
+        env.MLPA_ENFORCE_SIGNIN_CAP,
+        env.MLPA_MAX_SIGNED_IN_USERS,
+        env.MLPA_CAPPED_SERVICE_TYPES,
+    )
+
+
+def capacity_id_for_service_type(service_type: str) -> int | None:
+    """Capacity row a new user of this service type must be admitted to, if any."""
+    for capacity_id in (USER_CAPACITY_ID, GUEST_CAPACITY_ID):
+        enforced, _max, service_types = capacity_settings(capacity_id)
+        if enforced and service_type in service_types:
+            return capacity_id
+    return None
+
 
 LITELLM_READINESS_URL = f"{env.LITELLM_API_BASE}/health/readiness"
 LITELLM_INFO_URL = f"{env.LITELLM_API_BASE}/public/model_hub/info"
