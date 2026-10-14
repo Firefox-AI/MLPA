@@ -99,6 +99,80 @@ jobs:
       - name: Run LiteLLM compatibility tests
         uses: ./.github/actions/litellm-compatibility
 
+  # Tests MLPA with GATEWAY_BACKEND=otari against a real Otari, at the image
+  # otari_docker_compose.yaml pins, behind a fake provider -- the Otari
+  # counterpart of litellm-compatibility-tests.
+  otari-compatibility-tests:
+    runs-on: ubuntu-latest
+    # mlpa.core.config reads these once, at import, so they are set for the
+    # whole job rather than patched in the suite. The keys are CI-only values,
+    # and otari_docker_compose.yaml hands Otari the same ones.
+    env:
+      GATEWAY_BACKEND: otari
+      OTARI_API_BASE: http://localhost:8000
+      MLPA_ADMIN_KEY: sk-mlpa-admin-ci
+      OTARI_SERVICE_KEY: tk-YXPI1CW0aDO2jB9R9nmBouDos1jKmqEMidv6iBnSZ8vqhJ2sDlgLbTawowd8BJZz
+      DB_USERNAME: otari
+      DB_PASSWORD: otari
+      POSTGRES_CONTAINER_NAME: otari_postgres
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install uv
+        run: pip install uv==0.10.8
+
+      - name: Sync dependencies
+        run: |
+          uv venv
+          uv sync --all-groups
+          uv pip install --no-cache-dir -e .
+
+      - name: Start Otari + Postgres + fake provider
+        run: docker compose -f otari_docker_compose.yaml up -d
+
+      - name: Wait for Otari to be ready
+        run: |
+          for i in $(seq 1 60); do
+            if curl -sf http://localhost:8000/api/v1/health/readiness > /dev/null; then
+              echo "Otari is up"
+              exit 0
+            fi
+            sleep 2
+          done
+          echo "Otari did not become ready in time"
+          docker compose -f otari_docker_compose.yaml logs
+          exit 1
+
+      - name: Migrate app_attest database
+        run: |
+          sudo apt-get update && sudo apt-get install -y postgresql-client
+          bash scripts/migrate-app-attest-database-local.sh
+
+      - name: Run Otari compatibility tests
+        env:
+          MLPA_TEST_REQUIRE_REAL_BACKEND: "true"
+        run: uv run pytest src/tests/otari_compatibility -v --junit-xml=otari-compatibility-results.xml
+
+      - name: Summarize failures
+        if: always()
+        run: |
+          uv run python scripts/ci_failure_summary.py otari-compatibility-results.xml \
+            "> A failure here usually means MLPA and the pinned Otari release disagree on a contract (keys, budgets, error codes) -- see the checks below for what each one verifies."
+
+      - name: Show Otari logs on failure
+        if: failure()
+        run: docker compose -f otari_docker_compose.yaml logs otari
+
+      - name: Stop Otari + Postgres + fake provider
+        if: always()
+        run: docker compose -f otari_docker_compose.yaml down -v
+
   build-and-verify-docs:
     runs-on: ubuntu-latest
     steps:
