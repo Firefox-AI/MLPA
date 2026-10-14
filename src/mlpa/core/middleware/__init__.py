@@ -30,6 +30,7 @@ from mlpa.core.middleware.security_headers import security_headers_middleware
 from mlpa.core.middleware.set_json_content_type import (
     set_json_content_type_middleware,
 )
+from mlpa.core.request_preprocessing import TimingRoute
 from mlpa.core.request_timings import RequestTimingsMiddleware
 
 # Define middleware execution order explicitly (innermost to outermost)
@@ -68,6 +69,8 @@ def register_middleware(app):
         3. Import it at the top of this file
         4. Add to __all__ if needed
     """
+    app.router.route_class = TimingRoute
+
     # FastAPI executes middleware in reverse registration order (LIFO)
     # So we reverse MIDDLEWARE_EXECUTION_ORDER to get the correct execution order
     for middleware_func in reversed(MIDDLEWARE_EXECUTION_ORDER):

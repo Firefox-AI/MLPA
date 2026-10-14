@@ -275,7 +275,10 @@ async def test_search_records_upstream_span(mocker):
     client.post.return_value = response
     mocker.patch("mlpa.core.search.get_http_client", return_value=client)
     assert await get_search(request, authorized) == {"results": []}
-    assert [span["name"] for span in request.state.debug_spans] == ["upstream"]
+    assert [span["name"] for span in request.state.debug_spans] == [
+        "request_preparation",
+        "upstream",
+    ]
 
 
 @pytest.mark.parametrize(
