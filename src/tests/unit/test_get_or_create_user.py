@@ -3,12 +3,13 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from fastapi import HTTPException
 
-from mlpa.core.config import GUEST_CAPACITY_ID, USER_CAPACITY_ID, env
+from mlpa.core.config import GUEST_CAPACITY_ID, USER_CAPACITY_ID, Env, env
 from mlpa.core.utils import get_or_create_user
 
 _USER_ID = "user123:ai"
 _BASE_IDENTITY, _, _ = _USER_ID.partition(":")
 _BUDGET_ID = env.service_type_config["ai"]["budget_id"]
+_GUEST_USER_ID = f"{_BASE_IDENTITY}:s2s"
 _DB_USER = {"user_id": _USER_ID, "blocked": False, "budget_id": _BUDGET_ID}
 
 
@@ -177,10 +178,10 @@ async def test_guest_service_type_admits_into_guest_capacity(
 
     with (
         patch("mlpa.core.utils.env.MLPA_ENFORCE_GUEST_CAP", True),
-        patch("mlpa.core.utils.env.MLPA_GUEST_SERVICE_TYPES", {"ai"}),
+        patch("mlpa.core.utils.env.MLPA_GUEST_SERVICE_TYPES", {"s2s"}),
     ):
         with pytest.raises(HTTPException):
-            await get_or_create_user(_USER_ID)
+            await get_or_create_user(_GUEST_USER_ID)
 
     mock_app_attest_pg.admit_managed_base_identity.assert_awaited_once_with(
         base_identity=_BASE_IDENTITY, capacity_id=GUEST_CAPACITY_ID
@@ -193,9 +194,16 @@ async def test_guest_service_type_admits_into_guest_capacity(
 async def test_guest_cap_off_skips_admission(
     mock_litellm_pg, mock_app_attest_pg, mock_http_client
 ):
-    mock_litellm_pg.get_user.side_effect = [None, _DB_USER]
+    mock_litellm_pg.get_user.side_effect = [None, {"user_id": _GUEST_USER_ID}]
 
-    with patch("mlpa.core.utils.env.MLPA_GUEST_SERVICE_TYPES", {"ai"}):
-        await get_or_create_user(_USER_ID)
+    with patch("mlpa.core.utils.env.MLPA_GUEST_SERVICE_TYPES", {"s2s"}):
+        await get_or_create_user(_GUEST_USER_ID)
 
     mock_app_attest_pg.admit_managed_base_identity.assert_not_called()
+
+
+def test_overlapping_guest_and_user_service_types_rejected(monkeypatch):
+    monkeypatch.setenv("MLPA_GUEST_SERVICE_TYPES", '["ai"]')
+    monkeypatch.setenv("MLPA_CAPPED_SERVICE_TYPES", '["ai"]')
+    with pytest.raises(ValueError, match="overlap"):
+        Env()

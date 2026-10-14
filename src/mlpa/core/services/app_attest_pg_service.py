@@ -121,17 +121,9 @@ class AppAttestPGService(PGService):
                         """
                         INSERT INTO mlpa_user_capacity (id, max_identities, current_identities)
                         VALUES ($1, $2, 0)
-                        ON CONFLICT (id) DO NOTHING
-                        """,
-                        capacity_id,
-                        max_identities,
-                    )
-                    await conn.execute(
-                        """
-                        UPDATE mlpa_user_capacity
-                        SET max_identities = $2,
+                        ON CONFLICT (id) DO UPDATE SET
+                            max_identities = EXCLUDED.max_identities,
                             updated_at = NOW()
-                        WHERE id = $1
                         """,
                         capacity_id,
                         max_identities,
@@ -318,9 +310,10 @@ class AppAttestPGService(PGService):
                 """
                 SELECT 1
                 FROM mlpa_user_capacity_identities
-                WHERE base_identity = $1
+                WHERE base_identity = $1 AND capacity_id = $2
                 """,
                 base_identity,
+                capacity_id,
             )
             if not claimed:
                 return
@@ -328,9 +321,10 @@ class AppAttestPGService(PGService):
             await conn.execute(
                 """
                 DELETE FROM mlpa_user_capacity_identities
-                WHERE base_identity = $1
+                WHERE base_identity = $1 AND capacity_id = $2
                 """,
                 base_identity,
+                capacity_id,
             )
             await conn.execute(
                 """

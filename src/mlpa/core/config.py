@@ -1,7 +1,7 @@
 from functools import cached_property
 from typing import Annotated, Any, TypedDict
 
-from pydantic import field_validator
+from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 
@@ -26,12 +26,25 @@ class Env(BaseSettings):
     MLPA_ADMISSION_LOCK_TIMEOUT_MS: int = 5000
 
     # Guest capacity gate (AIPLAT-1447): same admission as above, own counter
-    # (mlpa_user_capacity row 2). Infra deletes guests older than the token TTL.
+    # (mlpa_user_capacity row 2). Infra deletes guest claims (capacity_id = 2)
+    # older than the token TTL and must then set row 2's current_identities to
+    # the remaining COUNT(*), otherwise slots only free up on MLPA restart.
     MLPA_MAX_GUESTS: int = 100000
     MLPA_ENFORCE_GUEST_CAP: bool = False
     MLPA_GUEST_SERVICE_TYPES: set[str] = set()
     # Kill switch for GET /verify/v1/guest
     MLPA_GUEST_ENABLED: bool = False
+
+    @model_validator(mode="after")
+    def _guest_and_user_caps_are_disjoint(self):
+        # A base identity holds one claim (PK), so a service type in both sets
+        # would mix the two counters.
+        overlap = self.MLPA_GUEST_SERVICE_TYPES & self.MLPA_CAPPED_SERVICE_TYPES
+        if overlap:
+            raise ValueError(
+                f"MLPA_GUEST_SERVICE_TYPES and MLPA_CAPPED_SERVICE_TYPES overlap: {sorted(overlap)}"
+            )
+        return self
 
     # Countries with their own Grafana breakout (AIPLAT-1266). Deliberately a
     # small set, distinct from the full ISO country_codes.COUNTRY_CODES list,
