@@ -68,7 +68,7 @@ async def get_guest_token(
     close the tab. Token expiry is in the JWT `exp` claim.
     """
     if not env.MLPA_GUEST_ENABLED:
-        raise HTTPException(status_code=404, detail="Not Found")
+        raise HTTPException(status_code=404, detail="Guest tokens are disabled")
     fragment = urlencode(
         {"access_token": issue_guest_token(), "token_type": "Bearer", "state": state}
     )
