@@ -21,6 +21,7 @@ from mlpa.core.classes import (
 from mlpa.core.completions import get_completion, get_or_create_user_for_completion
 from mlpa.core.config import (
     ERROR_CODE_GLOBAL_BUDGET_LIMIT_EXCEEDED,
+    ERROR_CODE_MAX_GUESTS_REACHED,
     ERROR_CODE_MAX_USERS_REACHED,
 )
 from mlpa.core.prometheus_metrics import (
@@ -317,6 +318,38 @@ async def test_signup_cap_records_excluded_alongside_rejection(mocker, metrics_s
             metrics_spy,
             AvailabilityOutcome.EXCLUDED,
             AvailabilityReason.SIGNUP_CAP_EXCEEDED,
+            model=SAMPLE_REQUEST.model,
+            service_type=SAMPLE_REQUEST.service_type,
+            purpose=SAMPLE_REQUEST.purpose,
+        )
+        == 1
+    )
+    assert _availability_total(metrics_spy) == 1
+    # The existing rejection metric is still recorded.
+    assert _rejection_total(metrics_spy) == 1
+
+
+async def test_guest_cap_records_excluded_alongside_rejection(mocker, metrics_spy):
+    mocker.patch(
+        "mlpa.core.completions.get_or_create_user",
+        mocker.AsyncMock(
+            side_effect=HTTPException(
+                status_code=403, detail={"error": ERROR_CODE_MAX_GUESTS_REACHED}
+            )
+        ),
+    )
+
+    with pytest.raises(HTTPException) as exc_info:
+        await get_or_create_user_for_completion(
+            _make_request(), SAMPLE_REQUEST.user, SAMPLE_REQUEST
+        )
+
+    assert exc_info.value.status_code == 403
+    assert (
+        _availability(
+            metrics_spy,
+            AvailabilityOutcome.EXCLUDED,
+            AvailabilityReason.GUEST_CAP_EXCEEDED,
             model=SAMPLE_REQUEST.model,
             service_type=SAMPLE_REQUEST.service_type,
             purpose=SAMPLE_REQUEST.purpose,

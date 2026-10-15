@@ -16,6 +16,7 @@ class PrometheusRejectionReason(StrEnum):
     RATE_LIMITED = "rate_limited"
     PAYLOAD_TOO_LARGE = "payload_too_large"
     SIGNUP_CAP_EXCEEDED = "signup_cap_exceeded"
+    GUEST_CAP_EXCEEDED = "guest_cap_exceeded"
     INVALID_MODEL_NAME = "invalid_model_name"
     INVALID_REQUEST = "invalid_request"
 
@@ -36,6 +37,7 @@ class AvailabilityReason(StrEnum):
     INVALID_AUTH_REQUEST = "invalid_auth_request"  # excluded
     INVALID_SERVICE_TYPE_FOR_MODEL = "invalid_service_type_for_model"  # excluded
     SIGNUP_CAP_EXCEEDED = "signup_cap_exceeded"  # excluded
+    GUEST_CAP_EXCEEDED = "guest_cap_exceeded"  # excluded
     BLOCKED = "blocked"  # excluded
     PROVISIONING_FAILURE = "provisioning_failure"  # failure
 
@@ -65,6 +67,7 @@ _AVAILABILITY_OUTCOME_BY_REASON: dict[AvailabilityReason, AvailabilityOutcome] =
     AvailabilityReason.INVALID_AUTH_REQUEST: AvailabilityOutcome.EXCLUDED,
     AvailabilityReason.INVALID_SERVICE_TYPE_FOR_MODEL: AvailabilityOutcome.EXCLUDED,
     AvailabilityReason.SIGNUP_CAP_EXCEEDED: AvailabilityOutcome.EXCLUDED,
+    AvailabilityReason.GUEST_CAP_EXCEEDED: AvailabilityOutcome.EXCLUDED,
     AvailabilityReason.BLOCKED: AvailabilityOutcome.EXCLUDED,
     AvailabilityReason.PROVISIONING_FAILURE: AvailabilityOutcome.FAILURE,
     AvailabilityReason.AUTH_SYSTEM_FAILURE: AvailabilityOutcome.FAILURE,
@@ -361,7 +364,7 @@ def build_metrics(registry: CollectorRegistry = REGISTRY) -> PrometheusMetrics:
         ),
         chat_request_rejections=Counter(
             "mlpa_chat_request_rejections_total",
-            "Number of chat requests rejected due to budget, rate limit, payload size, signup cap, invalid model name, or invalid request body.",
+            "Number of chat requests rejected due to budget, rate limit, payload size, signup or guest cap, invalid model name, or invalid request body.",
             ["reason", "model", "service_type", "purpose"],
             registry=registry,
         ),
@@ -408,7 +411,7 @@ def build_metrics(registry: CollectorRegistry = REGISTRY) -> PrometheusMetrics:
         ),
         search_request_rejections=Counter(
             "mlpa_search_request_rejections_total",
-            "Number of search requests rejected due to budget, rate limit, payload size, signup cap, invalid model name, or invalid request body.",
+            "Number of search requests rejected due to budget, rate limit, payload size, signup or guest cap, invalid model name, or invalid request body.",
             ["reason", "model", "service_type", "purpose"],
             registry=registry,
         ),

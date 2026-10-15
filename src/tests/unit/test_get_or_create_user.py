@@ -3,7 +3,13 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from fastapi import HTTPException
 
-from mlpa.core.config import GUEST_CAPACITY_ID, USER_CAPACITY_ID, Env, env
+from mlpa.core.config import (
+    ERROR_CODE_MAX_GUESTS_REACHED,
+    GUEST_CAPACITY_ID,
+    USER_CAPACITY_ID,
+    Env,
+    env,
+)
 from mlpa.core.utils import get_or_create_user
 
 _USER_ID = "user123:ai"
@@ -189,6 +195,23 @@ async def test_guest_service_type_admits_into_guest_capacity(
     mock_app_attest_pg.maybe_release_managed_base_identity_if_no_managed_users.assert_awaited_once_with(
         base_identity=_BASE_IDENTITY, capacity_id=GUEST_CAPACITY_ID
     )
+
+
+async def test_guest_cap_full_returns_guest_error_code(
+    mock_litellm_pg, mock_app_attest_pg, mock_http_client
+):
+    mock_litellm_pg.get_user.return_value = None
+    mock_app_attest_pg.admit_managed_base_identity.return_value = (False, False)
+
+    with (
+        patch("mlpa.core.utils.env.MLPA_ENFORCE_GUEST_CAP", True),
+        patch("mlpa.core.utils.env.MLPA_GUEST_SERVICE_TYPES", {"s2s"}),
+    ):
+        with pytest.raises(HTTPException) as exc_info:
+            await get_or_create_user(_GUEST_USER_ID)
+
+    assert exc_info.value.status_code == 403
+    assert exc_info.value.detail == {"error": ERROR_CODE_MAX_GUESTS_REACHED}
 
 
 async def test_guest_cap_off_skips_admission(

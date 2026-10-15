@@ -8,6 +8,7 @@ from fastapi import HTTPException
 
 from mlpa.core.classes import AuthorizedChatRequest
 from mlpa.core.config import (
+    ERROR_CODE_MAX_GUESTS_REACHED,
     ERROR_CODE_MAX_USERS_REACHED,
     GUEST_CAPACITY_ID,
     USER_CAPACITY_ID,
@@ -95,7 +96,11 @@ async def mock_get_or_create_user(mock_litellm_pg, mock_app_attest_pg, user_id: 
             if not admitted:
                 raise HTTPException(
                     status_code=403,
-                    detail={"error": ERROR_CODE_MAX_USERS_REACHED},
+                    detail={
+                        "error": ERROR_CODE_MAX_GUESTS_REACHED
+                        if capacity_id == GUEST_CAPACITY_ID
+                        else ERROR_CODE_MAX_USERS_REACHED
+                    },
                 )
 
         mock_litellm_pg.store_user(user_id, {"data": "testdata"})

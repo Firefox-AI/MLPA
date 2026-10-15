@@ -702,6 +702,8 @@ ERROR_CODE_FASTLY_WAF_RATE_LIMIT: int = 6
 ERROR_CODE_INVALID_MODEL_NAME: int = 8
 ERROR_CODE_INVALID_REQUEST: int = 9
 ERROR_CODE_GLOBAL_BUDGET_LIMIT_EXCEEDED: int = 10
+# 11 is the guest pool exhausted code (AIPLAT-1449).
+ERROR_CODE_MAX_GUESTS_REACHED: int = 12
 
 ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
     429: {
@@ -842,7 +844,7 @@ ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
         },
     },
     403: {
-        "description": "Forbidden - Maximum signed-in users reached",
+        "description": "Forbidden - Maximum signed-in users or guests reached",
         "content": {
             "application/json": {
                 "schema": {
@@ -850,7 +852,7 @@ ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
                     "properties": {
                         "error": {
                             "type": "integer",
-                            "description": "Error code: 4 for maximum signed-in users reached",
+                            "description": "Error code: 4 for maximum signed-in users reached, 12 for maximum guests reached",
                         }
                     },
                     "required": ["error"],
@@ -860,7 +862,12 @@ ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
                         "summary": "Maximum signed-in users reached",
                         "value": {"error": ERROR_CODE_MAX_USERS_REACHED},
                         "description": "New sign-ins for cap-managed service types are rejected because capacity is full.",
-                    }
+                    },
+                    "max_guests_reached": {
+                        "summary": "Maximum guests reached",
+                        "value": {"error": ERROR_CODE_MAX_GUESTS_REACHED},
+                        "description": "New guests for guest service types are rejected because guest capacity is full.",
+                    },
                 },
             }
         },

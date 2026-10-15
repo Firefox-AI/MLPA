@@ -13,7 +13,9 @@ from jwtoxide import DecodingKey, ValidationOptions, decode, encode
 
 from mlpa.core.classes import AssertionAuth, AttestationAuth
 from mlpa.core.config import (
+    ERROR_CODE_MAX_GUESTS_REACHED,
     ERROR_CODE_MAX_USERS_REACHED,
+    GUEST_CAPACITY_ID,
     LITELLM_MASTER_AUTH_HEADERS,
     capacity_id_for_service_type,
     env,
@@ -214,7 +216,11 @@ async def get_or_create_user(user_id: str):
                 if not admitted:
                     raise HTTPException(
                         status_code=403,
-                        detail={"error": ERROR_CODE_MAX_USERS_REACHED},
+                        detail={
+                            "error": ERROR_CODE_MAX_GUESTS_REACHED
+                            if capacity_id == GUEST_CAPACITY_ID
+                            else ERROR_CODE_MAX_USERS_REACHED
+                        },
                     )
                 if newly_claimed:
                     claimed_capacity_id = capacity_id
