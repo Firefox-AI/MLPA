@@ -212,13 +212,14 @@ async def test_wrapper_shared_call_401_records_auth_rejected(mocker, metrics_spy
 async def test_wrapper_bad_guest_token_records_guest_auth_rejected(mocker, metrics_spy):
     import jwt
 
-    from mlpa.core.routers.guest.guest import GUEST_TOKEN_ISSUER
+    from mlpa.core.routers.guest.guest import GUEST_TOKEN_HEADERS, GUEST_TOKEN_ISSUER
 
     mocker.patch.object(env, "MLPA_GUEST_ENABLED", True)
     forged = jwt.encode(
         {"iss": GUEST_TOKEN_ISSUER, "aud": "mlpa", "sub": "x", "iat": 1, "exp": 2**40},
         "wrong-secret",
         algorithm="HS256",
+        headers=GUEST_TOKEN_HEADERS,
     )
 
     with pytest.raises(HTTPException) as exc_info:

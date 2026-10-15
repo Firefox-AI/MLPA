@@ -20,8 +20,7 @@ from mlpa.core.prometheus_metrics import AvailabilityReason
 from mlpa.core.request_timings import measure
 from mlpa.core.routers.appattest import app_attest_auth
 from mlpa.core.routers.guest.guest import (
-    GUEST_TOKEN_ISSUER,
-    peek_issuer,
+    is_guest_token,
     verify_guest_token,
 )
 from mlpa.core.utils import (
@@ -163,7 +162,7 @@ async def _authorize_common_request(
         return build_authorized_request(
             f"{play_user_id}:{service_type.value}", purpose_value
         )
-    if peek_issuer(authorization) == GUEST_TOKEN_ISSUER:
+    if is_guest_token(authorization):
         return _authorize_guest(
             request,
             build_authorized_request,
@@ -283,7 +282,7 @@ async def authorize_chat_request(
         if exc.status_code == 401:
             reason = (
                 AvailabilityReason.GUEST_AUTH_REJECTED
-                if peek_issuer(authorization) == GUEST_TOKEN_ISSUER
+                if is_guest_token(authorization)
                 else AvailabilityReason.AUTH_REJECTED
             )
         elif exc.status_code == 400:

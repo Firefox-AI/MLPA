@@ -5,7 +5,11 @@ import pytest
 from fastapi import HTTPException
 
 from mlpa.core.config import env
-from mlpa.core.routers.guest.guest import GUEST_TOKEN_ISSUER
+from mlpa.core.routers.guest.guest import (
+    GUEST_TOKEN_HEADERS,
+    GUEST_TOKEN_ISSUER,
+    GUEST_TOKEN_PREFIX,
+)
 from mlpa.core.utils import extract_user_from_play_integrity_jwt
 
 
@@ -41,7 +45,8 @@ def test_issue_guest_token(mocked_client_integration):
     assert "expires_in" not in data
 
     token = data["access_token"]
-    assert jwt.get_unverified_header(token)["typ"] == "at+JWT"
+    assert jwt.get_unverified_header(token) == {"alg": "HS256", **GUEST_TOKEN_HEADERS}
+    assert token.startswith(GUEST_TOKEN_PREFIX)
     claims = jwt.decode(
         token,
         env.MLPA_GUEST_TOKEN_SIGNING_SECRET,

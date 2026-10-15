@@ -1,3 +1,4 @@
+import json
 import time
 import uuid
 from urllib.parse import urlencode
@@ -5,6 +6,7 @@ from urllib.parse import urlencode
 import jwt
 from fastapi import APIRouter, Header, HTTPException, Query
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from jwt.utils import base64url_encode
 
 from mlpa.core.config import env
 from mlpa.core.logger import logger
@@ -12,6 +14,19 @@ from mlpa.core.logger import logger
 router = APIRouter()
 
 GUEST_TOKEN_ISSUER = "https://mlpa-prod-prod-mozilla.freetls.fastly.net"
+# Bump the kid when rotating MLPA_GUEST_TOKEN_SIGNING_SECRET
+GUEST_TOKEN_HEADERS = {"typ": "at+JWT", "kid": "mlpa-guest-v1"}
+# First segment of every guest token, encoded the way PyJWT does it
+GUEST_TOKEN_PREFIX = (
+    base64url_encode(
+        json.dumps(
+            {"alg": "HS256", **GUEST_TOKEN_HEADERS},
+            separators=(",", ":"),
+            sort_keys=True,
+        ).encode()
+    ).decode()
+    + "."
+)
 
 
 def issue_guest_token() -> str:
@@ -30,20 +45,13 @@ def issue_guest_token() -> str:
         payload,
         env.MLPA_GUEST_TOKEN_SIGNING_SECRET,
         algorithm="HS256",
-        headers={"typ": "at+JWT"},
+        headers=GUEST_TOKEN_HEADERS,
     )
 
 
-def peek_issuer(authorization: str) -> str | None:
-    """Unverified `iss`, only to pick which verifier runs."""
-    token = authorization.removeprefix("Bearer ").strip()
-    # Opaque FxA tokens: skip PyJWT, its DecodeError costs more than the check
-    if token.count(".") != 2:
-        return None
-    try:
-        return jwt.decode(token, options={"verify_signature": False}).get("iss")
-    except jwt.DecodeError:
-        return None
+def is_guest_token(authorization: str) -> bool:
+    """Routes to guest auth without decoding, verify_guest_token does the real check."""
+    return authorization.removeprefix("Bearer ").lstrip().startswith(GUEST_TOKEN_PREFIX)
 
 
 def verify_guest_token(authorization: str) -> str:

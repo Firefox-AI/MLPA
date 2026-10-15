@@ -2,7 +2,7 @@
 
 The auth backends are replaced with instant stubs, so this measures only the
 routing work: header checks, purpose and model validation, App Attest JWT
-parsing and body hashing, the guest token issuer peek, and building the
+parsing and body hashing, the guest token prefix check, and building the
 AuthorizedChatRequest.
 """
 

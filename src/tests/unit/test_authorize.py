@@ -301,12 +301,13 @@ async def test_guest_token_gets_guest_service_type_and_key(guest_enabled, mocker
 async def test_forged_guest_token_is_rejected(guest_enabled, mocker):
     import jwt
 
-    from mlpa.core.routers.guest.guest import GUEST_TOKEN_ISSUER
+    from mlpa.core.routers.guest.guest import GUEST_TOKEN_HEADERS, GUEST_TOKEN_ISSUER
 
     forged = jwt.encode(
         {"iss": GUEST_TOKEN_ISSUER, "aud": "mlpa", "sub": "x", "iat": 1, "exp": 2**40},
         "wrong-secret",
         algorithm="HS256",
+        headers=GUEST_TOKEN_HEADERS,
     )
     with pytest.raises(HTTPException) as exc:
         await authorize_module.authorize_chat_request(
