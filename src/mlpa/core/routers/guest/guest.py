@@ -37,6 +37,9 @@ def issue_guest_token() -> str:
 def peek_issuer(authorization: str) -> str | None:
     """Unverified `iss`, only to pick which verifier runs."""
     token = authorization.removeprefix("Bearer ").strip()
+    # Opaque FxA tokens: skip PyJWT, its DecodeError costs more than the check
+    if token.count(".") != 2:
+        return None
     try:
         return jwt.decode(token, options={"verify_signature": False}).get("iss")
     except jwt.DecodeError:

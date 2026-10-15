@@ -98,6 +98,34 @@ def _resolve_purpose(service_type_value: str, purpose_header: str | None) -> str
     return ""
 
 
+def _authorize_guest(
+    request: Request,
+    build_authorized_request: Callable[[str, str], TAuthorizedRequest],
+    authorization: str,
+    service_type: ServiceType,
+    purpose_value: str,
+) -> TAuthorizedRequest:
+    with measure("auth_check", request):
+        guest_id = verify_guest_token(authorization)
+    guest_service_type = f"{service_type.value}-guest"
+    if guest_service_type not in env.valid_service_types_set:
+        raise HTTPException(
+            status_code=400,
+            detail=f"service-type '{service_type.value}' is not available for guests",
+        )
+    # Read by the metrics middleware, it only sees the raw header otherwise
+    request.state.service_type = guest_service_type
+    authorized = build_authorized_request(
+        f"{guest_id}:{guest_service_type}", purpose_value
+    )
+    return authorized.model_copy(
+        update={
+            "service_type": guest_service_type,
+            "litellm_virtual_key": guest_virtual_key(),
+        }
+    )
+
+
 async def _authorize_common_request(
     request: Request,
     build_authorized_request: Callable[[str, str], TAuthorizedRequest],
@@ -114,26 +142,6 @@ async def _authorize_common_request(
 
     purpose_value = _resolve_purpose(service_type.value, purpose)
 
-    if peek_issuer(authorization) == GUEST_TOKEN_ISSUER:
-        # Clients send the plain service type, guests get the "-guest" one
-        # for the rest of the flow: LiteLLM user id, budget, metrics.
-        with measure("auth_check", request):
-            guest_id = verify_guest_token(authorization)
-        guest_service_type = f"{service_type.value}-guest"
-        if guest_service_type not in env.valid_service_types_set:
-            raise HTTPException(
-                status_code=400,
-                detail=f"service-type '{service_type.value}' is not available for guests",
-            )
-        request.state.service_type = guest_service_type
-        return build_authorized_request(
-            f"{guest_id}:{guest_service_type}", purpose_value
-        ).model_copy(
-            update={
-                "service_type": guest_service_type,
-                "litellm_virtual_key": guest_virtual_key(),
-            }
-        )
     if use_app_attest:
         # Apple App Attest
         with measure("auth_check", request):
@@ -154,6 +162,14 @@ async def _authorize_common_request(
             play_user_id = extract_user_from_play_integrity_jwt(authorization)
         return build_authorized_request(
             f"{play_user_id}:{service_type.value}", purpose_value
+        )
+    if peek_issuer(authorization) == GUEST_TOKEN_ISSUER:
+        return _authorize_guest(
+            request,
+            build_authorized_request,
+            authorization,
+            service_type,
+            purpose_value,
         )
     if service_type.value.endswith("-dev"):
         if x_dev_authorization is None:

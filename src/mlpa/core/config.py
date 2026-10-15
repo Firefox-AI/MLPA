@@ -531,7 +531,7 @@ class Env(BaseSettings):
         """
         # Force certain models to use certain service types
         return {
-            "exa-search": ["search", "search-dev", "agent-search"],
+            "exa-search": ["search", "search-dev", "agent-search", "search-guest"],
             "exa": ["answer", "sw-answer"],
             "liner": ["liner-answer"],
         }

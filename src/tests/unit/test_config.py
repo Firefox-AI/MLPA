@@ -386,7 +386,7 @@ def test_forced_model_service_type_pairs_defaults():
     env = Env()
 
     assert env.forced_model_service_type_pairs == {
-        "exa-search": ["search", "search-dev", "agent-search"],
+        "exa-search": ["search", "search-dev", "agent-search", "search-guest"],
         "exa": ["answer", "sw-answer"],
         "liner": ["liner-answer"],
     }
@@ -429,3 +429,8 @@ def test_guest_enabled_refuses_default_signing_secret(monkeypatch):
         Env()
     monkeypatch.setenv("MLPA_GUEST_TOKEN_SIGNING_SECRET", "real-secret")
     Env()
+
+
+def test_search_guest_is_valid_for_exa_search():
+    # /v1/search checks the service type after auth rewrites search -> search-guest
+    assert Env().valid_service_type_for_model("search-guest", "exa-search")
