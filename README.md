@@ -106,9 +106,10 @@ gh workflow run test-gateway-image.yml --repo Firefox-AI/MLPA \
 ```
 
 The workflow pulls the image and runs `src/tests/litellm_compatibility` with
-PostgreSQL, Redis, and the local Exa stub. It uses the same test setup as normal
-CI, which continues to use the upstream image pinned in Compose. This does not
-deploy the candidate or make live Liner/Exa requests.
+PostgreSQL, Redis, and the local Exa stub. Normal CI uses the upstream image pinned
+in `litellm_docker_compose.yaml`; the manual workflow overrides only that image.
+Both use the same compatibility tests and configuration. The workflow does not
+deploy the candidate or enable its custom handlers in the test configuration.
 
 ## Auth benchmarks
 
