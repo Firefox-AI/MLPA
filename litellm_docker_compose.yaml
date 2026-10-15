@@ -67,6 +67,15 @@ services:
       PORT: 4000
     command: ["--config", "/app/config.yaml"]
 
+  # Fake Exa that always errors, so src/tests/litellm_compatibility can check
+  # LiteLLM still passes Exa's error tag through to MLPA.
+  exa_stub:
+    image: python:3.12-alpine
+    container_name: exa_stub
+    volumes:
+      - ./src/tests/litellm_compatibility/exa_stub.py:/app/exa_stub.py:ro
+    command: ["python", "/app/exa_stub.py"]
+
   privacy_filter:
     profiles:
       - privacy-filter
