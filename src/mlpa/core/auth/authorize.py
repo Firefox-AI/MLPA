@@ -31,23 +31,13 @@ TAuthorizedRequest = TypeVar(
 )
 
 
-def _resolve_custom_virtual_key(
-    virtual_key_header: str | None, service_type: str = ""
-) -> str | None:
+def _resolve_custom_virtual_key(virtual_key_header: str | None) -> str | None:
     """
-    Pick the LiteLLM key to forward upstream instead of MLPA_VIRTUAL_KEY.
+    Normalize the `litellm-virtual-key` header into the key to forward upstream.
 
-    Guest service types always get MLPA_GUEST_VIRTUAL_KEY, the header can't
-    move them off the guest spend cap. Otherwise the `litellm-virtual-key`
-    header, when custom virtual keys are allowed. None means the default key.
+    Returns None when custom virtual keys are not allowed.
+    Throws HTTPException when key not fund within custom_virtual_keys
     """
-    if service_type.endswith("-guest"):
-        if not env.MLPA_GUEST_VIRTUAL_KEY:
-            raise HTTPException(
-                status_code=503, detail={"error": "Guest access is not configured."}
-            )
-        return env.MLPA_GUEST_VIRTUAL_KEY
-
     if not env.ALLOW_CUSTOM_VIRTUAL_KEY:
         return None
 
@@ -55,6 +45,20 @@ def _resolve_custom_virtual_key(
     if not key:
         return None
     return key
+
+
+def guest_virtual_key() -> str:
+    """
+    LiteLLM key for requests authenticated with an MLPA guest token.
+
+    Only call it after the guest token is verified, never from client headers.
+    Never falls back to MLPA_VIRTUAL_KEY, that would bill guests to FxA users.
+    """
+    if not env.MLPA_GUEST_VIRTUAL_KEY:
+        raise HTTPException(
+            status_code=503, detail={"error": "Guest access is not configured."}
+        )
+    return env.MLPA_GUEST_VIRTUAL_KEY
 
 
 def _resolve_purpose(service_type_value: str, purpose_header: str | None) -> str:
@@ -161,9 +165,7 @@ async def authorize_chat_request(
 ) -> AuthorizedChatRequest:
     with measure("context_checks", request):
         client_country = get_client_country(request)
-        custom_virtual_key = _resolve_custom_virtual_key(
-            litellm_virtual_key, service_type.value
-        )
+        custom_virtual_key = _resolve_custom_virtual_key(litellm_virtual_key)
 
         # Charset/length check runs before any auth, DB, or LiteLLM work below, so
         # fuzzed/scanner model values are rejected without that cost.
@@ -266,9 +268,7 @@ async def authorize_search_request(
 ) -> AuthorizedSearchRequest:
     with measure("context_checks", request):
         client_country = get_client_country(request)
-        custom_virtual_key = _resolve_custom_virtual_key(
-            litellm_virtual_key, service_type.value
-        )
+        custom_virtual_key = _resolve_custom_virtual_key(litellm_virtual_key)
     return await _authorize_common_request(
         request=request,
         build_authorized_request=lambda user, purpose_value: AuthorizedSearchRequest(
