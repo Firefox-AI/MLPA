@@ -109,25 +109,17 @@ class AppAttestPGService(PGService):
         """
         Seed the user and guest capacity rows, then reconcile the claim table.
 
-        The seed is fatal on failure: without the row every admission 500s, so we
-        let it crash startup. Reconciliation is best-effort — if it fails the row
-        still holds a stale count and admissions keep working.
+        The user seed is fatal on failure: without the row every admission 500s,
+        so we let it crash startup. The guest seed only logs, so a missed
+        c41d7e2a9f10 migration (CHECK id = 1) breaks guests, not every pod.
+        Reconciliation is best-effort — if it fails the row still holds a stale
+        count and admissions keep working.
         """
-        async with self.pool.acquire() as conn:
-            async with conn.transaction():
-                for capacity_id in (USER_CAPACITY_ID, GUEST_CAPACITY_ID):
-                    _enforced, max_identities, _types = capacity_settings(capacity_id)
-                    await conn.execute(
-                        """
-                        INSERT INTO mlpa_user_capacity (id, max_identities, current_identities)
-                        VALUES ($1, $2, 0)
-                        ON CONFLICT (id) DO UPDATE SET
-                            max_identities = EXCLUDED.max_identities,
-                            updated_at = NOW()
-                        """,
-                        capacity_id,
-                        max_identities,
-                    )
+        await self._seed_capacity_row(USER_CAPACITY_ID)
+        try:
+            await self._seed_capacity_row(GUEST_CAPACITY_ID)
+        except Exception as e:
+            logger.error(f"Guest capacity seed failed, is alembic at head? {e}")
 
         try:
             await self._reconcile_capacity_claims()
@@ -135,6 +127,21 @@ class AppAttestPGService(PGService):
             logger.error(
                 f"Capacity reconciliation failed; serving with last-known "
                 f"current_identities count: {e}"
+            )
+
+    async def _seed_capacity_row(self, capacity_id: int) -> None:
+        _enforced, max_identities, _types = capacity_settings(capacity_id)
+        async with self.pool.acquire() as conn:
+            await conn.execute(
+                """
+                INSERT INTO mlpa_user_capacity (id, max_identities, current_identities)
+                VALUES ($1, $2, 0)
+                ON CONFLICT (id) DO UPDATE SET
+                    max_identities = EXCLUDED.max_identities,
+                    updated_at = NOW()
+                """,
+                capacity_id,
+                max_identities,
             )
 
     async def _reconcile_capacity_claims(self) -> None:
@@ -171,10 +178,13 @@ class AppAttestPGService(PGService):
             if base_identities:
                 await conn.executemany(
                     """
-                    INSERT INTO mlpa_user_capacity_identities (base_identity)
-                    VALUES ($1)
+                    INSERT INTO mlpa_user_capacity_identities (base_identity, capacity_id)
+                    VALUES ($1, $2)
                     """,
-                    [(base_identity,) for base_identity in base_identities],
+                    [
+                        (base_identity, USER_CAPACITY_ID)
+                        for base_identity in base_identities
+                    ],
                 )
 
             seeded_claims = await conn.fetchval(
@@ -239,9 +249,10 @@ class AppAttestPGService(PGService):
                 """
                 SELECT 1
                 FROM mlpa_user_capacity_identities
-                WHERE base_identity = $1
+                WHERE base_identity = $1 AND capacity_id = $2
                 """,
                 base_identity,
+                capacity_id,
             )
             if already_claimed:
                 return True, False

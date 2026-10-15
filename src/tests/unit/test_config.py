@@ -1,6 +1,8 @@
 import os
 from unittest.mock import patch
 
+import pytest
+
 from mlpa.core.config import Env
 
 
@@ -416,3 +418,11 @@ def test_valid_service_type_for_model_unconfigured_model():
     )
     assert env.valid_service_type_for_model("search", "mistral-small-2603") is False
     assert env.valid_service_type_for_model("search-dev", "mistral-small-2603") is False
+
+
+def test_guest_enabled_refuses_default_signing_secret(monkeypatch):
+    monkeypatch.setenv("MLPA_GUEST_ENABLED", "true")
+    with pytest.raises(ValueError, match="MLPA_GUEST_TOKEN_SIGNING_SECRET"):
+        Env()
+    monkeypatch.setenv("MLPA_GUEST_TOKEN_SIGNING_SECRET", "real-secret")
+    Env()

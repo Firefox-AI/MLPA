@@ -29,6 +29,9 @@ class Env(BaseSettings):
     # (mlpa_user_capacity row 2). Infra deletes guest claims (capacity_id = 2)
     # older than the token TTL and must then set row 2's current_identities to
     # the remaining COUNT(*), otherwise slots only free up on MLPA restart.
+    # Turn MLPA_ENFORCE_GUEST_CAP on only after every pod runs this image, and
+    # off before rolling back: older images' reconcile deletes all claims,
+    # guest ones included, and never recounts row 2.
     MLPA_MAX_GUESTS: int = 100000
     MLPA_ENFORCE_GUEST_CAP: bool = False
     MLPA_GUEST_SERVICE_TYPES: set[str] = set()
@@ -37,12 +40,24 @@ class Env(BaseSettings):
 
     @model_validator(mode="after")
     def _guest_and_user_caps_are_disjoint(self):
-        # A base identity holds one claim (PK), so a service type in both sets
-        # would mix the two counters.
+        # A service type in both sets would admit one new user into both rows.
         overlap = self.MLPA_GUEST_SERVICE_TYPES & self.MLPA_CAPPED_SERVICE_TYPES
         if overlap:
             raise ValueError(
                 f"MLPA_GUEST_SERVICE_TYPES and MLPA_CAPPED_SERVICE_TYPES overlap: {sorted(overlap)}"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _guest_secret_is_set(self):
+        # The default is in the public repo, anyone could sign guest tokens with it.
+        if (
+            self.MLPA_GUEST_ENABLED
+            and not self.MLPA_DEBUG
+            and self.MLPA_GUEST_TOKEN_SIGNING_SECRET == "mlpa-guest-dev-secret"
+        ):
+            raise ValueError(
+                "MLPA_GUEST_ENABLED needs MLPA_GUEST_TOKEN_SIGNING_SECRET set"
             )
         return self
 

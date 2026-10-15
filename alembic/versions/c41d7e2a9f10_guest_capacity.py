@@ -31,10 +31,26 @@ def upgrade() -> None:
             ADD COLUMN capacity_id SMALLINT NOT NULL DEFAULT 1
         """
     )
+    # One claim per (identity, capacity row), so a user claim and a guest claim
+    # for the same base identity don't collide.
+    op.execute(
+        """
+        ALTER TABLE mlpa_user_capacity_identities
+            DROP CONSTRAINT mlpa_user_capacity_identities_pkey,
+            ADD PRIMARY KEY (base_identity, capacity_id)
+        """
+    )
 
 
 def downgrade() -> None:
     op.execute("DELETE FROM mlpa_user_capacity_identities WHERE capacity_id = 2")
+    op.execute(
+        """
+        ALTER TABLE mlpa_user_capacity_identities
+            DROP CONSTRAINT mlpa_user_capacity_identities_pkey,
+            ADD PRIMARY KEY (base_identity)
+        """
+    )
     op.execute("ALTER TABLE mlpa_user_capacity_identities DROP COLUMN capacity_id")
     op.execute("DELETE FROM mlpa_user_capacity WHERE id = 2")
     op.execute(

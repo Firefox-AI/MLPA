@@ -293,3 +293,24 @@ async def test_ensure_capacity_state_reconcile_failure_is_best_effort(mocker):
     # ...and the failure was logged rather than propagated.
     log_error.assert_called_once()
     assert "reconciliation failed" in log_error.call_args.args[0].lower()
+
+
+async def test_ensure_capacity_state_guest_seed_failure_is_logged(mocker):
+    """Guest row seed failing (e.g. old CHECK id = 1) must not crash startup."""
+    litellm_pg = MagicMock()
+    litellm_pg.list_managed_base_identities = AsyncMock(return_value=[])
+    service = AppAttestPGService(litellm_pg)
+
+    conn = _mock_maintenance_conn()
+
+    async def execute(sql, *args):
+        if "INSERT INTO mlpa_user_capacity " in sql and args[0] == 2:
+            raise RuntimeError("violates check constraint")
+
+    conn.execute = AsyncMock(side_effect=execute)
+    mocker.patch.object(PGService, "pool", new=_mock_pool(conn))
+    log_error = mocker.patch("mlpa.core.services.app_attest_pg_service.logger.error")
+
+    await service.ensure_capacity_state()
+
+    assert "guest capacity seed failed" in log_error.call_args_list[0].args[0].lower()
