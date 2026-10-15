@@ -216,7 +216,7 @@ class MockAppAttestPGService:
             "capacity_updated_at": None,
             "capacity_row_missing": False,
             "enforce_guest_cap": env.MLPA_ENFORCE_GUEST_CAP,
-            "guest_service_types": sorted(env.MLPA_GUEST_SERVICE_TYPES),
+            "guest_service_types": list(env.MLPA_GUEST_SERVICE_TYPES),
             "max_guests": env.MLPA_MAX_GUESTS,
             "current_guests": len(self.guest_capacity_claims),
         }

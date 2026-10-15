@@ -160,12 +160,12 @@ class AppAttestPGService(PGService):
         ) as conn:
             # Serialize so concurrent app startups do not race on the claim table.
             await conn.fetchrow(
-                "SELECT 1 FROM mlpa_user_capacity WHERE id = 1 FOR UPDATE"
+                f"SELECT 1 FROM mlpa_user_capacity WHERE id = {USER_CAPACITY_ID} FOR UPDATE"
             )
 
             # Blocked rows still count toward capacity.
             await conn.execute(
-                "DELETE FROM mlpa_user_capacity_identities WHERE capacity_id = 1"
+                f"DELETE FROM mlpa_user_capacity_identities WHERE capacity_id = {USER_CAPACITY_ID}"
             )
 
             if base_identities:
@@ -178,31 +178,31 @@ class AppAttestPGService(PGService):
                 )
 
             seeded_claims = await conn.fetchval(
-                "SELECT COUNT(*) FROM mlpa_user_capacity_identities WHERE capacity_id = 1"
+                f"SELECT COUNT(*) FROM mlpa_user_capacity_identities WHERE capacity_id = {USER_CAPACITY_ID}"
             )
             await conn.execute(
-                """
+                f"""
                 UPDATE mlpa_user_capacity
                 SET current_identities = $1,
                     updated_at = NOW()
-                WHERE id = 1
+                WHERE id = {USER_CAPACITY_ID}
                 """,
                 seeded_claims,
             )
 
             # Lock first so the count below sees every committed guest admission.
             await conn.fetchrow(
-                "SELECT 1 FROM mlpa_user_capacity WHERE id = 2 FOR UPDATE"
+                f"SELECT 1 FROM mlpa_user_capacity WHERE id = {GUEST_CAPACITY_ID} FOR UPDATE"
             )
             await conn.execute(
-                """
+                f"""
                 UPDATE mlpa_user_capacity
                 SET current_identities = (
                         SELECT COUNT(*) FROM mlpa_user_capacity_identities
-                        WHERE capacity_id = 2
+                        WHERE capacity_id = {GUEST_CAPACITY_ID}
                     ),
                     updated_at = NOW()
-                WHERE id = 2
+                WHERE id = {GUEST_CAPACITY_ID}
                 """
             )
 
@@ -361,13 +361,11 @@ class AppAttestPGService(PGService):
         guest_row = by_id.get(GUEST_CAPACITY_ID)
         guests = {
             "enforce_guest_cap": env.MLPA_ENFORCE_GUEST_CAP,
-            "guest_service_types": sorted(env.MLPA_GUEST_SERVICE_TYPES),
+            "guest_service_types": list(env.MLPA_GUEST_SERVICE_TYPES),
             "max_guests": int(guest_row["max_identities"])
             if guest_row
             else env.MLPA_MAX_GUESTS,
-            "current_guests": int(guest_row["current_identities"])
-            if guest_row
-            else None,
+            "current_guests": int(guest_row["current_identities"]) if guest_row else 0,
         }
 
         if row is None:
