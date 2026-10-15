@@ -634,24 +634,33 @@ USER_CAPACITY_ID = 1
 GUEST_CAPACITY_ID = 2
 
 
+# env attribute names for (enforced, max identities, service types) per
+# mlpa_user_capacity row. Names, not values, so tests can patch env.
+CAPACITY_SETTINGS = {
+    USER_CAPACITY_ID: (
+        "MLPA_ENFORCE_SIGNIN_CAP",
+        "MLPA_MAX_SIGNED_IN_USERS",
+        "MLPA_CAPPED_SERVICE_TYPES",
+    ),
+    GUEST_CAPACITY_ID: (
+        "MLPA_ENFORCE_GUEST_CAP",
+        "MLPA_MAX_GUESTS",
+        "MLPA_GUEST_SERVICE_TYPES",
+    ),
+}
+
+
 def capacity_settings(capacity_id: int) -> tuple[bool, int, set[str]]:
     """(enforced, max identities, service types) for a mlpa_user_capacity row."""
-    if capacity_id == GUEST_CAPACITY_ID:
-        return (
-            env.MLPA_ENFORCE_GUEST_CAP,
-            env.MLPA_MAX_GUESTS,
-            env.MLPA_GUEST_SERVICE_TYPES,
-        )
-    return (
-        env.MLPA_ENFORCE_SIGNIN_CAP,
-        env.MLPA_MAX_SIGNED_IN_USERS,
-        env.MLPA_CAPPED_SERVICE_TYPES,
+    enforced, max_identities, service_types = (
+        getattr(env, name) for name in CAPACITY_SETTINGS[capacity_id]
     )
+    return enforced, max_identities, service_types
 
 
 def capacity_id_for_service_type(service_type: str) -> int | None:
     """Capacity row a new user of this service type must be admitted to, if any."""
-    for capacity_id in (USER_CAPACITY_ID, GUEST_CAPACITY_ID):
+    for capacity_id in CAPACITY_SETTINGS:
         enforced, _max, service_types = capacity_settings(capacity_id)
         if enforced and service_type in service_types:
             return capacity_id
