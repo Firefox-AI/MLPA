@@ -34,7 +34,7 @@ class Env(BaseSettings):
     # guest ones included, and never recounts row 2.
     MLPA_MAX_GUESTS: int = 100000
     MLPA_ENFORCE_GUEST_CAP: bool = False
-    MLPA_GUEST_SERVICE_TYPES: set[str] = set()
+    MLPA_GUEST_SERVICE_TYPES: set[str] = {"ai-guest", "memories-guest", "search-guest"}
     # Kill switch for GET /verify/v1/guest
     MLPA_GUEST_ENABLED: bool = False
 
