@@ -1,15 +1,18 @@
+import json
+
 import pytest
 
 from mlpa.core.config import (
     ERROR_CODE_BUDGET_LIMIT_EXCEEDED,
     ERROR_CODE_GLOBAL_BUDGET_LIMIT_EXCEEDED,
+    ERROR_CODE_GUEST_BUDGET_LIMIT_EXCEEDED,
     ERROR_CODE_INVALID_MODEL_NAME,
     ERROR_CODE_INVALID_REQUEST,
     ERROR_CODE_RATE_LIMIT_EXCEEDED,
     ERROR_CODE_REQUEST_TOO_LARGE,
     ERROR_CODE_UPSTREAM_RATE_LIMIT_EXCEEDED,
 )
-from mlpa.core.errors import RejectionMatch
+from mlpa.core.errors import RejectionMatch, classify_upstream_error
 from mlpa.core.prometheus_metrics import (
     AvailabilityOutcome,
     AvailabilityReason,
@@ -75,6 +78,11 @@ def test_every_completion_stage_rejection_reason_maps_to_expected_outcome():
             AvailabilityReason.GLOBAL_BUDGET_EXCEEDED,
         ),
         (
+            PrometheusRejectionReason.GUEST_BUDGET_EXCEEDED,
+            ERROR_CODE_GUEST_BUDGET_LIMIT_EXCEEDED,
+            AvailabilityReason.GUEST_BUDGET_EXCEEDED,
+        ),
+        (
             PrometheusRejectionReason.RATE_LIMITED,
             ERROR_CODE_RATE_LIMIT_EXCEEDED,
             AvailabilityReason.RATE_LIMITED_PLATFORM,
@@ -108,3 +116,37 @@ def test_rejection_match_availability_reason(reason, error_code, expected):
         reason, AvailabilityOutcome.EXCLUDED
     )
     assert availability_outcome_for(expected) == expected_outcome
+
+
+def _litellm_budget_error(message: str) -> str:
+    return json.dumps(
+        {"error": {"message": message, "type": "budget_exceeded", "code": "400"}}
+    )
+
+
+# Message LiteLLM raises when a virtual key hits its max_budget.
+_KEY_BUDGET = "Budget has been exceeded! Current cost: 10.5, Max budget: 10.0"
+_END_USER_BUDGET = (
+    "ExceededBudget: End User=abc:ai-guest over budget. Spend=0.2, Budget=0.1"
+)
+
+
+@pytest.mark.parametrize(
+    ("user", "message", "error_code", "retry_after"),
+    [
+        # guest key ran out → shared guest pool exhausted
+        ("abc:ai-guest", _KEY_BUDGET, ERROR_CODE_GUEST_BUDGET_LIMIT_EXCEEDED, "3600"),
+        # guest hit their own budget → stays code 1
+        ("abc:ai-guest", _END_USER_BUDGET, ERROR_CODE_BUDGET_LIMIT_EXCEEDED, "86400"),
+        # FxA user on MLPA_VIRTUAL_KEY → unchanged behavior
+        ("abc:ai", _KEY_BUDGET, ERROR_CODE_BUDGET_LIMIT_EXCEEDED, "86400"),
+    ],
+)
+def test_classify_guest_key_budget(user, message, error_code, retry_after):
+    match = classify_upstream_error(
+        error_text=_litellm_budget_error(message), status_code=400, user=user
+    )
+    assert match is not None
+    assert match.error_code == error_code
+    assert match.http_status == 429
+    assert match.retry_after == retry_after

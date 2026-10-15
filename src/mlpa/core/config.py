@@ -730,7 +730,8 @@ ERROR_CODE_FASTLY_WAF_RATE_LIMIT: int = 6
 ERROR_CODE_INVALID_MODEL_NAME: int = 8
 ERROR_CODE_INVALID_REQUEST: int = 9
 ERROR_CODE_GLOBAL_BUDGET_LIMIT_EXCEEDED: int = 10
-# 11 is the guest pool exhausted code (AIPLAT-1449).
+# Guest virtual key (MLPA_GUEST_VIRTUAL_KEY) hit its LiteLLM max_budget (AIPLAT-1449)
+ERROR_CODE_GUEST_BUDGET_LIMIT_EXCEEDED: int = 11
 ERROR_CODE_MAX_GUESTS_REACHED: int = 12
 
 ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
@@ -749,7 +750,7 @@ ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
                             "description": (
                                 "Error code: 1 budget limit exceeded, 2 rate limit (TPM/RPM), "
                                 "5 upstream provider rate limit, 6 Fastly WAF rate limit (edge; not from MLPA), "
-                                "10 global budget limit exceeded"
+                                "10 global budget limit exceeded, 11 guest budget limit exceeded"
                             ),
                         }
                     },
@@ -770,6 +771,11 @@ ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
                         "summary": "Upstream rate limit exceeded",
                         "value": {"error": ERROR_CODE_UPSTREAM_RATE_LIMIT_EXCEEDED},
                         "description": "Upstream provider rate limit exceeded.",
+                    },
+                    "guest_budget_exceeded": {
+                        "summary": "Guest budget limit exceeded",
+                        "value": {"error": ERROR_CODE_GUEST_BUDGET_LIMIT_EXCEEDED},
+                        "description": "Shared budget for all guests is used up. Check Retry-After header (3600 seconds = 1 hour).",
                     },
                     "fastly_waf_rate_limit": {
                         "summary": "Fastly WAF rate limit",

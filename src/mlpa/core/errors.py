@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from mlpa.core.config import (
     ERROR_CODE_BUDGET_LIMIT_EXCEEDED,
     ERROR_CODE_GLOBAL_BUDGET_LIMIT_EXCEEDED,
+    ERROR_CODE_GUEST_BUDGET_LIMIT_EXCEEDED,
     ERROR_CODE_INVALID_MODEL_NAME,
     ERROR_CODE_INVALID_REQUEST,
     ERROR_CODE_RATE_LIMIT_EXCEEDED,
@@ -24,6 +25,7 @@ _REJECTION_TO_AVAILABILITY_REASON: dict[
 ] = {
     PrometheusRejectionReason.BUDGET_EXCEEDED: AvailabilityReason.BUDGET_EXCEEDED,
     PrometheusRejectionReason.GLOBAL_BUDGET_EXCEEDED: AvailabilityReason.GLOBAL_BUDGET_EXCEEDED,
+    PrometheusRejectionReason.GUEST_BUDGET_EXCEEDED: AvailabilityReason.GUEST_BUDGET_EXCEEDED,
     PrometheusRejectionReason.PAYLOAD_TOO_LARGE: AvailabilityReason.PAYLOAD_TOO_LARGE,
     PrometheusRejectionReason.INVALID_MODEL_NAME: AvailabilityReason.INVALID_MODEL_NAME,
     PrometheusRejectionReason.INVALID_REQUEST: AvailabilityReason.INVALID_REQUEST,
@@ -61,6 +63,13 @@ _RATE_LIMIT_REJECTION: dict[int, tuple[int, PrometheusRejectionReason, str, str]
         "300",
         "Global budget limit exceeded",
     ),
+    ERROR_CODE_GUEST_BUDGET_LIMIT_EXCEEDED: (
+        429,
+        PrometheusRejectionReason.GUEST_BUDGET_EXCEEDED,
+        # Placeholder until the 429 contract is agreed with the client team
+        "3600",
+        "Guest budget limit exceeded",
+    ),
     ERROR_CODE_RATE_LIMIT_EXCEEDED: (
         429,
         PrometheusRejectionReason.RATE_LIMITED,
@@ -76,6 +85,9 @@ _RATE_LIMIT_REJECTION: dict[int, tuple[int, PrometheusRejectionReason, str, str]
 }
 
 _LITELLM_GLOBAL_BUDGET_ERROR = "ExceededBudget: User=default_user_id over budget"
+# LiteLLM's virtual key max_budget error. Team/tag budgets add "Team="/"Tag="
+# after the "!", end-user budgets say "ExceededBudget: End User=".
+_LITELLM_KEY_BUDGET_ERROR = "Budget has been exceeded! Current cost:"
 
 
 def _parse_rate_limit_error(error_text: str) -> int | None:
@@ -106,6 +118,14 @@ def classify_upstream_error(
 ) -> RejectionMatch | None:
     if status_code in {400, 429}:
         error_code = _parse_rate_limit_error(error_text)
+        # Guests run on MLPA_GUEST_VIRTUAL_KEY, so its budget running out means
+        # the shared guest pool is gone, not this guest's own budget.
+        if (
+            error_code == ERROR_CODE_BUDGET_LIMIT_EXCEEDED
+            and user.endswith("-guest")
+            and _LITELLM_KEY_BUDGET_ERROR in error_text
+        ):
+            error_code = ERROR_CODE_GUEST_BUDGET_LIMIT_EXCEEDED
         if error_code is not None and error_code in _RATE_LIMIT_REJECTION:
             http_status, reason, retry_after, log_prefix = _RATE_LIMIT_REJECTION[
                 error_code
