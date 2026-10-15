@@ -5,6 +5,7 @@ import pytest
 from fastapi import HTTPException
 
 from mlpa.core.config import env
+from mlpa.core.routers.guest.guest import GUEST_TOKEN_ISSUER
 from mlpa.core.utils import extract_user_from_play_integrity_jwt
 
 
@@ -46,7 +47,7 @@ def test_issue_guest_token(mocked_client_integration):
         env.MLPA_GUEST_TOKEN_SIGNING_SECRET,
         algorithms=["HS256"],
         audience="mlpa",
-        issuer="https://fxa.mozilla.org",
+        issuer=GUEST_TOKEN_ISSUER,
     )
     assert set(claims) == {
         "iss",

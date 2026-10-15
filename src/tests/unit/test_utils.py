@@ -7,6 +7,7 @@ from mlpa.core.config import env
 from mlpa.core.utils import (
     b64decode_safe,
     clamp_country,
+    clamp_exa_error_labels,
     clamp_launch_country,
     clamp_purpose,
     clamp_service_type,
@@ -361,6 +362,17 @@ def test_clamp_country(raw, expected):
 )
 def test_clamp_launch_country(raw, expected):
     assert clamp_launch_country(raw) == expected
+
+
+@pytest.mark.parametrize(
+    "raw_tag,status_code,expected",
+    [
+        ("BRAND_NEW_TAG", 504, ("504", "other")),
+        (None, 418, ("other", "untagged")),
+    ],
+)
+def test_clamp_exa_error_labels(raw_tag, status_code, expected):
+    assert clamp_exa_error_labels(raw_tag, status_code) == expected
 
 
 @pytest.mark.parametrize("debug", [True, False])

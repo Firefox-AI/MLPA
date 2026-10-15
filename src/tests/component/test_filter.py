@@ -53,7 +53,15 @@ def test_filter_forwards_items_to_privacy_filter(
     data = response.json()
     if debug:
         spans = data.pop("spans")
-        assert [span["name"] for span in spans] == ["total", "auth", "upstream"]
+        assert [span["name"] for span in spans] == [
+            "total",
+            "request_body_read",
+            "prompt_parsing",
+            "context_checks",
+            "auth_check",
+            "request_preparation",
+            "upstream",
+        ]
     assert data == upstream_response
 
     request = httpx_mock.get_request()

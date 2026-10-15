@@ -19,11 +19,13 @@ from mlpa.core.http_client import get_http_client
 from mlpa.core.litellm_routing import parse_litellm_routing_headers
 from mlpa.core.logger import logger
 from mlpa.core.metrics import (
+    CHAT_COMPLETIONS_ENDPOINT,
     extract_tool_names,
     record_chat_availability,
     record_chat_request_rejection,
     record_completion_latency,
     record_completion_success,
+    record_exa_error,
     record_request_with_tools,
     record_ttft,
 )
@@ -32,7 +34,10 @@ from mlpa.core.prometheus_metrics import (
     PrometheusRejectionReason,
     PrometheusResult,
 )
-from mlpa.core.request_timings import measure
+from mlpa.core.request_timings import (
+    measure,
+    record_timing,
+)
 from mlpa.core.sanitization import sanitize_request_body, sanitize_response_body
 from mlpa.core.services.services import redis_service
 from mlpa.core.utils import (
@@ -119,10 +124,11 @@ async def stream_completion(
     log = logger.bind(**authorized_chat_request.log_fields)
     start_time = time.perf_counter()
     record_request_with_tools(authorized_chat_request)
-    auth_headers = resolve_litellm_virtual_auth_headers(
-        authorized_chat_request.litellm_virtual_key
-    )
-    body = _build_litellm_body(authorized_chat_request, stream=True)
+    with measure("request_preparation", request):
+        auth_headers = resolve_litellm_virtual_auth_headers(
+            authorized_chat_request.litellm_virtual_key
+        )
+        body = _build_litellm_body(authorized_chat_request, stream=True)
     result = PrometheusResult.ERROR
     availability_reason = AvailabilityReason.UPSTREAM_ERROR
     is_first_token = True
@@ -154,19 +160,23 @@ async def stream_completion(
     usage = None
     try:
         client = get_http_client()
-        with measure("upstream", request):
-            async with client.stream(
-                "POST",
-                LITELLM_COMPLETIONS_URL,
-                headers=auth_headers,
-                json=body,
-                timeout=httpx.Timeout(
-                    read=env.STREAMING_TIMEOUT_SECONDS,
-                    connect=env.HTTPX_CONNECT_TIMEOUT_SECONDS,
-                    write=env.HTTPX_WRITE_TIMEOUT_SECONDS,
-                    pool=env.HTTPX_POOL_TIMEOUT_SECONDS,
-                ),
-            ) as response:
+        with measure("upstream", request) as upstream_timing:
+            async with contextlib.AsyncExitStack() as stack:
+                with measure("upstream_handshake", request):
+                    response = await stack.enter_async_context(
+                        client.stream(
+                            "POST",
+                            LITELLM_COMPLETIONS_URL,
+                            headers=auth_headers,
+                            json=body,
+                            timeout=httpx.Timeout(
+                                read=env.STREAMING_TIMEOUT_SECONDS,
+                                connect=env.HTTPX_CONNECT_TIMEOUT_SECONDS,
+                                write=env.HTTPX_WRITE_TIMEOUT_SECONDS,
+                                pool=env.HTTPX_POOL_TIMEOUT_SECONDS,
+                            ),
+                        )
+                    )
                 try:
                     response.raise_for_status()
                 except httpx.HTTPStatusError as e:
@@ -183,6 +193,13 @@ async def stream_completion(
                         error_text=error_text_str,
                         status_code=e.response.status_code,
                         user=authorized_chat_request.user,
+                    )
+                    record_exa_error(
+                        endpoint=CHAT_COMPLETIONS_ENDPOINT,
+                        model=authorized_chat_request.model,
+                        status_code=e.response.status_code,
+                        error_text=error_text_str,
+                        rejected=match is not None,
                     )
                     if match is not None:
                         if match.log_message:
@@ -242,7 +259,15 @@ async def stream_completion(
                     finally:
                         next_chunk_task = None
 
+                    if not chunk:
+                        continue
                     if is_first_token:
+                        if upstream_timing.start_time is not None:
+                            record_timing(
+                                request,
+                                "upstream_first_chunk",
+                                upstream_timing.start_time,
+                            )
                         record_ttft(
                             authorized_chat_request,
                             time.perf_counter() - start_time,
@@ -382,7 +407,8 @@ async def _get_completion(
     """
     start_time = time.perf_counter()
     record_request_with_tools(authorized_chat_request)
-    body = _build_litellm_body(authorized_chat_request, stream=False)
+    with measure("request_preparation", request):
+        body = _build_litellm_body(authorized_chat_request, stream=False)
     result = PrometheusResult.ERROR
     availability_reason = AvailabilityReason.UPSTREAM_ERROR
     logger.debug(
@@ -406,6 +432,13 @@ async def _get_completion(
                 error_text=e.response.text,
                 status_code=e.response.status_code,
                 user=authorized_chat_request.user,
+            )
+            record_exa_error(
+                endpoint=CHAT_COMPLETIONS_ENDPOINT,
+                model=authorized_chat_request.model,
+                status_code=e.response.status_code,
+                error_text=e.response.text,
+                rejected=match is not None,
             )
             if match is not None:
                 if match.log_message:

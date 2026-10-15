@@ -83,3 +83,39 @@ MOCK_LITELLM_GLOBAL_BUDGET_ERROR_TEXT = json.dumps(
         }
     }
 )
+
+# Shape of a prod LiteLLM 500 wrapping an Exa 503: the Exa body is a
+# JSON-escaped string inside LiteLLM's `error.message`.
+LITELLM_WRAPPED_EXA_OVERLOADED_TEXT = json.dumps(
+    {
+        "error": {
+            "message": (
+                "litellm.APIConnectionError: Exa_aiException - "
+                '{"requestId":"abc123","error":"Exa is temporarily over capacity. '
+                'Please retry with exponential backoff.","tag":"SERVICE_OVERLOADED"}'
+                "No fallback model group found for original model_group=exa-search"
+            ),
+            "type": None,
+            "param": None,
+            "code": "500",
+        }
+    }
+)
+
+# Shape of a LiteLLM 503 for the `exa` answer model: Exa's status is kept and
+# its body is a Python repr inside `error.message`.
+LITELLM_EXA_ANSWER_OVERLOADED_TEXT = json.dumps(
+    {
+        "error": {
+            "message": (
+                "litellm.ServiceUnavailableError: ServiceUnavailableError: "
+                "OpenAIException - Error code: 503 - {'requestId': 'abc123', "
+                "'error': 'Exa is temporarily over capacity.', "
+                "'tag': 'SERVICE_OVERLOADED'}. Received Model Group=exa"
+            ),
+            "type": None,
+            "param": None,
+            "code": "503",
+        }
+    }
+)

@@ -14,7 +14,7 @@ def make_request(value=None):
 @pytest.mark.parametrize("value", [None, "", "false", "0", "1", "yes", "invalid"])
 def test_disabled_timing_does_not_create_state(value):
     request = make_request(value)
-    with measure("auth", request):
+    with measure("auth_check", request):
         pass
     assert not hasattr(request.state, "debug_spans")
 
@@ -25,14 +25,14 @@ def test_spans_preserve_each_occurrence_even_on_failure(mocker):
         "mlpa.core.request_timings.time.perf_counter",
         side_effect=[1.0, 1.25, 2.0, 2.5, 3.0, 3.125],
     )
-    with measure("auth", request):
+    with measure("auth_check", request):
         pass
     with measure("db", request):
         pass
     with pytest.raises(ValueError), measure("db", request):
         raise ValueError("failed query")
     assert request.state.debug_spans == [
-        {"name": "auth", "start_ms": 0, "duration_ms": 250},
+        {"name": "auth_check", "start_ms": 0, "duration_ms": 250},
         {"name": "db", "start_ms": 1000, "duration_ms": 500},
         {"name": "db", "start_ms": 2000, "duration_ms": 125},
     ]
@@ -46,8 +46,8 @@ async def test_concurrent_requests_keep_separate_timings():
         assert {span["name"] for span in request.state.debug_spans} == {stage}
         return request.state.debug_spans
 
-    first, second = await asyncio.gather(run("auth"), run("db"))
-    assert [span["name"] for span in first] == ["auth"]
+    first, second = await asyncio.gather(run("auth_check"), run("db"))
+    assert [span["name"] for span in first] == ["auth_check"]
     assert [span["name"] for span in second] == ["db"]
 
 
@@ -87,6 +87,7 @@ async def test_middleware_records_full_stream_or_failure(mocker, fail):
     fields = log.bind.call_args.kwargs
     assert fields["spans"] == [
         {"name": "total", "start_ms": 0.0, "duration_ms": 1000 if fail else 1500},
+        {"name": "first_byte_returned", "start_ms": 0.0, "duration_ms": 0},
         {"name": "upstream", "start_ms": 0.0, "duration_ms": 1000},
     ]
     assert "debug_timings" not in fields
@@ -123,7 +124,7 @@ def test_middleware_adds_completion_timings(mocker, metrics_spy, value):
 
     @app.post("/completion")
     async def completion(request: Request):
-        with measure("auth", request):
+        with measure("auth_check", request):
             pass
         with measure("db", request):
             pass
@@ -147,7 +148,13 @@ def test_middleware_adds_completion_timings(mocker, metrics_spy, value):
     assert "debug_timings" not in data
     if (value or "").strip().lower() == "true":
         spans = data["spans"]
-        assert [span["name"] for span in spans] == ["total", "auth", "db", "upstream"]
+        assert [span["name"] for span in spans] == [
+            "total",
+            "auth_check",
+            "db",
+            "request_preparation",
+            "upstream",
+        ]
         assert all(span["duration_ms"] >= 0 for span in spans)
         assert spans[0]["duration_ms"] >= sum(span["duration_ms"] for span in spans[1:])
     else:
@@ -167,7 +174,7 @@ def test_streaming_timings_survive_registered_middleware(mocker):
 
     @app.get("/stream")
     async def stream(request: Request):
-        with measure("auth", request):
+        with measure("auth_check", request):
             pass
 
         async def chunks():
@@ -183,8 +190,9 @@ def test_streaming_timings_survive_registered_middleware(mocker):
     assert response.content == b"firstlast"
     fields = log.bind.call_args.kwargs
     spans = fields["spans"]
-    assert [span["name"] for span in spans] == ["total", "auth", "upstream"]
-    assert spans[0]["duration_ms"] >= spans[2]["duration_ms"]
+    by_name = {span["name"]: span for span in spans}
+    assert {"total", "auth_check", "upstream", "first_byte_returned"} <= by_name.keys()
+    assert by_name["total"]["duration_ms"] >= by_name["upstream"]["duration_ms"]
     assert fields["response_complete"] is True
 
 
@@ -333,6 +341,7 @@ async def test_sse_debug_event_after_done_without_buffering(mocker, value, endin
         assert debug == {
             "spans": [
                 {"name": "total", "start_ms": 0.0, "duration_ms": 1000},
+                {"name": "first_byte_returned", "start_ms": 0.0, "duration_ms": 0},
                 {"name": "upstream", "start_ms": 0.0, "duration_ms": 1000},
             ]
         }
@@ -356,7 +365,7 @@ def test_sse_debug_event_uses_completed_timings_through_middleware(mocker):
 
     @app.get("/stream")
     async def stream(request: Request):
-        with measure("auth", request):
+        with measure("auth_check", request):
             pass
 
         async def chunks():
@@ -374,8 +383,9 @@ def test_sse_debug_event_uses_completed_timings_through_middleware(mocker):
     payload = json.loads(events[2][len(b"data: ") :])
     assert set(payload) == {"spans"}
     spans = payload["spans"]
-    assert [span["name"] for span in spans] == ["total", "auth", "upstream"]
-    assert spans[0]["duration_ms"] >= spans[2]["duration_ms"]
+    by_name = {span["name"]: span for span in spans}
+    assert {"total", "auth_check", "upstream", "first_byte_returned"} <= by_name.keys()
+    assert by_name["total"]["duration_ms"] >= by_name["upstream"]["duration_ms"]
     assert events[3] == b""
 
 
@@ -389,14 +399,14 @@ def test_nested_and_repeated_spans_preserve_offsets_precision_and_failures(mocke
         "mlpa.core.request_timings.time.perf_counter",
         side_effect=[10.00125, 10.0025, 10.00375, 10.005, 10.00625, 10.0075],
     )
-    with measure("auth", request):
+    with measure("auth_check", request):
         with measure("db", request):
             pass
     with pytest.raises(ValueError), measure("db", request):
         raise ValueError("failed")
 
     spans = timing_snapshot(request, 10.01)
-    assert [span["name"] for span in spans] == ["total", "auth", "db", "db"]
+    assert [span["name"] for span in spans] == ["total", "auth_check", "db", "db"]
     assert [span["start_ms"] for span in spans] == pytest.approx([0, 1.25, 2.5, 6.25])
     assert [span["duration_ms"] for span in spans] == pytest.approx(
         [10, 3.75, 1.25, 1.25]
@@ -416,11 +426,39 @@ def test_stage_and_total_spans_round_to_two_decimals(mocker):
         "mlpa.core.request_timings.time.perf_counter",
         side_effect=[10.001234, 10.009876],
     )
-    with measure("auth", request):
+    with measure("auth_check", request):
         pass
     assert timing_snapshot(request, 10.012346) == [
         {"name": "total", "start_ms": 0.0, "duration_ms": 12.35},
-        {"name": "auth", "start_ms": 1.23, "duration_ms": 8.64},
+        {"name": "auth_check", "start_ms": 1.23, "duration_ms": 8.64},
+    ]
+
+
+async def test_first_byte_skips_empty_bodies_and_includes_send_time(mocker):
+    request = make_request("true")
+    now = [1.0]
+    mocker.patch(
+        "mlpa.core.request_timings.time.perf_counter", side_effect=lambda: now[0]
+    )
+    log = mocker.patch("mlpa.core.request_timings.logger")
+
+    async def app(scope, receive, send):
+        await send({"type": "http.response.start", "status": 200, "headers": []})
+        now[0] = 1.1
+        await send({"type": "http.response.body", "body": b"", "more_body": True})
+        now[0] = 1.2
+        await send({"type": "http.response.body", "body": b"first", "more_body": True})
+        now[0] = 2.0
+        await send({"type": "http.response.body", "body": b"last"})
+
+    async def send(message):
+        if message.get("body") == b"first":
+            now[0] = 1.4
+
+    await RequestTimingsMiddleware(app)(request.scope, mocker.AsyncMock(), send)
+    assert log.bind.call_args.kwargs["spans"] == [
+        {"name": "total", "start_ms": 0.0, "duration_ms": 1000},
+        {"name": "first_byte_returned", "start_ms": 0.0, "duration_ms": 400},
     ]
 
 

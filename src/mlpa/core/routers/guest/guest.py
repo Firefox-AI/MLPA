@@ -10,7 +10,7 @@ from mlpa.core.config import env
 
 router = APIRouter()
 
-GUEST_TOKEN_ISSUER = "https://fxa.mozilla.org"
+GUEST_TOKEN_ISSUER = "https://mlpa-prod-prod-mozilla.freetls.fastly.net"
 
 
 def issue_guest_token() -> str:
