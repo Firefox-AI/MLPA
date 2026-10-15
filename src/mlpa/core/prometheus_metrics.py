@@ -35,6 +35,7 @@ class AvailabilityReason(StrEnum):
 
     # --- pre-completion reasons (recorded in the auth dependency and route body) ---
     AUTH_REJECTED = "auth_rejected"  # excluded
+    GUEST_AUTH_REJECTED = "guest_auth_rejected"  # excluded
     INVALID_AUTH_REQUEST = "invalid_auth_request"  # excluded
     INVALID_SERVICE_TYPE_FOR_MODEL = "invalid_service_type_for_model"  # excluded
     SIGNUP_CAP_EXCEEDED = "signup_cap_exceeded"  # excluded
@@ -66,6 +67,7 @@ class AvailabilityReason(StrEnum):
 
 _AVAILABILITY_OUTCOME_BY_REASON: dict[AvailabilityReason, AvailabilityOutcome] = {
     AvailabilityReason.AUTH_REJECTED: AvailabilityOutcome.EXCLUDED,
+    AvailabilityReason.GUEST_AUTH_REJECTED: AvailabilityOutcome.EXCLUDED,
     AvailabilityReason.INVALID_AUTH_REQUEST: AvailabilityOutcome.EXCLUDED,
     AvailabilityReason.INVALID_SERVICE_TYPE_FOR_MODEL: AvailabilityOutcome.EXCLUDED,
     AvailabilityReason.SIGNUP_CAP_EXCEEDED: AvailabilityOutcome.EXCLUDED,

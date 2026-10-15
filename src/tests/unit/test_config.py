@@ -185,7 +185,10 @@ def test_valid_service_types_all_service_types():
     assert "memories-dev" in service_types
     assert "mochi-dev" in service_types
     assert "search-dev" in service_types
-    assert len(service_types) == 15
+    assert "ai-guest" in service_types
+    assert "memories-guest" in service_types
+    assert "search-guest" in service_types
+    assert len(service_types) == 18
 
 
 def test_valid_service_types_set_matches_ordered_list():

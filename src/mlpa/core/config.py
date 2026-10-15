@@ -195,6 +195,27 @@ class Env(BaseSettings):
     USER_FEATURE_BUDGET_MEMORIES_DEV_RPM_LIMIT: int = 50
     USER_FEATURE_BUDGET_MEMORIES_DEV_TPM_LIMIT: int = 5000
 
+    # User Feature Budget - guest service types (AIPLAT-1449). Clients never
+    # send these, MLPA appends "-guest" to the service-type header when the
+    # request carries an MLPA guest token.
+    USER_FEATURE_BUDGET_AI_GUEST_BUDGET_ID: str = "end-user-budget-ai-guest"
+    USER_FEATURE_BUDGET_AI_GUEST_BUDGET_DURATION: str = "1d"
+    USER_FEATURE_BUDGET_AI_GUEST_MAX_BUDGET: float = 0.05
+    USER_FEATURE_BUDGET_AI_GUEST_RPM_LIMIT: int = 20
+    USER_FEATURE_BUDGET_AI_GUEST_TPM_LIMIT: int = 2000
+
+    USER_FEATURE_BUDGET_MEMORIES_GUEST_BUDGET_ID: str = "end-user-budget-memories-guest"
+    USER_FEATURE_BUDGET_MEMORIES_GUEST_BUDGET_DURATION: str = "1d"
+    USER_FEATURE_BUDGET_MEMORIES_GUEST_MAX_BUDGET: float = 0.05
+    USER_FEATURE_BUDGET_MEMORIES_GUEST_RPM_LIMIT: int = 10
+    USER_FEATURE_BUDGET_MEMORIES_GUEST_TPM_LIMIT: int = 2000
+
+    USER_FEATURE_BUDGET_SEARCH_GUEST_BUDGET_ID: str = "end-user-budget-search-guest"
+    USER_FEATURE_BUDGET_SEARCH_GUEST_BUDGET_DURATION: str = "1d"
+    USER_FEATURE_BUDGET_SEARCH_GUEST_MAX_BUDGET: float = 0.01
+    USER_FEATURE_BUDGET_SEARCH_GUEST_RPM_LIMIT: int = 5
+    USER_FEATURE_BUDGET_SEARCH_GUEST_TPM_LIMIT: int = 2000
+
     USER_FEATURE_BUDGET_MOCHI_DEV_BUDGET_ID: str = "end-user-budget-mochi-dev"
     USER_FEATURE_BUDGET_MOCHI_DEV_BUDGET_DURATION: str = "1d"
     USER_FEATURE_BUDGET_MOCHI_DEV_MAX_BUDGET: float = 1.0
@@ -343,6 +364,30 @@ class Env(BaseSettings):
                 "rpm_limit": self.USER_FEATURE_BUDGET_MEMORIES_DEV_RPM_LIMIT,
                 "tpm_limit": self.USER_FEATURE_BUDGET_MEMORIES_DEV_TPM_LIMIT,
             },
+            "ai-guest": {
+                "feature": self.FEATURE_SMART_WINDOW,
+                "budget_id": self.USER_FEATURE_BUDGET_AI_GUEST_BUDGET_ID,
+                "budget_duration": self.USER_FEATURE_BUDGET_AI_GUEST_BUDGET_DURATION,
+                "max_budget": self.USER_FEATURE_BUDGET_AI_GUEST_MAX_BUDGET,
+                "rpm_limit": self.USER_FEATURE_BUDGET_AI_GUEST_RPM_LIMIT,
+                "tpm_limit": self.USER_FEATURE_BUDGET_AI_GUEST_TPM_LIMIT,
+            },
+            "memories-guest": {
+                "feature": self.FEATURE_SMART_WINDOW,
+                "budget_id": self.USER_FEATURE_BUDGET_MEMORIES_GUEST_BUDGET_ID,
+                "budget_duration": self.USER_FEATURE_BUDGET_MEMORIES_GUEST_BUDGET_DURATION,
+                "max_budget": self.USER_FEATURE_BUDGET_MEMORIES_GUEST_MAX_BUDGET,
+                "rpm_limit": self.USER_FEATURE_BUDGET_MEMORIES_GUEST_RPM_LIMIT,
+                "tpm_limit": self.USER_FEATURE_BUDGET_MEMORIES_GUEST_TPM_LIMIT,
+            },
+            "search-guest": {
+                "feature": self.FEATURE_SMART_WINDOW,
+                "budget_id": self.USER_FEATURE_BUDGET_SEARCH_GUEST_BUDGET_ID,
+                "budget_duration": self.USER_FEATURE_BUDGET_SEARCH_GUEST_BUDGET_DURATION,
+                "max_budget": self.USER_FEATURE_BUDGET_SEARCH_GUEST_MAX_BUDGET,
+                "rpm_limit": self.USER_FEATURE_BUDGET_SEARCH_GUEST_RPM_LIMIT,
+                "tpm_limit": self.USER_FEATURE_BUDGET_SEARCH_GUEST_TPM_LIMIT,
+            },
             "mochi-dev": {
                 "feature": self.FEATURE_SMART_WINDOW,
                 "budget_id": self.USER_FEATURE_BUDGET_MOCHI_DEV_BUDGET_ID,
@@ -411,6 +456,11 @@ class Env(BaseSettings):
         return set(self.valid_service_types)
 
     @cached_property
+    def client_service_types(self) -> list[str]:
+        """Values a client may send in the service-type header (no `-guest`)."""
+        return [st for st in self.valid_service_types if not st.endswith("-guest")]
+
+    @cached_property
     def service_type_purposes(self) -> dict[str, list[str]]:
         """
         Valid purpose values per service type (for the purpose header and Prometheus).
@@ -430,6 +480,9 @@ class Env(BaseSettings):
             "mochi-dev": ai_purposes,
             "memories": memories_purposes,
             "memories-dev": memories_purposes,
+            "ai-guest": ai_purposes,
+            "memories-guest": memories_purposes,
+            "search-guest": [],
             "s2s": [],
             "s2s-android": [],
             "search": [],

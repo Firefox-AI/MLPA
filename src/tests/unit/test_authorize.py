@@ -258,3 +258,105 @@ async def test_authorize_chat_request_rejects_invalid_model_name(mocker):
     assert exc_info.value.detail == {"error": 8}
     valid_service_type_mock.assert_not_called()
     fxa_auth_mock.assert_not_called()
+
+
+@pytest.fixture
+def guest_enabled(mocker):
+    mocker.patch.object(env, "MLPA_GUEST_ENABLED", True)
+    mocker.patch.object(env, "MLPA_GUEST_VIRTUAL_KEY", "sk-guest")
+
+
+def _guest_chat_kwargs(authorization: str, service_type="ai", purpose="chat"):
+    return dict(
+        request=_make_request("/v1/chat/completions"),
+        chat_request=ChatRequest(
+            model="mistral-small-2603", messages=[{"role": "user", "content": "hi"}]
+        ),
+        authorization=authorization,
+        service_type=authorize_module.ServiceType(service_type),
+        purpose=purpose,
+    )
+
+
+async def test_guest_token_gets_guest_service_type_and_key(guest_enabled, mocker):
+    import jwt
+
+    from mlpa.core.routers.guest.guest import issue_guest_token
+
+    fxa_auth = mocker.patch.object(authorize_module, "fxa_auth", mocker.AsyncMock())
+    token = issue_guest_token()
+    sub = jwt.decode(token, options={"verify_signature": False})["sub"]
+    kwargs = _guest_chat_kwargs(f"Bearer {token}")
+
+    result = await authorize_module.authorize_chat_request(**kwargs)
+
+    assert result.user == f"{sub}:ai-guest"
+    assert result.service_type == "ai-guest"
+    assert result.litellm_virtual_key == "sk-guest"
+    assert result.purpose == "chat"
+    assert kwargs["request"].state.service_type == "ai-guest"
+    fxa_auth.assert_not_called()
+
+
+async def test_forged_guest_token_is_rejected(guest_enabled, mocker):
+    import jwt
+
+    from mlpa.core.routers.guest.guest import GUEST_TOKEN_ISSUER
+
+    forged = jwt.encode(
+        {"iss": GUEST_TOKEN_ISSUER, "aud": "mlpa", "sub": "x", "iat": 1, "exp": 2**40},
+        "wrong-secret",
+        algorithm="HS256",
+    )
+    with pytest.raises(HTTPException) as exc:
+        await authorize_module.authorize_chat_request(
+            **_guest_chat_kwargs(f"Bearer {forged}")
+        )
+    assert exc.value.status_code == 401
+
+
+async def test_guest_token_rejected_while_guests_disabled(mocker):
+    from mlpa.core.routers.guest.guest import issue_guest_token
+
+    mocker.patch.object(env, "MLPA_GUEST_ENABLED", False)
+    with pytest.raises(HTTPException) as exc:
+        await authorize_module.authorize_chat_request(
+            **_guest_chat_kwargs(f"Bearer {issue_guest_token()}")
+        )
+    assert exc.value.status_code == 401
+
+
+async def test_guest_token_on_service_type_without_guest_variant(guest_enabled):
+    from mlpa.core.routers.guest.guest import issue_guest_token
+
+    with pytest.raises(HTTPException) as exc:
+        await authorize_module.authorize_chat_request(
+            **_guest_chat_kwargs(
+                f"Bearer {issue_guest_token()}", service_type="s2s", purpose=None
+            )
+        )
+    assert exc.value.status_code == 400
+
+
+def test_clients_cannot_send_guest_service_types():
+    with pytest.raises(ValueError):
+        authorize_module.ServiceType("ai-guest")
+
+
+async def test_guest_token_on_search_gets_search_guest(guest_enabled):
+    import jwt
+
+    from mlpa.core.routers.guest.guest import issue_guest_token
+
+    token = issue_guest_token()
+    sub = jwt.decode(token, options={"verify_signature": False})["sub"]
+
+    result = await authorize_module.authorize_search_request(
+        request=_make_request("/v1/search/"),
+        search_request=SearchRequest(query="q", max_results=2),
+        authorization=f"Bearer {token}",
+    )
+
+    assert result.user == f"{sub}:search-guest"
+    assert result.service_type == "search-guest"
+    assert result.litellm_virtual_key == "sk-guest"

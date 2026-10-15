@@ -19,6 +19,11 @@ from mlpa.core.metrics import record_chat_availability_for
 from mlpa.core.prometheus_metrics import AvailabilityReason
 from mlpa.core.request_timings import measure
 from mlpa.core.routers.appattest import app_attest_auth
+from mlpa.core.routers.guest.guest import (
+    GUEST_TOKEN_ISSUER,
+    peek_issuer,
+    verify_guest_token,
+)
 from mlpa.core.utils import (
     extract_user_from_play_integrity_jwt,
     get_client_country,
@@ -109,6 +114,26 @@ async def _authorize_common_request(
 
     purpose_value = _resolve_purpose(service_type.value, purpose)
 
+    if peek_issuer(authorization) == GUEST_TOKEN_ISSUER:
+        # Clients send the plain service type, guests get the "-guest" one
+        # for the rest of the flow: LiteLLM user id, budget, metrics.
+        with measure("auth_check", request):
+            guest_id = verify_guest_token(authorization)
+        guest_service_type = f"{service_type.value}-guest"
+        if guest_service_type not in env.valid_service_types_set:
+            raise HTTPException(
+                status_code=400,
+                detail=f"service-type '{service_type.value}' is not available for guests",
+            )
+        request.state.service_type = guest_service_type
+        return build_authorized_request(
+            f"{guest_id}:{guest_service_type}", purpose_value
+        ).model_copy(
+            update={
+                "service_type": guest_service_type,
+                "litellm_virtual_key": guest_virtual_key(),
+            }
+        )
     if use_app_attest:
         # Apple App Attest
         with measure("auth_check", request):
@@ -232,14 +257,19 @@ async def authorize_chat_request(
         )
     except HTTPException as exc:
         # Only record terminal HTTP failures from the shared auth call:
-        # - 401: expected or normalized auth rejection (bad creds, expired token, etc.)
+        # - 401: expected or normalized auth rejection (bad creds, expired token, etc.),
+        #        guest_auth_rejected when it carried an MLPA guest token
         # - 400: client error to the auth layer (invalid purpose, or malformed App
         #        Attest base64 decoded in app_attest_auth before its try block)
         # - anything else (e.g. App Attest's explicit 500): re-raised unrecorded;
         #   auth-system-failure capture is left to a follow-on auth backend change
         # Non-HTTPException errors are not caught here and propagate unrecorded.
         if exc.status_code == 401:
-            reason = AvailabilityReason.AUTH_REJECTED
+            reason = (
+                AvailabilityReason.GUEST_AUTH_REJECTED
+                if peek_issuer(authorization) == GUEST_TOKEN_ISSUER
+                else AvailabilityReason.AUTH_REJECTED
+            )
         elif exc.status_code == 400:
             reason = AvailabilityReason.INVALID_AUTH_REQUEST
         else:

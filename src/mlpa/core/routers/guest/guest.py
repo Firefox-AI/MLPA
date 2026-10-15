@@ -7,6 +7,7 @@ from fastapi import APIRouter, Header, HTTPException, Query
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 
 from mlpa.core.config import env
+from mlpa.core.logger import logger
 
 router = APIRouter()
 
@@ -31,6 +32,35 @@ def issue_guest_token() -> str:
         algorithm="HS256",
         headers={"typ": "at+JWT"},
     )
+
+
+def peek_issuer(authorization: str) -> str | None:
+    """Unverified `iss`, only to pick which verifier runs."""
+    token = authorization.removeprefix("Bearer ").strip()
+    try:
+        return jwt.decode(token, options={"verify_signature": False}).get("iss")
+    except jwt.DecodeError:
+        return None
+
+
+def verify_guest_token(authorization: str) -> str:
+    """Guest id (`sub`) from a guest token issued by issue_guest_token."""
+    if not env.MLPA_GUEST_ENABLED:
+        raise HTTPException(status_code=401, detail="Guest access is disabled")
+    token = authorization.removeprefix("Bearer ").strip()
+    try:
+        payload = jwt.decode(
+            token,
+            env.MLPA_GUEST_TOKEN_SIGNING_SECRET,
+            algorithms=["HS256"],
+            audience="mlpa",
+            issuer=GUEST_TOKEN_ISSUER,
+            options={"require": ["exp", "iat", "sub"]},
+        )
+    except jwt.PyJWTError as e:
+        logger.error(f"Guest token decode error: {e}")
+        raise HTTPException(status_code=401, detail="Invalid guest token")
+    return payload["sub"]
 
 
 # Clients first fetch /verify/v1/guest with `Accept: application/json` and get
