@@ -106,6 +106,10 @@ class Env(BaseSettings):
     # Read-only admin dashboard (`/admin`) and GET /user/counts-by-service-type; not LiteLLM's master key
     MLPA_UI_ACCESS_KEY: str = "sk-ui-access-default"
     MLPA_VIRTUAL_KEY: str = "sk-virtual"  # Enforces LiteLLM.max_budget
+    # Separate key for `*-guest` service types (AIPLAT-1449). Its LiteLLM
+    # max_budget is the total guest spend cap, so running it out never touches
+    # FxA users. Unset means guest requests get 503, never MLPA_VIRTUAL_KEY.
+    MLPA_GUEST_VIRTUAL_KEY: str | None = None
 
     # User Feature Budget - AI service type
     USER_FEATURE_BUDGET_AI_BUDGET_ID: str = "end-user-budget-ai"

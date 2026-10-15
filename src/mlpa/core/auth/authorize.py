@@ -31,13 +31,23 @@ TAuthorizedRequest = TypeVar(
 )
 
 
-def _resolve_custom_virtual_key(virtual_key_header: str | None) -> str | None:
+def _resolve_custom_virtual_key(
+    virtual_key_header: str | None, service_type: str = ""
+) -> str | None:
     """
-    Normalize the `litellm-virtual-key` header into the key to forward upstream.
+    Pick the LiteLLM key to forward upstream instead of MLPA_VIRTUAL_KEY.
 
-    Returns None when custom virtual keys are not allowed.
-    Throws HTTPException when key not fund within custom_virtual_keys
+    Guest service types always get MLPA_GUEST_VIRTUAL_KEY, the header can't
+    move them off the guest spend cap. Otherwise the `litellm-virtual-key`
+    header, when custom virtual keys are allowed. None means the default key.
     """
+    if service_type.endswith("-guest"):
+        if not env.MLPA_GUEST_VIRTUAL_KEY:
+            raise HTTPException(
+                status_code=503, detail={"error": "Guest access is not configured."}
+            )
+        return env.MLPA_GUEST_VIRTUAL_KEY
+
     if not env.ALLOW_CUSTOM_VIRTUAL_KEY:
         return None
 
@@ -151,7 +161,9 @@ async def authorize_chat_request(
 ) -> AuthorizedChatRequest:
     with measure("context_checks", request):
         client_country = get_client_country(request)
-        custom_virtual_key = _resolve_custom_virtual_key(litellm_virtual_key)
+        custom_virtual_key = _resolve_custom_virtual_key(
+            litellm_virtual_key, service_type.value
+        )
 
         # Charset/length check runs before any auth, DB, or LiteLLM work below, so
         # fuzzed/scanner model values are rejected without that cost.
@@ -254,7 +266,9 @@ async def authorize_search_request(
 ) -> AuthorizedSearchRequest:
     with measure("context_checks", request):
         client_country = get_client_country(request)
-        custom_virtual_key = _resolve_custom_virtual_key(litellm_virtual_key)
+        custom_virtual_key = _resolve_custom_virtual_key(
+            litellm_virtual_key, service_type.value
+        )
     return await _authorize_common_request(
         request=request,
         build_authorized_request=lambda user, purpose_value: AuthorizedSearchRequest(

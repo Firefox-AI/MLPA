@@ -82,6 +82,29 @@ def test_key_is_stripped_when_enabled(allow_custom_virtual_key):
     )
 
 
+def test_guest_service_type_uses_guest_key_over_header(
+    allow_custom_virtual_key, mocker
+):
+    mocker.patch.object(env, "MLPA_GUEST_VIRTUAL_KEY", "sk-guest")
+    assert (
+        authorize_module._resolve_custom_virtual_key(CUSTOM_KEY, "ai-guest")
+        == "sk-guest"
+    )
+
+
+def test_guest_service_type_without_guest_key_is_rejected(mocker):
+    """Never falls back to MLPA_VIRTUAL_KEY, that would bill guests to FxA users."""
+    mocker.patch.object(env, "MLPA_GUEST_VIRTUAL_KEY", None)
+    with pytest.raises(HTTPException) as exc:
+        authorize_module._resolve_custom_virtual_key(None, "ai-guest")
+    assert exc.value.status_code == 503
+
+
+def test_non_guest_service_type_ignores_guest_key(mocker):
+    mocker.patch.object(env, "MLPA_GUEST_VIRTUAL_KEY", "sk-guest")
+    assert authorize_module._resolve_custom_virtual_key(None, "ai") is None
+
+
 async def test_authorize_chat_request_carries_the_key(allow_custom_virtual_key, mocker):
     mocker.patch.object(
         authorize_module,
