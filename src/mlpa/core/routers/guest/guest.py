@@ -3,8 +3,8 @@ import uuid
 from urllib.parse import urlencode
 
 import jwt
-from fastapi import APIRouter, Query
-from fastapi.responses import HTMLResponse, RedirectResponse
+from fastapi import APIRouter, Header, HTTPException, Query
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 
 from mlpa.core.config import env
 
@@ -33,42 +33,58 @@ def issue_guest_token() -> str:
     )
 
 
-# Clients open /verify/v1/guest in a tab so Fastly can show its challenge, then
-# watch the URL for /verify/v1/guest/success. The token goes in the fragment so
-# it never leaves the browser and stays out of Fastly, LB and MLPA logs.
+# Clients first fetch /verify/v1/guest with `Accept: application/json` and get
+# the token in the body. If Fastly answers with a challenge instead, they open
+# the same URL in a tab and watch for /verify/v1/guest/success. In the tab flow
+# the token goes in the fragment so it never leaves the browser.
 NO_STORE_HEADERS = {"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"}
 
 
 @router.get(
     "/v1/guest",
     tags=["Guest"],
-    status_code=302,
-    response_class=RedirectResponse,
     responses={
+        200: {
+            "description": "Token as JSON, when the request sends `Accept: application/json`.",
+            "content": {
+                "application/json": {
+                    "example": {"access_token": "eyJ...", "token_type": "Bearer"}
+                }
+            },
+        },
         302: {
-            "description": "Redirect to `/verify/v1/guest/success#access_token=...&token_type=Bearer&state=...`",
+            "description": "Redirect to `/verify/v1/guest/success#access_token=...&token_type=Bearer[&state=...]`",
             "headers": {"Location": {"schema": {"type": "string"}}},
-        }
+        },
+        404: {"description": "Guest tokens are disabled (`MLPA_GUEST_ENABLED=false`)."},
     },
 )
 async def get_guest_token(
-    state: str = Query(
+    state: str | None = Query(
+        None,
         min_length=1,
         max_length=256,
-        description="Opaque client value, echoed back in the redirect fragment.",
+        description="Optional opaque client value, echoed back in the redirect fragment.",
     ),
+    accept: str = Header(""),
 ):
     """
     Issue a guest access token.
 
-    Open this URL in a browser tab, Fastly may show a challenge first. Once
-    passed, MLPA redirects to `/verify/v1/guest/success` with the token in the
-    URL fragment. Watch the tab URL for that path, read the fragment, then
+    Fetch with `Accept: application/json` to get the token in the body. If
+    Fastly answers with a challenge instead, open this URL in a browser tab
+    and pass it. MLPA then redirects to `/verify/v1/guest/success` with the
+    token in the URL fragment. Watch the tab URL for that path, read the fragment, then
     close the tab. Token expiry is in the JWT `exp` claim.
     """
-    fragment = urlencode(
-        {"access_token": issue_guest_token(), "token_type": "Bearer", "state": state}
-    )
+    if not env.MLPA_GUEST_ENABLED:
+        raise HTTPException(status_code=404, detail="Guest tokens are disabled")
+    params = {"access_token": issue_guest_token(), "token_type": "Bearer"}
+    if "application/json" in accept:
+        return JSONResponse(params, headers=NO_STORE_HEADERS)
+    if state is not None:
+        params["state"] = state
+    fragment = urlencode(params)
     return RedirectResponse(
         f"/verify/v1/guest/success#{fragment}",
         status_code=302,

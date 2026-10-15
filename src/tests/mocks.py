@@ -7,7 +7,15 @@ from cryptography.x509 import load_der_x509_certificate
 from fastapi import HTTPException
 
 from mlpa.core.classes import AuthorizedChatRequest
-from mlpa.core.config import ERROR_CODE_MAX_USERS_REACHED, env
+from mlpa.core.config import (
+    ERROR_CODE_MAX_GUESTS_REACHED,
+    ERROR_CODE_MAX_USERS_REACHED,
+    GUEST_CAPACITY_ID,
+    USER_CAPACITY_ID,
+    capacity_id_for_service_type,
+    capacity_settings,
+    env,
+)
 from mlpa.core.logger import logger
 from mlpa.core.routers.appattest.appattest import validate_challenge
 from mlpa.core.utils import b64decode_safe, parse_app_attest_jwt
@@ -77,20 +85,22 @@ async def mock_get_or_create_user(mock_litellm_pg, mock_app_attest_pg, user_id: 
         # - cap-managed service types reserve base identity slots
         # - independent service types bypass
         base_identity, _sep, service_type = user_id.partition(":")
-        if (
-            env.MLPA_ENFORCE_SIGNIN_CAP
-            and service_type in env.MLPA_CAPPED_SERVICE_TYPES
-        ):
+        capacity_id = capacity_id_for_service_type(service_type)
+        if capacity_id is not None:
             (
                 admitted,
                 newly_claimed,
             ) = await mock_app_attest_pg.admit_managed_base_identity(
-                base_identity=base_identity
+                base_identity=base_identity, capacity_id=capacity_id
             )
             if not admitted:
                 raise HTTPException(
                     status_code=403,
-                    detail={"error": ERROR_CODE_MAX_USERS_REACHED},
+                    detail={
+                        "error": ERROR_CODE_MAX_GUESTS_REACHED
+                        if capacity_id == GUEST_CAPACITY_ID
+                        else ERROR_CODE_MAX_USERS_REACHED
+                    },
                 )
 
         mock_litellm_pg.store_user(user_id, {"data": "testdata"})
@@ -113,6 +123,12 @@ class MockAppAttestPGService:
         self.keys = {}
         self.litellm_pg = litellm_pg
         self.managed_capacity_claims: set[str] = set()
+        self.guest_capacity_claims: set[str] = set()
+
+    def _claims(self, capacity_id: int) -> set[str]:
+        if capacity_id == GUEST_CAPACITY_ID:
+            return self.guest_capacity_claims
+        return self.managed_capacity_claims
 
     async def connect(self):
         pass
@@ -157,28 +173,31 @@ class MockAppAttestPGService:
         # No-op: the in-memory store_user/admission logic simulates capacity.
 
     async def admit_managed_base_identity(
-        self, base_identity: str
+        self, base_identity: str, capacity_id: int = USER_CAPACITY_ID
     ) -> tuple[bool, bool]:
         """Mock DB-backed admission: reserve a managed base identity slot."""
-        if not env.MLPA_ENFORCE_SIGNIN_CAP:
+        enforced, max_identities, _types = capacity_settings(capacity_id)
+        if not enforced:
             return True, False
-        if base_identity in self.managed_capacity_claims:
+        claims = self._claims(capacity_id)
+        if base_identity in claims:
             return True, False
-        if len(self.managed_capacity_claims) >= env.MLPA_MAX_SIGNED_IN_USERS:
+        if len(claims) >= max_identities:
             return False, False
-        self.managed_capacity_claims.add(base_identity)
+        claims.add(base_identity)
         return True, True
 
     async def maybe_release_managed_base_identity_if_no_managed_users(
-        self, base_identity: str
+        self, base_identity: str, capacity_id: int = USER_CAPACITY_ID
     ) -> None:
         """Release a managed capacity claim if no managed service rows exist for the base identity."""
-        if not env.MLPA_ENFORCE_SIGNIN_CAP:
+        enforced, _max, managed_service_types = capacity_settings(capacity_id)
+        if not enforced:
             return
-        if base_identity not in self.managed_capacity_claims:
+        claims = self._claims(capacity_id)
+        if base_identity not in claims:
             return
 
-        managed_service_types = env.MLPA_CAPPED_SERVICE_TYPES
         if self.litellm_pg is None:
             return
         has_managed_user_rows = any(
@@ -188,7 +207,7 @@ class MockAppAttestPGService:
             if ":" in uid
         )
         if not has_managed_user_rows:
-            self.managed_capacity_claims.remove(base_identity)
+            claims.remove(base_identity)
 
     async def get_signup_cap_status(self) -> dict:
         current = len(self.managed_capacity_claims)
@@ -201,6 +220,10 @@ class MockAppAttestPGService:
             "slots_remaining": max(0, max_i - current),
             "capacity_updated_at": None,
             "capacity_row_missing": False,
+            "enforce_guest_cap": env.MLPA_ENFORCE_GUEST_CAP,
+            "guest_service_types": list(env.MLPA_GUEST_SERVICE_TYPES),
+            "max_guests": env.MLPA_MAX_GUESTS,
+            "current_guests": len(self.guest_capacity_claims),
         }
 
 

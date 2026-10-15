@@ -13,8 +13,11 @@ from jwtoxide import DecodingKey, ValidationOptions, decode, encode
 
 from mlpa.core.classes import AssertionAuth, AttestationAuth
 from mlpa.core.config import (
+    ERROR_CODE_MAX_GUESTS_REACHED,
     ERROR_CODE_MAX_USERS_REACHED,
+    GUEST_CAPACITY_ID,
     LITELLM_MASTER_AUTH_HEADERS,
+    capacity_id_for_service_type,
     env,
 )
 from mlpa.core.consts.country_codes import COUNTRY_CODES
@@ -195,28 +198,32 @@ async def get_or_create_user(user_id: str):
     budget_id = user_feature_budgets[service_type]["budget_id"]
 
     client = get_http_client()
-    claimed_new_identity = False
+    capacity_id = capacity_id_for_service_type(service_type)
+    # Capacity row we claimed a new slot in, released if user creation fails.
+    claimed_capacity_id: int | None = None
     try:
         db_user = await litellm_pg.get_user(user_id)
 
         if db_user is None:
-            # Enforce managed service types user capacity with DB-backed admission control.
-            if (
-                env.MLPA_ENFORCE_SIGNIN_CAP
-                and service_type in env.MLPA_CAPPED_SERVICE_TYPES
-            ):
+            # Enforce user or guest capacity with DB-backed admission control.
+            if capacity_id is not None:
                 (
                     admitted,
                     newly_claimed,
                 ) = await app_attest_pg.admit_managed_base_identity(
-                    base_identity=base_identity
+                    base_identity=base_identity, capacity_id=capacity_id
                 )
                 if not admitted:
                     raise HTTPException(
                         status_code=403,
-                        detail={"error": ERROR_CODE_MAX_USERS_REACHED},
+                        detail={
+                            "error": ERROR_CODE_MAX_GUESTS_REACHED
+                            if capacity_id == GUEST_CAPACITY_ID
+                            else ERROR_CODE_MAX_USERS_REACHED
+                        },
                     )
-                claimed_new_identity = newly_claimed
+                if newly_claimed:
+                    claimed_capacity_id = capacity_id
 
             await client.post(
                 f"{env.LITELLM_API_BASE}/customer/new",
@@ -228,9 +235,9 @@ async def get_or_create_user(user_id: str):
             if created_user is None:
                 # Admission may have succeeded but LiteLLM user creation did not.
                 # Release the reserved slot to avoid claim/cap drift.
-                if claimed_new_identity:
+                if claimed_capacity_id is not None:
                     await app_attest_pg.maybe_release_managed_base_identity_if_no_managed_users(
-                        base_identity=base_identity
+                        base_identity=base_identity, capacity_id=claimed_capacity_id
                     )
                 raise HTTPException(
                     status_code=500,
@@ -243,10 +250,10 @@ async def get_or_create_user(user_id: str):
     except HTTPException:
         raise
     except Exception as e:
-        if claimed_new_identity:
+        if claimed_capacity_id is not None:
             try:
                 await app_attest_pg.maybe_release_managed_base_identity_if_no_managed_users(
-                    base_identity=base_identity
+                    base_identity=base_identity, capacity_id=claimed_capacity_id
                 )
             except Exception as release_e:
                 logger.error(

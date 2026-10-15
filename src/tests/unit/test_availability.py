@@ -28,9 +28,12 @@ def test_every_availability_reason_maps_to_an_outcome():
         assert isinstance(availability_outcome_for(reason), AvailabilityOutcome)
 
 
-# SIGNUP_CAP_EXCEEDED is recorded pre-completion, not by classify_upstream_error,
-# so it is intentionally outside the completion-stage availability mapping.
-_PRE_COMPLETION_REJECTION_REASONS = {PrometheusRejectionReason.SIGNUP_CAP_EXCEEDED}
+# SIGNUP_CAP_EXCEEDED and GUEST_CAP_EXCEEDED are recorded pre-completion, not by
+# classify_upstream_error, so they are intentionally outside the completion-stage availability mapping.
+_PRE_COMPLETION_REJECTION_REASONS = {
+    PrometheusRejectionReason.SIGNUP_CAP_EXCEEDED,
+    PrometheusRejectionReason.GUEST_CAP_EXCEEDED,
+}
 _COMPLETION_STAGE_REJECTION_OUTCOME_OVERRIDES = {
     PrometheusRejectionReason.GLOBAL_BUDGET_EXCEEDED: AvailabilityOutcome.FAILURE
 }

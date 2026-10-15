@@ -1,7 +1,7 @@
 from functools import cached_property
 from typing import Annotated, Any, TypedDict
 
-from pydantic import field_validator
+from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
 
 
@@ -24,6 +24,42 @@ class Env(BaseSettings):
     # Example: `ai` and `memories` are coupled; `s2s`/`s2s-android` can bypass.
     MLPA_CAPPED_SERVICE_TYPES: set[str] = {"ai", "memories"}
     MLPA_ADMISSION_LOCK_TIMEOUT_MS: int = 5000
+
+    # Guest capacity gate (AIPLAT-1447): same admission as above, own counter
+    # (mlpa_user_capacity row 2). Infra deletes guest claims (capacity_id = 2)
+    # older than the token TTL and must then set row 2's current_identities to
+    # the remaining COUNT(*), otherwise slots only free up on MLPA restart.
+    # Turn MLPA_ENFORCE_GUEST_CAP on only after every pod runs this image, and
+    # off before rolling back: older images' reconcile deletes all claims,
+    # guest ones included, and never recounts row 2.
+    MLPA_MAX_GUESTS: int = 100000
+    MLPA_ENFORCE_GUEST_CAP: bool = False
+    MLPA_GUEST_SERVICE_TYPES: set[str] = set()
+    # Kill switch for GET /verify/v1/guest
+    MLPA_GUEST_ENABLED: bool = False
+
+    @model_validator(mode="after")
+    def _guest_and_user_caps_are_disjoint(self):
+        # A service type in both sets would admit one new user into both rows.
+        overlap = self.MLPA_GUEST_SERVICE_TYPES & self.MLPA_CAPPED_SERVICE_TYPES
+        if overlap:
+            raise ValueError(
+                f"MLPA_GUEST_SERVICE_TYPES and MLPA_CAPPED_SERVICE_TYPES overlap: {sorted(overlap)}"
+            )
+        return self
+
+    @model_validator(mode="after")
+    def _guest_secret_is_set(self):
+        # The default is in the public repo, anyone could sign guest tokens with it.
+        if (
+            self.MLPA_GUEST_ENABLED
+            and not self.MLPA_DEBUG
+            and self.MLPA_GUEST_TOKEN_SIGNING_SECRET == "mlpa-guest-dev-secret"
+        ):
+            raise ValueError(
+                "MLPA_GUEST_ENABLED needs MLPA_GUEST_TOKEN_SIGNING_SECRET set"
+            )
+        return self
 
     # Countries with their own Grafana breakout (AIPLAT-1266). Deliberately a
     # small set, distinct from the full ISO country_codes.COUNTRY_CODES list,
@@ -594,6 +630,43 @@ class Env(BaseSettings):
 
 env = Env()
 
+USER_CAPACITY_ID = 1
+GUEST_CAPACITY_ID = 2
+
+
+# env attribute names for (enforced, max identities, service types) per
+# mlpa_user_capacity row. Names, not values, so tests can patch env.
+CAPACITY_SETTINGS = {
+    USER_CAPACITY_ID: (
+        "MLPA_ENFORCE_SIGNIN_CAP",
+        "MLPA_MAX_SIGNED_IN_USERS",
+        "MLPA_CAPPED_SERVICE_TYPES",
+    ),
+    GUEST_CAPACITY_ID: (
+        "MLPA_ENFORCE_GUEST_CAP",
+        "MLPA_MAX_GUESTS",
+        "MLPA_GUEST_SERVICE_TYPES",
+    ),
+}
+
+
+def capacity_settings(capacity_id: int) -> tuple[bool, int, set[str]]:
+    """(enforced, max identities, service types) for a mlpa_user_capacity row."""
+    enforced, max_identities, service_types = (
+        getattr(env, name) for name in CAPACITY_SETTINGS[capacity_id]
+    )
+    return enforced, max_identities, service_types
+
+
+def capacity_id_for_service_type(service_type: str) -> int | None:
+    """Capacity row a new user of this service type must be admitted to, if any."""
+    for capacity_id in CAPACITY_SETTINGS:
+        enforced, _max, service_types = capacity_settings(capacity_id)
+        if enforced and service_type in service_types:
+            return capacity_id
+    return None
+
+
 LITELLM_READINESS_URL = f"{env.LITELLM_API_BASE}/health/readiness"
 LITELLM_INFO_URL = f"{env.LITELLM_API_BASE}/public/model_hub/info"
 LITELLM_COMPLETIONS_URL = f"{env.LITELLM_API_BASE}/v1/chat/completions"
@@ -653,6 +726,8 @@ ERROR_CODE_FASTLY_WAF_RATE_LIMIT: int = 6
 ERROR_CODE_INVALID_MODEL_NAME: int = 8
 ERROR_CODE_INVALID_REQUEST: int = 9
 ERROR_CODE_GLOBAL_BUDGET_LIMIT_EXCEEDED: int = 10
+# 11 is the guest pool exhausted code (AIPLAT-1449).
+ERROR_CODE_MAX_GUESTS_REACHED: int = 12
 
 ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
     429: {
@@ -793,7 +868,7 @@ ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
         },
     },
     403: {
-        "description": "Forbidden - Maximum signed-in users reached",
+        "description": "Forbidden - Maximum signed-in users or guests reached",
         "content": {
             "application/json": {
                 "schema": {
@@ -801,7 +876,7 @@ ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
                     "properties": {
                         "error": {
                             "type": "integer",
-                            "description": "Error code: 4 for maximum signed-in users reached",
+                            "description": "Error code: 4 for maximum signed-in users reached, 12 for maximum guests reached",
                         }
                     },
                     "required": ["error"],
@@ -811,7 +886,12 @@ ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
                         "summary": "Maximum signed-in users reached",
                         "value": {"error": ERROR_CODE_MAX_USERS_REACHED},
                         "description": "New sign-ins for cap-managed service types are rejected because capacity is full.",
-                    }
+                    },
+                    "max_guests_reached": {
+                        "summary": "Maximum guests reached",
+                        "value": {"error": ERROR_CODE_MAX_GUESTS_REACHED},
+                        "description": "New guests for guest service types are rejected because guest capacity is full.",
+                    },
                 },
             }
         },

@@ -9,6 +9,7 @@ from fastapi import HTTPException, Request
 
 from mlpa.core.classes import AuthorizedChatRequest, AuthorizedSearchRequest
 from mlpa.core.config import (
+    ERROR_CODE_MAX_GUESTS_REACHED,
     ERROR_CODE_MAX_USERS_REACHED,
     LITELLM_COMPLETIONS_URL,
     env,
@@ -73,12 +74,25 @@ def _build_litellm_body(req: AuthorizedChatRequest, *, stream: bool) -> dict:
     return sanitize_request_body(body)
 
 
+_CAP_EXCEEDED_REASONS = {
+    ERROR_CODE_MAX_USERS_REACHED: (
+        PrometheusRejectionReason.SIGNUP_CAP_EXCEEDED,
+        AvailabilityReason.SIGNUP_CAP_EXCEEDED,
+    ),
+    ERROR_CODE_MAX_GUESTS_REACHED: (
+        PrometheusRejectionReason.GUEST_CAP_EXCEEDED,
+        AvailabilityReason.GUEST_CAP_EXCEEDED,
+    ),
+}
+
+
 async def get_or_create_user_for_completion(
     request: Request, user_id: str, req: AuthorizedChatRequest | AuthorizedSearchRequest
 ):
     """
     Wraps get_or_create_user and records availability for chat requests:
-    - signup cap (403 + MAX_USERS_REACHED): excluded, alongside the existing rejection metric
+    - signup or guest cap (403 + MAX_USERS_REACHED / MAX_GUESTS_REACHED): excluded,
+      alongside the existing rejection metric
     - user-resolution server or system failure (status >= 500): failure
     - search requests and non-signup-cap, non-5xx failures: not recorded
     """
@@ -87,18 +101,15 @@ async def get_or_create_user_for_completion(
             return await get_or_create_user(user_id)
         except HTTPException as exc:
             if isinstance(req, AuthorizedChatRequest):
-                if (
-                    exc.status_code == 403
-                    and isinstance(exc.detail, dict)
-                    and exc.detail.get("error") == ERROR_CODE_MAX_USERS_REACHED
-                ):
-                    record_chat_request_rejection(
-                        req,
-                        PrometheusRejectionReason.SIGNUP_CAP_EXCEEDED,
-                    )
-                    record_chat_availability(
-                        req, AvailabilityReason.SIGNUP_CAP_EXCEEDED
-                    )
+                cap_reasons = (
+                    _CAP_EXCEEDED_REASONS.get(exc.detail.get("error"))
+                    if exc.status_code == 403 and isinstance(exc.detail, dict)
+                    else None
+                )
+                if cap_reasons:
+                    rejection_reason, availability_reason = cap_reasons
+                    record_chat_request_rejection(req, rejection_reason)
+                    record_chat_availability(req, availability_reason)
                 elif exc.status_code >= 500:
                     # User-resolution server or system failure. Non-signup-cap 4xx errors
                     # are not recorded; a client-side 4xx should get its own classification
