@@ -1,0 +1,41 @@
+name: Test gateway image
+
+on:
+  workflow_dispatch:
+    inputs:
+      image:
+        description: "Full gateway image reference in Artifact Registry (commit tag or digest)"
+        required: true
+        type: string
+
+jobs:
+  litellm-compatibility-tests:
+    runs-on: ubuntu-latest
+    environment: build
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Authenticate to Google Cloud
+        id: gcp-auth
+        uses: google-github-actions/auth@v2
+        with:
+          token_format: access_token
+          create_credentials_file: false
+          service_account: artifact-writer@moz-fx-llm-proxy-prod-b0b8.iam.gserviceaccount.com
+          workload_identity_provider: projects/324168772199/locations/global/workloadIdentityPools/github-actions/providers/github-actions
+
+      - name: Login to Google Artifact Registry
+        uses: docker/login-action@v3
+        with:
+          registry: us-docker.pkg.dev
+          username: oauth2accesstoken
+          password: ${{ steps.gcp-auth.outputs.access_token }}
+
+      - name: Run LiteLLM compatibility tests
+        uses: ./.github/actions/litellm-compatibility
+        with:
+          image: ${{ inputs.image }}

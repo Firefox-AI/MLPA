@@ -96,61 +96,8 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
 
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
-      - name: Install uv
-        run: pip install uv==0.10.8
-
-      - name: Sync dependencies
-        run: |
-          uv venv
-          uv sync --all-groups
-          uv pip install --no-cache-dir -e .
-
-      - name: Configure LiteLLM env
-        run: echo "MASTER_KEY=sk-default" > .env
-
-      - name: Start LiteLLM + Postgres + Redis
-        run: docker compose -f litellm_docker_compose.yaml up -d
-
-      - name: Wait for LiteLLM to be ready
-        run: |
-          for i in $(seq 1 60); do
-            if curl -sf http://localhost:4000/health/liveliness > /dev/null; then
-              echo "LiteLLM is up"
-              exit 0
-            fi
-            sleep 2
-          done
-          echo "LiteLLM did not become ready in time"
-          docker compose -f litellm_docker_compose.yaml logs
-          exit 1
-
-      - name: Migrate app_attest database
-        run: |
-          sudo apt-get update && sudo apt-get install -y postgresql-client
-          bash scripts/migrate-app-attest-database-local.sh
-
-      - name: Create MLPA virtual key
-        run: uv run python scripts/create-and-set-virtual-key.py
-
       - name: Run LiteLLM compatibility tests
-        env:
-          MLPA_TEST_REQUIRE_REAL_BACKEND: "true"
-        run: uv run pytest src/tests/litellm_compatibility -v --junit-xml=litellm-compatibility-results.xml
-
-      - name: Summarize failures
-        if: always()
-        run: |
-          uv run python scripts/ci_failure_summary.py litellm-compatibility-results.xml \
-            "> A failure here usually means the pinned LiteLLM version broke a documented contract -- see the checks below for what each one verifies."
-
-      - name: Stop LiteLLM + Postgres + Redis
-        if: always()
-        run: docker compose -f litellm_docker_compose.yaml down -v
+        uses: ./.github/actions/litellm-compatibility
 
   build-and-verify-docs:
     runs-on: ubuntu-latest

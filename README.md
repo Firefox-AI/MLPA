@@ -94,6 +94,23 @@ Service account configured to hit VertexAI: `service_account.json` should be in 
 
 After running, Swagger can be viewed at `http://localhost:<PORT>/api/docs`
 
+## Test a gateway image
+
+In GitHub Actions, select **Test gateway image → Run workflow** and supply the full
+published `litellm-gateway` image reference from Artifact Registry. Use a commit
+tag or digest to identify the candidate:
+
+```bash
+gh workflow run test-gateway-image.yml --repo Firefox-AI/MLPA \
+  -f 'image=us-docker.pkg.dev/moz-fx-llm-proxy-prod-b0b8/llm-proxy-prod/litellm-gateway:<commit-sha>'
+```
+
+The workflow pulls the image and runs `src/tests/litellm_compatibility` with
+PostgreSQL, Redis, and the local Exa stub. Normal CI uses the upstream image pinned
+in `litellm_docker_compose.yaml`; the manual workflow overrides only that image.
+Both use the same compatibility tests and configuration. The workflow does not
+deploy the candidate or enable its custom handlers in the test configuration.
+
 ## Auth benchmarks
 
 `src/tests/bench/` times each auth path with [pytest-benchmark](https://pytest-benchmark.readthedocs.io/). FxA, Google, Apple and Postgres are replaced with in-memory fakes, but the real crypto runs (RS256 FxA tokens, HS256 MLPA access tokens, App Attest ECDSA assertions). The suite covers:
