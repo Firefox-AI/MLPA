@@ -152,14 +152,22 @@ async def stream_completion(
     )
 
     disconnect_event = asyncio.Event()
+    stop_watching = asyncio.Event()
     _client_disconnected_msg = (
         f"Client disconnected mid-stream for user {authorized_chat_request.user}"
     )
 
     async def _watch_disconnect() -> None:
-        while not await request.is_disconnected():
+        while not stop_watching.is_set():
+            if await request.is_disconnected():
+                disconnect_event.set()
+                return
+            # Starlette's is_disconnected() uses an AnyIO cancel scope that can
+            # swallow our task cancellation. Recheck the explicit stop signal
+            # before sleeping so normal completion never waits for a disconnect.
+            if stop_watching.is_set():
+                return
             await asyncio.sleep(env.DISCONNECT_POLL_INTERVAL_SECONDS)
-        disconnect_event.set()
 
     async def _read_next_chunk(
         response_iterator: AsyncIterator[bytes],
@@ -382,6 +390,7 @@ async def stream_completion(
                 await next_chunk_task
         # Cancel the disconnect watcher and wait for it to finish to avoid
         # "Task was destroyed but it is pending" warnings at shutdown.
+        stop_watching.set()
         watch_task.cancel()
         with contextlib.suppress(asyncio.CancelledError):
             await watch_task
