@@ -2,7 +2,8 @@
 
 The auth backends are replaced with instant stubs, so this measures only the
 routing work: header checks, purpose and model validation, App Attest JWT
-parsing and body hashing, and building the AuthorizedChatRequest.
+parsing and body hashing, the guest token prefix check, and building the
+AuthorizedChatRequest.
 """
 
 import pytest
@@ -45,6 +46,18 @@ def _extract_user(authorization):
     return PLAY_USER_ID
 
 
+def _verify_guest_token(authorization):
+    return "bench-guest"
+
+
+def _guest_header():
+    # Imported here: bench_compare.py runs this file on main too, where the
+    # guest module may not exist yet. Only this case fails there, not the file.
+    from mlpa.core.routers.guest.guest import issue_guest_token
+
+    return f"Bearer {issue_guest_token()}"
+
+
 def _app_attest_header():
     device = AppAttestDevice(
         "bench-dispatch", f"{env.APP_DEVELOPMENT_TEAM}.{APP_ATTEST_BUNDLE_ID}"
@@ -72,6 +85,10 @@ COMBINATIONS = {
         "service_type": ServiceType("ai"),
         "use_app_attest": True,
     },
+    "guest": lambda: {
+        "authorization": _guest_header(),
+        "service_type": ServiceType("ai"),
+    },
 }
 
 
@@ -98,6 +115,10 @@ def test_authorize_chat_request_dispatch(benchmark, loop, monkeypatch, combinati
     monkeypatch.setattr(
         authorize_module, "extract_user_from_play_integrity_jwt", _extract_user
     )
+    if combination == "guest":
+        monkeypatch.setattr(env, "MLPA_GUEST_ENABLED", True)
+        monkeypatch.setattr(env, "MLPA_GUEST_VIRTUAL_KEY", "sk-bench-guest")
+        monkeypatch.setattr(authorize_module, "verify_guest_token", _verify_guest_token)
     headers = COMBINATIONS[combination]()
 
     async def authorize(_):
@@ -107,6 +128,7 @@ def test_authorize_chat_request_dispatch(benchmark, loop, monkeypatch, combinati
             purpose="chat",
             **headers,
         )
-        assert result.user.endswith(headers["service_type"].value)
+        # Guests get "-guest" appended: "{id}:ai-guest"
+        assert f":{headers['service_type'].value}" in result.user
 
     run_async(benchmark, loop, authorize, OPS)

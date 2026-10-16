@@ -51,7 +51,10 @@ async def instrument_requests_middleware(request: Request, call_next):
             endpoint = route.path if route else request.url.path
 
             method = clamp_request_method(request.method)
-            service_type = request.headers.get("service-type", "")
+            # Auth overrides the header for guests (ai -> ai-guest)
+            service_type = getattr(
+                request.state, "service_type", request.headers.get("service-type", "")
+            )
             purpose = request.headers.get("purpose", "")
             user_agent = request.headers.get("user-agent", "")
             major_fx_version = parse_firefox_major_version_from_user_agent(user_agent)

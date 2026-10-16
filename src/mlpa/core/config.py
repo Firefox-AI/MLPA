@@ -34,7 +34,7 @@ class Env(BaseSettings):
     # guest ones included, and never recounts row 2.
     MLPA_MAX_GUESTS: int = 100000
     MLPA_ENFORCE_GUEST_CAP: bool = False
-    MLPA_GUEST_SERVICE_TYPES: set[str] = set()
+    MLPA_GUEST_SERVICE_TYPES: set[str] = {"ai-guest", "memories-guest", "search-guest"}
     # Kill switch for GET /verify/v1/guest
     MLPA_GUEST_ENABLED: bool = False
 
@@ -106,6 +106,10 @@ class Env(BaseSettings):
     # Read-only admin dashboard (`/admin`) and GET /user/counts-by-service-type; not LiteLLM's master key
     MLPA_UI_ACCESS_KEY: str = "sk-ui-access-default"
     MLPA_VIRTUAL_KEY: str = "sk-virtual"  # Enforces LiteLLM.max_budget
+    # Separate key for `*-guest` service types (AIPLAT-1449). Its LiteLLM
+    # max_budget is the total guest spend cap, so running it out never touches
+    # FxA users. Unset means guest requests get 503, never MLPA_VIRTUAL_KEY.
+    MLPA_GUEST_VIRTUAL_KEY: str | None = None
 
     # User Feature Budget - AI service type
     USER_FEATURE_BUDGET_AI_BUDGET_ID: str = "end-user-budget-ai"
@@ -190,6 +194,27 @@ class Env(BaseSettings):
     USER_FEATURE_BUDGET_MEMORIES_DEV_MAX_BUDGET: float = 1.0
     USER_FEATURE_BUDGET_MEMORIES_DEV_RPM_LIMIT: int = 50
     USER_FEATURE_BUDGET_MEMORIES_DEV_TPM_LIMIT: int = 5000
+
+    # User Feature Budget - guest service types (AIPLAT-1449). Clients never
+    # send these, MLPA appends "-guest" to the service-type header when the
+    # request carries an MLPA guest token.
+    USER_FEATURE_BUDGET_AI_GUEST_BUDGET_ID: str = "end-user-budget-ai-guest"
+    USER_FEATURE_BUDGET_AI_GUEST_BUDGET_DURATION: str = "1d"
+    USER_FEATURE_BUDGET_AI_GUEST_MAX_BUDGET: float = 0.05
+    USER_FEATURE_BUDGET_AI_GUEST_RPM_LIMIT: int = 20
+    USER_FEATURE_BUDGET_AI_GUEST_TPM_LIMIT: int = 2000
+
+    USER_FEATURE_BUDGET_MEMORIES_GUEST_BUDGET_ID: str = "end-user-budget-memories-guest"
+    USER_FEATURE_BUDGET_MEMORIES_GUEST_BUDGET_DURATION: str = "1d"
+    USER_FEATURE_BUDGET_MEMORIES_GUEST_MAX_BUDGET: float = 0.05
+    USER_FEATURE_BUDGET_MEMORIES_GUEST_RPM_LIMIT: int = 10
+    USER_FEATURE_BUDGET_MEMORIES_GUEST_TPM_LIMIT: int = 2000
+
+    USER_FEATURE_BUDGET_SEARCH_GUEST_BUDGET_ID: str = "end-user-budget-search-guest"
+    USER_FEATURE_BUDGET_SEARCH_GUEST_BUDGET_DURATION: str = "1d"
+    USER_FEATURE_BUDGET_SEARCH_GUEST_MAX_BUDGET: float = 0.01
+    USER_FEATURE_BUDGET_SEARCH_GUEST_RPM_LIMIT: int = 5
+    USER_FEATURE_BUDGET_SEARCH_GUEST_TPM_LIMIT: int = 2000
 
     USER_FEATURE_BUDGET_MOCHI_DEV_BUDGET_ID: str = "end-user-budget-mochi-dev"
     USER_FEATURE_BUDGET_MOCHI_DEV_BUDGET_DURATION: str = "1d"
@@ -339,6 +364,30 @@ class Env(BaseSettings):
                 "rpm_limit": self.USER_FEATURE_BUDGET_MEMORIES_DEV_RPM_LIMIT,
                 "tpm_limit": self.USER_FEATURE_BUDGET_MEMORIES_DEV_TPM_LIMIT,
             },
+            "ai-guest": {
+                "feature": self.FEATURE_SMART_WINDOW,
+                "budget_id": self.USER_FEATURE_BUDGET_AI_GUEST_BUDGET_ID,
+                "budget_duration": self.USER_FEATURE_BUDGET_AI_GUEST_BUDGET_DURATION,
+                "max_budget": self.USER_FEATURE_BUDGET_AI_GUEST_MAX_BUDGET,
+                "rpm_limit": self.USER_FEATURE_BUDGET_AI_GUEST_RPM_LIMIT,
+                "tpm_limit": self.USER_FEATURE_BUDGET_AI_GUEST_TPM_LIMIT,
+            },
+            "memories-guest": {
+                "feature": self.FEATURE_SMART_WINDOW,
+                "budget_id": self.USER_FEATURE_BUDGET_MEMORIES_GUEST_BUDGET_ID,
+                "budget_duration": self.USER_FEATURE_BUDGET_MEMORIES_GUEST_BUDGET_DURATION,
+                "max_budget": self.USER_FEATURE_BUDGET_MEMORIES_GUEST_MAX_BUDGET,
+                "rpm_limit": self.USER_FEATURE_BUDGET_MEMORIES_GUEST_RPM_LIMIT,
+                "tpm_limit": self.USER_FEATURE_BUDGET_MEMORIES_GUEST_TPM_LIMIT,
+            },
+            "search-guest": {
+                "feature": self.FEATURE_SMART_WINDOW,
+                "budget_id": self.USER_FEATURE_BUDGET_SEARCH_GUEST_BUDGET_ID,
+                "budget_duration": self.USER_FEATURE_BUDGET_SEARCH_GUEST_BUDGET_DURATION,
+                "max_budget": self.USER_FEATURE_BUDGET_SEARCH_GUEST_MAX_BUDGET,
+                "rpm_limit": self.USER_FEATURE_BUDGET_SEARCH_GUEST_RPM_LIMIT,
+                "tpm_limit": self.USER_FEATURE_BUDGET_SEARCH_GUEST_TPM_LIMIT,
+            },
             "mochi-dev": {
                 "feature": self.FEATURE_SMART_WINDOW,
                 "budget_id": self.USER_FEATURE_BUDGET_MOCHI_DEV_BUDGET_ID,
@@ -407,6 +456,11 @@ class Env(BaseSettings):
         return set(self.valid_service_types)
 
     @cached_property
+    def client_service_types(self) -> list[str]:
+        """Values a client may send in the service-type header (no `-guest`)."""
+        return [st for st in self.valid_service_types if not st.endswith("-guest")]
+
+    @cached_property
     def service_type_purposes(self) -> dict[str, list[str]]:
         """
         Valid purpose values per service type (for the purpose header and Prometheus).
@@ -426,6 +480,9 @@ class Env(BaseSettings):
             "mochi-dev": ai_purposes,
             "memories": memories_purposes,
             "memories-dev": memories_purposes,
+            "ai-guest": ai_purposes,
+            "memories-guest": memories_purposes,
+            "search-guest": [],
             "s2s": [],
             "s2s-android": [],
             "search": [],
@@ -474,7 +531,7 @@ class Env(BaseSettings):
         """
         # Force certain models to use certain service types
         return {
-            "exa-search": ["search", "search-dev", "agent-search"],
+            "exa-search": ["search", "search-dev", "agent-search", "search-guest"],
             "exa": ["answer", "sw-answer"],
             "liner": ["liner-answer"],
         }
@@ -726,7 +783,8 @@ ERROR_CODE_FASTLY_WAF_RATE_LIMIT: int = 6
 ERROR_CODE_INVALID_MODEL_NAME: int = 8
 ERROR_CODE_INVALID_REQUEST: int = 9
 ERROR_CODE_GLOBAL_BUDGET_LIMIT_EXCEEDED: int = 10
-# 11 is the guest pool exhausted code (AIPLAT-1449).
+# Guest virtual key (MLPA_GUEST_VIRTUAL_KEY) hit its LiteLLM max_budget (AIPLAT-1449)
+ERROR_CODE_GUEST_BUDGET_LIMIT_EXCEEDED: int = 11
 ERROR_CODE_MAX_GUESTS_REACHED: int = 12
 
 ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
@@ -745,7 +803,7 @@ ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
                             "description": (
                                 "Error code: 1 budget limit exceeded, 2 rate limit (TPM/RPM), "
                                 "5 upstream provider rate limit, 6 Fastly WAF rate limit (edge; not from MLPA), "
-                                "10 global budget limit exceeded"
+                                "10 global budget limit exceeded, 11 guest budget limit exceeded"
                             ),
                         }
                     },
@@ -766,6 +824,11 @@ ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
                         "summary": "Upstream rate limit exceeded",
                         "value": {"error": ERROR_CODE_UPSTREAM_RATE_LIMIT_EXCEEDED},
                         "description": "Upstream provider rate limit exceeded.",
+                    },
+                    "guest_budget_exceeded": {
+                        "summary": "Guest budget limit exceeded",
+                        "value": {"error": ERROR_CODE_GUEST_BUDGET_LIMIT_EXCEEDED},
+                        "description": "Shared budget for all guests is used up. Check Retry-After header (3600 seconds = 1 hour).",
                     },
                     "fastly_waf_rate_limit": {
                         "summary": "Fastly WAF rate limit",

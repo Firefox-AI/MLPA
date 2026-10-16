@@ -23,6 +23,7 @@ from mlpa.core.config import (
     ERROR_CODE_GLOBAL_BUDGET_LIMIT_EXCEEDED,
     ERROR_CODE_MAX_GUESTS_REACHED,
     ERROR_CODE_MAX_USERS_REACHED,
+    env,
 )
 from mlpa.core.prometheus_metrics import (
     AvailabilityOutcome,
@@ -199,6 +200,43 @@ async def test_wrapper_shared_call_401_records_auth_rejected(mocker, metrics_spy
             metrics_spy,
             AvailabilityOutcome.EXCLUDED,
             AvailabilityReason.AUTH_REJECTED,
+            model=_VALID_MODEL,
+            service_type="ai",
+            purpose="chat",
+        )
+        == 1
+    )
+    assert _availability_total(metrics_spy) == 1
+
+
+async def test_wrapper_bad_guest_token_records_guest_auth_rejected(mocker, metrics_spy):
+    import jwt
+
+    from mlpa.core.routers.guest.guest import GUEST_TOKEN_HEADERS, GUEST_TOKEN_ISSUER
+
+    mocker.patch.object(env, "MLPA_GUEST_ENABLED", True)
+    forged = jwt.encode(
+        {"iss": GUEST_TOKEN_ISSUER, "aud": "mlpa", "sub": "x", "iat": 1, "exp": 2**40},
+        "wrong-secret",
+        algorithm="HS256",
+        headers=GUEST_TOKEN_HEADERS,
+    )
+
+    with pytest.raises(HTTPException) as exc_info:
+        await authorize_module.authorize_chat_request(
+            request=_make_request(),
+            chat_request=_chat_request(),
+            authorization=f"Bearer {forged}",
+            service_type=_AI,
+            purpose="chat",
+        )
+
+    assert exc_info.value.status_code == 401
+    assert (
+        _availability(
+            metrics_spy,
+            AvailabilityOutcome.EXCLUDED,
+            AvailabilityReason.GUEST_AUTH_REJECTED,
             model=_VALID_MODEL,
             service_type="ai",
             purpose="chat",

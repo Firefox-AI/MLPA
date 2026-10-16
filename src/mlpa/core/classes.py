@@ -152,7 +152,7 @@ class AuthorizedFilterRequest(PrivacyFilterRequest):
 
 
 # Dynamically create ServiceType enum from config
-ServiceType = enum.Enum("ServiceType", [(st, st) for st in env.valid_service_types])
+ServiceType = enum.Enum("ServiceType", [(st, st) for st in env.client_service_types])
 
 
 @dataclass(frozen=True)

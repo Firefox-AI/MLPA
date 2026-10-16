@@ -13,6 +13,7 @@ class PrometheusResult(StrEnum):
 class PrometheusRejectionReason(StrEnum):
     BUDGET_EXCEEDED = "budget_exceeded"
     GLOBAL_BUDGET_EXCEEDED = "global_budget_exceeded"
+    GUEST_BUDGET_EXCEEDED = "guest_budget_exceeded"
     RATE_LIMITED = "rate_limited"
     PAYLOAD_TOO_LARGE = "payload_too_large"
     SIGNUP_CAP_EXCEEDED = "signup_cap_exceeded"
@@ -34,6 +35,7 @@ class AvailabilityReason(StrEnum):
 
     # --- pre-completion reasons (recorded in the auth dependency and route body) ---
     AUTH_REJECTED = "auth_rejected"  # excluded
+    GUEST_AUTH_REJECTED = "guest_auth_rejected"  # excluded
     INVALID_AUTH_REQUEST = "invalid_auth_request"  # excluded
     INVALID_SERVICE_TYPE_FOR_MODEL = "invalid_service_type_for_model"  # excluded
     SIGNUP_CAP_EXCEEDED = "signup_cap_exceeded"  # excluded
@@ -54,6 +56,7 @@ class AvailabilityReason(StrEnum):
     EMPTY_RESPONSE = "empty_response"  # failure
     BUDGET_EXCEEDED = "budget_exceeded"  # excluded
     GLOBAL_BUDGET_EXCEEDED = "global_budget_exceeded"  # failure
+    GUEST_BUDGET_EXCEEDED = "guest_budget_exceeded"  # excluded
     RATE_LIMITED_PLATFORM = "rate_limited_platform"  # excluded
     RATE_LIMITED_UPSTREAM = "rate_limited_upstream"  # excluded
     PAYLOAD_TOO_LARGE = "payload_too_large"  # excluded
@@ -64,6 +67,7 @@ class AvailabilityReason(StrEnum):
 
 _AVAILABILITY_OUTCOME_BY_REASON: dict[AvailabilityReason, AvailabilityOutcome] = {
     AvailabilityReason.AUTH_REJECTED: AvailabilityOutcome.EXCLUDED,
+    AvailabilityReason.GUEST_AUTH_REJECTED: AvailabilityOutcome.EXCLUDED,
     AvailabilityReason.INVALID_AUTH_REQUEST: AvailabilityOutcome.EXCLUDED,
     AvailabilityReason.INVALID_SERVICE_TYPE_FOR_MODEL: AvailabilityOutcome.EXCLUDED,
     AvailabilityReason.SIGNUP_CAP_EXCEEDED: AvailabilityOutcome.EXCLUDED,
@@ -76,6 +80,8 @@ _AVAILABILITY_OUTCOME_BY_REASON: dict[AvailabilityReason, AvailabilityOutcome] =
     AvailabilityReason.EMPTY_RESPONSE: AvailabilityOutcome.FAILURE,
     AvailabilityReason.BUDGET_EXCEEDED: AvailabilityOutcome.EXCLUDED,
     AvailabilityReason.GLOBAL_BUDGET_EXCEEDED: AvailabilityOutcome.FAILURE,
+    # Guest spend cap or kill switch working as intended, like a personal budget.
+    AvailabilityReason.GUEST_BUDGET_EXCEEDED: AvailabilityOutcome.EXCLUDED,
     AvailabilityReason.RATE_LIMITED_PLATFORM: AvailabilityOutcome.EXCLUDED,
     AvailabilityReason.RATE_LIMITED_UPSTREAM: AvailabilityOutcome.EXCLUDED,
     AvailabilityReason.PAYLOAD_TOO_LARGE: AvailabilityOutcome.EXCLUDED,

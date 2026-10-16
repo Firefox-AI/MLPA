@@ -1,3 +1,4 @@
+import json
 import time
 import uuid
 from urllib.parse import urlencode
@@ -5,12 +6,27 @@ from urllib.parse import urlencode
 import jwt
 from fastapi import APIRouter, Header, HTTPException, Query
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
+from jwt.utils import base64url_encode
 
 from mlpa.core.config import env
+from mlpa.core.logger import logger
 
 router = APIRouter()
 
 GUEST_TOKEN_ISSUER = "https://mlpa-prod-prod-mozilla.freetls.fastly.net"
+# Bump the kid when rotating MLPA_GUEST_TOKEN_SIGNING_SECRET
+GUEST_TOKEN_HEADERS = {"typ": "at+JWT", "kid": "mlpa-guest-v1"}
+# First segment of every guest token, encoded the way PyJWT does it
+GUEST_TOKEN_PREFIX = (
+    base64url_encode(
+        json.dumps(
+            {"alg": "HS256", **GUEST_TOKEN_HEADERS},
+            separators=(",", ":"),
+            sort_keys=True,
+        ).encode()
+    ).decode()
+    + "."
+)
 
 
 def issue_guest_token() -> str:
@@ -29,8 +45,33 @@ def issue_guest_token() -> str:
         payload,
         env.MLPA_GUEST_TOKEN_SIGNING_SECRET,
         algorithm="HS256",
-        headers={"typ": "at+JWT"},
+        headers=GUEST_TOKEN_HEADERS,
     )
+
+
+def is_guest_token(authorization: str) -> bool:
+    """Routes to guest auth without decoding, verify_guest_token does the real check."""
+    return authorization.removeprefix("Bearer ").lstrip().startswith(GUEST_TOKEN_PREFIX)
+
+
+def verify_guest_token(authorization: str) -> str:
+    """Guest id (`sub`) from a guest token issued by issue_guest_token."""
+    if not env.MLPA_GUEST_ENABLED:
+        raise HTTPException(status_code=401, detail="Guest access is disabled")
+    token = authorization.removeprefix("Bearer ").strip()
+    try:
+        payload = jwt.decode(
+            token,
+            env.MLPA_GUEST_TOKEN_SIGNING_SECRET,
+            algorithms=["HS256"],
+            audience="mlpa",
+            issuer=GUEST_TOKEN_ISSUER,
+            options={"require": ["exp", "iat", "sub"]},
+        )
+    except jwt.PyJWTError as e:
+        logger.error(f"Guest token decode error: {e}")
+        raise HTTPException(status_code=401, detail="Invalid guest token")
+    return payload["sub"]
 
 
 # Clients first fetch /verify/v1/guest with `Accept: application/json` and get
