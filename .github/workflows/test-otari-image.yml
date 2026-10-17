@@ -1,0 +1,23 @@
+name: Test Otari image
+
+on:
+  workflow_dispatch:
+    inputs:
+      image:
+        description: "Full Otari image reference (e.g. mzdotai/otari:<version> or a digest)"
+        required: true
+        type: string
+
+jobs:
+  otari-compatibility-tests:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Run Otari compatibility tests
+        uses: ./.github/actions/otari-compatibility
+        with:
+          image: ${{ inputs.image }}
