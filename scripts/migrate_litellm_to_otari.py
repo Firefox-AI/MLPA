@@ -31,7 +31,7 @@ from typing import Any, Literal
 
 import httpx
 
-from mlpa.core.config import env
+from mlpa.core.config import USER_CAPACITY_ID, env
 from mlpa.core.errors import otari_code
 from mlpa.core.services.app_attest_pg_service import AppAttestPGService
 from mlpa.core.services.litellm_pg_service import LiteLLMPGService
@@ -310,13 +310,16 @@ async def claimed_identities(app_attest: AppAttestPGService) -> set[str]:
         env.PG_MAINTENANCE_STATEMENT_TIMEOUT_MS
     ) as conn:
         rows = await conn.fetch(
-            "SELECT base_identity FROM mlpa_user_capacity_identities"
+            "SELECT base_identity FROM mlpa_user_capacity_identities WHERE capacity_id = $1",
+            USER_CAPACITY_ID,
         )
     return {row["base_identity"] for row in rows}
 
 
 async def fill_claims(app_attest: AppAttestPGService, missing: Iterable[str]) -> None:
-    """Insert the missing claims and recount ``current_identities``, as startup's reconcile does.
+    """Insert the missing signed-in claims and recount their ``current_identities``, as startup's reconcile does.
+
+    Guest claims are MLPA's own under either gateway, so they are left as they are.
 
     Under the capacity row's lock, which admissions and releases take too, so the
     count is the claim table's however many MLPAs are admitting meanwhile. An
@@ -326,29 +329,33 @@ async def fill_claims(app_attest: AppAttestPGService, missing: Iterable[str]) ->
         env.PG_MAINTENANCE_STATEMENT_TIMEOUT_MS
     ) as conn:
         if not await conn.fetchval(
-            "SELECT 1 FROM mlpa_user_capacity WHERE id = 1 FOR UPDATE"
+            "SELECT 1 FROM mlpa_user_capacity WHERE id = $1 FOR UPDATE",
+            USER_CAPACITY_ID,
         ):
             raise RuntimeError(
                 "mlpa_user_capacity has no row; start MLPA once to seed it"
             )
         await conn.execute(
             """
-            INSERT INTO mlpa_user_capacity_identities (base_identity)
-            SELECT unnest($1::text[])
-            ON CONFLICT (base_identity) DO NOTHING
+            INSERT INTO mlpa_user_capacity_identities (base_identity, capacity_id)
+            SELECT unnest($1::text[]), $2
+            ON CONFLICT (base_identity, capacity_id) DO NOTHING
             """,
             list(missing),
+            USER_CAPACITY_ID,
         )
         row = await conn.fetchrow(
             """
             UPDATE mlpa_user_capacity
             SET current_identities = (
                     SELECT COUNT(*) FROM mlpa_user_capacity_identities
+                    WHERE capacity_id = $1
                 ),
                 updated_at = NOW()
-            WHERE id = 1
+            WHERE id = $1
             RETURNING current_identities, max_identities
-            """
+            """,
+            USER_CAPACITY_ID,
         )
     print(
         f"  claims now {row['current_identities']} of {row['max_identities']}"
