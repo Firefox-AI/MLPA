@@ -839,6 +839,9 @@ OTARI_HEADER_ERROR_CODE = "otari-error-code"
 # Names the budget a new end user starts on, and, on a response, the one it is on.
 OTARI_HEADER_END_USER_BUDGET = "otari-end-user-budget"
 OTARI_HEADER_BUDGET_SCOPE = "otari-budget-scope"
+# A provider's own failure, on a search Otari answers 502 (Exa's status and tag).
+OTARI_HEADER_ERROR_STATUS = "otari-error-status"
+OTARI_HEADER_ERROR_TAG = "otari-error-tag"
 
 # Privacy Filter
 PRIVACY_FILTER_READINESS_URL = f"{env.PRIVACY_FILTER_API_BASE}/readyz"

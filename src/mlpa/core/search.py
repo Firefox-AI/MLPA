@@ -87,6 +87,7 @@ async def _get_search(
                 status_code=e.response.status_code,
                 error_text=e.response.text,
                 rejected=match is not None,
+                headers=e.response.headers,
             )
             if match is not None:
                 if match.log_message:
