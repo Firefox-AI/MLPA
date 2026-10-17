@@ -17,6 +17,7 @@ from mlpa.core.config import (
     ERROR_CODE_MAX_USERS_REACHED,
     GUEST_CAPACITY_ID,
     LITELLM_MASTER_AUTH_HEADERS,
+    USE_OTARI,
     capacity_id_for_service_type,
     env,
 )
@@ -24,6 +25,7 @@ from mlpa.core.consts.country_codes import COUNTRY_CODES
 from mlpa.core.http_client import get_http_client
 from mlpa.core.logger import logger
 from mlpa.core.prometheus_metrics import PrometheusResult, metrics
+from mlpa.core.services.otari_service import OtariService
 from mlpa.core.services.services import app_attest_pg, litellm_pg
 
 KNOWN_HTTP_METHODS = frozenset(
@@ -199,6 +201,8 @@ async def get_or_create_user(user_id: str):
 
     client = get_http_client()
     capacity_id = capacity_id_for_service_type(service_type)
+    if USE_OTARI:
+        return await _get_or_admit_otari_user(user_id, base_identity, capacity_id)
     # Capacity row we claimed a new slot in, released if user creation fails.
     claimed_capacity_id: int | None = None
     try:
@@ -263,6 +267,36 @@ async def get_or_create_user(user_id: str):
         raise HTTPException(
             status_code=500, detail={"error": f"Error fetching user info"}
         )
+
+
+async def _get_or_admit_otari_user(
+    user_id: str, base_identity: str, capacity_id: int | None
+) -> list:
+    """Admit ``user_id`` under the signup or guest cap; Otari itself needs nothing beforehand.
+
+    Otari creates an end user on its first request and enforces blocking, budgets
+    and limits on every request, so MLPA does not look users up in Otari. The
+    caps' claim table, in MLPA's own database, records who was admitted.
+    """
+    otari = cast(OtariService, litellm_pg)
+    if otari.is_known(user_id):
+        return [{"user_id": user_id, "blocked": False}, False]
+    newly_claimed = False
+    if capacity_id is not None:
+        admitted, newly_claimed = await app_attest_pg.admit_managed_base_identity(
+            base_identity=base_identity, capacity_id=capacity_id
+        )
+        if not admitted:
+            raise HTTPException(
+                status_code=403,
+                detail={
+                    "error": ERROR_CODE_MAX_GUESTS_REACHED
+                    if capacity_id == GUEST_CAPACITY_ID
+                    else ERROR_CODE_MAX_USERS_REACHED
+                },
+            )
+    otari.remember(user_id)
+    return [{"user_id": user_id, "blocked": False}, newly_claimed]
 
 
 def b64decode_safe(data_b64: str, obj_name: str = "object") -> bytes:

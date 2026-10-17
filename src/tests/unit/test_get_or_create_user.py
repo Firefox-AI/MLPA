@@ -230,3 +230,74 @@ def test_overlapping_guest_and_user_service_types_rejected(monkeypatch):
     monkeypatch.setenv("MLPA_CAPPED_SERVICE_TYPES", '["ai"]')
     with pytest.raises(ValueError, match="overlap"):
         Env()
+
+
+@pytest.fixture
+def otari_backend(mocker):
+    """GATEWAY_BACKEND=otari with a fresh known-users cache and no Otari calls allowed."""
+    from mlpa.core.services.otari_service import OtariService
+
+    mocker.patch("mlpa.core.utils.USE_OTARI", True)
+    otari = OtariService()
+    otari.get_user = AsyncMock(side_effect=AssertionError("no Otari lookup"))
+    mocker.patch("mlpa.core.utils.litellm_pg", otari)
+    return otari
+
+
+async def test_otari_admits_a_capped_user_without_asking_otari(
+    otari_backend, mock_app_attest_pg, mocker
+):
+    mocker.patch.object(env, "MLPA_ENFORCE_SIGNIN_CAP", True)
+    mock_app_attest_pg.admit_managed_base_identity.return_value = (True, True)
+
+    user, newly_claimed = await get_or_create_user(_USER_ID)
+
+    assert user == {"user_id": _USER_ID, "blocked": False}
+    assert newly_claimed is True
+    mock_app_attest_pg.admit_managed_base_identity.assert_awaited_once_with(
+        base_identity=_BASE_IDENTITY, capacity_id=USER_CAPACITY_ID
+    )
+    assert otari_backend.is_known(_USER_ID)
+
+
+async def test_otari_refuses_a_new_user_over_the_cap(
+    otari_backend, mock_app_attest_pg, mocker
+):
+    mocker.patch.object(env, "MLPA_ENFORCE_SIGNIN_CAP", True)
+    mock_app_attest_pg.admit_managed_base_identity.return_value = (False, False)
+
+    with pytest.raises(HTTPException) as exc_info:
+        await get_or_create_user(_USER_ID)
+
+    assert exc_info.value.status_code == 403
+    assert not otari_backend.is_known(_USER_ID)
+
+
+async def test_otari_skips_the_cap_for_a_known_user(
+    otari_backend, mock_app_attest_pg, mocker
+):
+    mocker.patch.object(env, "MLPA_ENFORCE_SIGNIN_CAP", True)
+    otari_backend.remember(_USER_ID)
+
+    user, newly_claimed = await get_or_create_user(_USER_ID)
+
+    assert user["user_id"] == _USER_ID
+    assert newly_claimed is False
+    mock_app_attest_pg.admit_managed_base_identity.assert_not_awaited()
+
+
+async def test_otari_refuses_a_new_guest_over_the_guest_cap(
+    otari_backend, mock_app_attest_pg, mocker
+):
+    mocker.patch.object(env, "MLPA_ENFORCE_GUEST_CAP", True)
+    mocker.patch.object(env, "MLPA_GUEST_SERVICE_TYPES", {"s2s"})
+    mock_app_attest_pg.admit_managed_base_identity.return_value = (False, False)
+
+    with pytest.raises(HTTPException) as exc_info:
+        await get_or_create_user(_GUEST_USER_ID)
+
+    assert exc_info.value.detail == {"error": ERROR_CODE_MAX_GUESTS_REACHED}
+    mock_app_attest_pg.admit_managed_base_identity.assert_awaited_once_with(
+        base_identity=_BASE_IDENTITY, capacity_id=GUEST_CAPACITY_ID
+    )
+    assert not otari_backend.is_known(_GUEST_USER_ID)

@@ -23,7 +23,8 @@ export PGPORT="${DB_PORT}"
 export PGUSER="${DB_USERNAME}"
 export PGPASSWORD="${DB_PASSWORD}"
 
-CONTAINER_NAME="litellm_postgres"
+# otari_docker_compose.yaml names its Postgres otari_postgres.
+CONTAINER_NAME="${POSTGRES_CONTAINER_NAME:-litellm_postgres}"
 
 if ! docker ps --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"; then
     echo "Error: Container ${CONTAINER_NAME} is not running."

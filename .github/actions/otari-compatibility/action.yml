@@ -1,0 +1,118 @@
+name: Otari compatibility tests
+description: Run MLPA's Otari contract suite against Otari, PostgreSQL, and a fake provider.
+inputs:
+  image:
+    description: Optional Otari image override; defaults to the Compose image.
+    required: false
+    default: ""
+runs:
+  using: composite
+  steps:
+    - name: Set up Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: "3.12"
+
+    - name: Install uv
+      shell: bash
+      run: pip install uv==0.10.8
+
+    - name: Sync dependencies
+      shell: bash
+      run: |
+        uv venv
+        uv sync --all-groups
+        uv pip install --no-cache-dir -e .
+
+    # mlpa.core.config reads these once, at import, so they are set for the
+    # rest of the job rather than patched in the suite. The keys are CI-only
+    # values, and otari_docker_compose.yaml hands Otari the same ones.
+    - name: Configure test environment
+      shell: bash
+      run: |
+        {
+          echo "COMPOSE_FILE=otari_docker_compose.yaml"
+          echo "GATEWAY_BACKEND=otari"
+          echo "OTARI_API_BASE=http://localhost:8000"
+          echo "MLPA_ADMIN_KEY=sk-mlpa-admin-ci"
+          echo "OTARI_SERVICE_KEY=tk-YXPI1CW0aDO2jB9R9nmBouDos1jKmqEMidv6iBnSZ8vqhJ2sDlgLbTawowd8BJZz"
+          echo "OTARI_GUEST_SERVICE_KEY=tk-ob35KujLWClpnYti4XPdwQrZhFr4UEfCAmIS7kAnm4vfaslmgQX-p9eDrD1Klzz4"
+          echo "MLPA_GUEST_ENABLED=true"
+          echo "MLPA_GUEST_TOKEN_SIGNING_SECRET=mlpa-guest-ci-secret"
+          echo "DB_USERNAME=otari"
+          echo "DB_PASSWORD=otari"
+          echo "POSTGRES_CONTAINER_NAME=otari_postgres"
+        } >> "$GITHUB_ENV"
+
+    - name: Override Otari image for this run
+      if: inputs.image != ''
+      shell: bash
+      env:
+        OTARI_IMAGE: ${{ inputs.image }}
+      run: |
+        override_file="$RUNNER_TEMP/otari-image.yaml"
+        cat > "$override_file" <<EOF
+        services:
+          otari:
+            image: "$OTARI_IMAGE"
+        EOF
+
+        # Load the override after the base file so only the image changes.
+        echo "COMPOSE_FILE=otari_docker_compose.yaml:$override_file" >> "$GITHUB_ENV"
+
+    - name: Pull candidate image
+      if: inputs.image != ''
+      shell: bash
+      env:
+        OTARI_IMAGE: ${{ inputs.image }}
+      run: |
+        # Compose takes a service name and pulls its overridden image.
+        docker compose pull otari
+        docker image inspect "$OTARI_IMAGE" --format '{{json .RepoDigests}}'
+
+    - name: Start Otari + Postgres + fake provider
+      shell: bash
+      run: docker compose up -d
+
+    - name: Wait for Otari to be ready
+      shell: bash
+      run: |
+        for _ in $(seq 1 60); do
+          if curl -sf http://localhost:8000/api/v1/health/readiness > /dev/null; then
+            echo "Otari is up"
+            exit 0
+          fi
+          sleep 2
+        done
+        echo "Otari did not become ready in time"
+        docker compose logs
+        exit 1
+
+    - name: Migrate app_attest database
+      shell: bash
+      run: |
+        sudo apt-get update && sudo apt-get install -y postgresql-client
+        bash scripts/migrate-app-attest-database-local.sh
+
+    - name: Run Otari compatibility tests
+      env:
+        MLPA_TEST_REQUIRE_REAL_BACKEND: "true"
+      shell: bash
+      run: uv run pytest src/tests/otari_compatibility -v --junit-xml=otari-compatibility-results.xml
+
+    - name: Summarize failures
+      if: always()
+      shell: bash
+      run: |
+        uv run python scripts/ci_failure_summary.py otari-compatibility-results.xml \
+          "> A failure here usually means MLPA and the selected Otari image disagree on a contract (keys, budgets, error codes) -- see the checks below for what each one verifies."
+
+    - name: Show Otari logs on failure
+      if: failure()
+      shell: bash
+      run: docker compose logs otari
+
+    - name: Stop Otari + Postgres + fake provider
+      if: always()
+      shell: bash
+      run: docker compose down -v

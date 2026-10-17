@@ -261,10 +261,13 @@ async def test_get_search_context_window_exceeded_records_rejection(
     assert _search_latency_count(metrics_spy, PrometheusResult.ERROR) == 1
 
 
-def _mock_search_client_error(mocker, status_code: int, text: str) -> None:
+def _mock_search_client_error(
+    mocker, status_code: int, text: str, headers: dict[str, str] | None = None
+) -> None:
     mock_response = MagicMock()
     mock_response.text = text
     mock_response.status_code = status_code
+    mock_response.headers = httpx.Headers(headers or {})
     mock_response.raise_for_status.side_effect = httpx.HTTPStatusError(
         "Upstream error", request=MagicMock(), response=mock_response
     )
@@ -289,6 +292,37 @@ async def test_get_search_upstream_error_records_exa_error(
     mocker, metrics_spy, status_code, text, expected_labels
 ):
     _mock_search_client_error(mocker, status_code, text)
+    await _assert_search_records_exa_error(metrics_spy, status_code, expected_labels)
+
+
+@pytest.mark.parametrize(
+    "headers,expected_labels",
+    [
+        # Otari answers a provider failure with 502 and Exa's own status and tag.
+        (
+            {"Otari-Error-Status": "503", "Otari-Error-Tag": "SERVICE_OVERLOADED"},
+            {"status_code": "503", "tag": "SERVICE_OVERLOADED"},
+        ),
+        # A tag Exa doesn't document keeps Exa's status, not Otari's 502.
+        (
+            {"Otari-Error-Status": "500", "Otari-Error-Tag": "SOMETHING_NEW"},
+            {"status_code": "500", "tag": "other"},
+        ),
+        # A timeout has no provider status.
+        ({"Otari-Error-Tag": "timeout"}, {"status_code": "other", "tag": "other"}),
+    ],
+)
+async def test_get_search_otari_provider_error_records_exa_error(
+    mocker, metrics_spy, headers, expected_labels
+):
+    body = '{"detail": "Search provider error", "code": "provider_error"}'
+    _mock_search_client_error(
+        mocker, 502, body, {"Otari-Error-Provider": "exa", **headers}
+    )
+    await _assert_search_records_exa_error(metrics_spy, 502, expected_labels)
+
+
+async def _assert_search_records_exa_error(metrics_spy, status_code, expected_labels):
     req = AuthorizedSearchRequest(
         user="test-user:search", service_type="search", query="weather", max_results=5
     )

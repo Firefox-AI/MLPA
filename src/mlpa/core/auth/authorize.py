@@ -14,7 +14,7 @@ from mlpa.core.classes import (
     SearchRequest,
     ServiceType,
 )
-from mlpa.core.config import ERROR_CODE_INVALID_MODEL_NAME, env
+from mlpa.core.config import ERROR_CODE_INVALID_MODEL_NAME, USE_OTARI, env
 from mlpa.core.metrics import record_chat_availability_for
 from mlpa.core.prometheus_metrics import AvailabilityReason
 from mlpa.core.request_timings import measure
@@ -51,18 +51,21 @@ def _resolve_custom_virtual_key(virtual_key_header: str | None) -> str | None:
     return key
 
 
-def guest_virtual_key() -> str:
+def guest_virtual_key() -> str | None:
     """
     LiteLLM key for requests authenticated with an MLPA guest token.
 
     Only call it after the guest token is verified, never from client headers.
     Never falls back to MLPA_VIRTUAL_KEY, that would bill guests to FxA users.
+    Under Otari it returns None once OTARI_GUEST_SERVICE_KEY is set:
+    resolve_litellm_virtual_auth_headers picks that key by service type.
     """
-    if not env.MLPA_GUEST_VIRTUAL_KEY:
+    key = env.OTARI_GUEST_SERVICE_KEY if USE_OTARI else env.MLPA_GUEST_VIRTUAL_KEY
+    if not key:
         raise HTTPException(
             status_code=503, detail={"error": "Guest access is not configured."}
         )
-    return env.MLPA_GUEST_VIRTUAL_KEY
+    return None if USE_OTARI else key
 
 
 def _resolve_purpose(service_type_value: str, purpose_header: str | None) -> str:

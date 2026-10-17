@@ -9,7 +9,11 @@ from mlpa.core.config import (
     LITELLM_SEARCH_URL,
     resolve_litellm_virtual_auth_headers,
 )
-from mlpa.core.errors import classify_upstream_error
+from mlpa.core.errors import (
+    USER_BLOCKED_DETAIL,
+    classify_upstream_error,
+    is_otari_user_blocked,
+)
 from mlpa.core.http_client import get_http_client
 from mlpa.core.logger import logger
 from mlpa.core.metrics import (
@@ -61,17 +65,21 @@ async def _get_search(
             response = await client.post(
                 f"{LITELLM_SEARCH_URL}/exa-search",
                 headers=resolve_litellm_virtual_auth_headers(
-                    authorized_search_request.litellm_virtual_key
+                    authorized_search_request.litellm_virtual_key,
+                    authorized_search_request.service_type,
                 ),
                 json=body,
             )
         try:
             response.raise_for_status()
         except httpx.HTTPStatusError as e:
+            if is_otari_user_blocked(e.response.headers):
+                raise HTTPException(status_code=403, detail=USER_BLOCKED_DETAIL)
             match = classify_upstream_error(
                 error_text=e.response.text,
                 status_code=e.response.status_code,
                 user=authorized_search_request.user,
+                headers=e.response.headers,
             )
             record_exa_error(
                 endpoint=SEARCH_ENDPOINT,
@@ -79,6 +87,7 @@ async def _get_search(
                 status_code=e.response.status_code,
                 error_text=e.response.text,
                 rejected=match is not None,
+                headers=e.response.headers,
             )
             if match is not None:
                 if match.log_message:

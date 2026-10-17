@@ -1,18 +1,22 @@
+from typing import cast
+
 from fastapi import HTTPException
 
 from mlpa.core.config import (
     GUEST_CAPACITY_ID,
+    USE_OTARI,
     USER_CAPACITY_ID,
     capacity_settings,
     env,
 )
 from mlpa.core.logger import logger
 from mlpa.core.services.litellm_pg_service import LiteLLMPGService
+from mlpa.core.services.otari_service import OtariService
 from mlpa.core.services.pg_service import PGService
 
 
 class AppAttestPGService(PGService):
-    def __init__(self, litellm_pg: LiteLLMPGService):
+    def __init__(self, litellm_pg: LiteLLMPGService | OtariService):
         super().__init__(env.APP_ATTEST_DB_NAME)
         self.litellm_pg = litellm_pg
 
@@ -151,14 +155,25 @@ class AppAttestPGService(PGService):
         Guest claims are not rebuilt: their created_at drives the infra cleanup,
         so they stay as they are and only the guest counter is recounted.
         """
+        if USE_OTARI:
+            # Under Otari the claim table is the record of who was admitted: Otari
+            # creates an end user on its first request and MLPA never looks users up,
+            # so there is nothing to rebuild it from. Both counters are recounted,
+            # so slots freed by deleting claims come back.
+            async with self.pool.acquire() as conn:
+                async with conn.transaction():
+                    await self._recount_capacity(conn, USER_CAPACITY_ID)
+                    await self._recount_capacity(conn, GUEST_CAPACITY_ID)
+            return
         managed_service_types = list(env.MLPA_CAPPED_SERVICE_TYPES)
 
         # Read the litellm pool before opening the app_attest transaction: doing
         # it inside would leave the session idle-in-transaction across the
         # cross-pool await, where idle_in_transaction_session_timeout could reap it.
-        base_identities = await self.litellm_pg.list_managed_base_identities(
-            managed_service_types
-        )
+        # Only LiteLLM gets here: under Otari the method returned above.
+        base_identities = await cast(
+            LiteLLMPGService, self.litellm_pg
+        ).list_managed_base_identities(managed_service_types)
 
         # The bulk delete + insert grows with the user base, so run it under the
         # raised maintenance budget rather than the tight pool default.
@@ -200,21 +215,26 @@ class AppAttestPGService(PGService):
                 seeded_claims,
             )
 
-            # Lock first so the count below sees every committed guest admission.
-            await conn.fetchrow(
-                f"SELECT 1 FROM mlpa_user_capacity WHERE id = {GUEST_CAPACITY_ID} FOR UPDATE"
-            )
-            await conn.execute(
-                f"""
-                UPDATE mlpa_user_capacity
-                SET current_identities = (
-                        SELECT COUNT(*) FROM mlpa_user_capacity_identities
-                        WHERE capacity_id = {GUEST_CAPACITY_ID}
-                    ),
-                    updated_at = NOW()
-                WHERE id = {GUEST_CAPACITY_ID}
-                """
-            )
+            await self._recount_capacity(conn, GUEST_CAPACITY_ID)
+
+    async def _recount_capacity(self, conn, capacity_id: int) -> None:
+        """Set a capacity row's current_identities to its number of claims."""
+        # Lock first so the count below sees every committed admission.
+        await conn.fetchrow(
+            "SELECT 1 FROM mlpa_user_capacity WHERE id = $1 FOR UPDATE", capacity_id
+        )
+        await conn.execute(
+            """
+            UPDATE mlpa_user_capacity
+            SET current_identities = (
+                    SELECT COUNT(*) FROM mlpa_user_capacity_identities
+                    WHERE capacity_id = $1
+                ),
+                updated_at = NOW()
+            WHERE id = $1
+            """,
+            capacity_id,
+        )
 
     async def admit_managed_base_identity(
         self, base_identity: str, capacity_id: int = USER_CAPACITY_ID
@@ -227,6 +247,18 @@ class AppAttestPGService(PGService):
         """
         enforced, _max, _types = capacity_settings(capacity_id)
         if not enforced:
+            return True, False
+
+        # Most requests come from identities already admitted: answer those without
+        # taking the capacity row's lock, which every new admission serializes on.
+        if await self.pool.fetchval(
+            """
+            SELECT 1 FROM mlpa_user_capacity_identities
+            WHERE base_identity = $1 AND capacity_id = $2
+            """,
+            base_identity,
+            capacity_id,
+        ):
             return True, False
 
         async with self.admission_transaction() as conn:
@@ -297,7 +329,10 @@ class AppAttestPGService(PGService):
         # Read the litellm state before opening the app_attest transaction (same
         # cross-pool idle-in-transaction risk as ensure_capacity_state); reaping
         # the session here would abort the release and leak the claim.
-        has_managed_user_rows = await self.litellm_pg.has_managed_user_rows(
+        # Only the LiteLLM path releases claims (utils.get_or_create_user).
+        has_managed_user_rows = await cast(
+            LiteLLMPGService, self.litellm_pg
+        ).has_managed_user_rows(
             base_identity,
             managed_service_types,
         )

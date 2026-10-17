@@ -1,5 +1,5 @@
 from functools import cached_property
-from typing import Annotated, Any, TypedDict
+from typing import Annotated, Any, Literal, TypedDict
 
 from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
@@ -98,13 +98,38 @@ class Env(BaseSettings):
     # budget / rate-limit / model configuration instead configured values.
     ALLOW_CUSTOM_VIRTUAL_KEY: bool = False
 
+    # Which gateway MLPA sends inference to. "otari" replaces LiteLLM with Otari:
+    # one Otari service key for every service type, users read and managed through
+    # Otari's API rather than LiteLLM's tables.
+    GATEWAY_BACKEND: Literal["litellm", "otari"] = "litellm"
+    OTARI_API_BASE: str = "http://localhost:8000"
+    # MLPA's Otari service key: the secret Otari's config.yml declares for it
+    # (MLPA_SERVICE_KEY in scripts/otari_config.py's output). It serves requests
+    # and manages MLPA's end users; MLPA needs no other Otari credential.
+    OTARI_SERVICE_KEY: str = ""
+    # MLPA's Otari key for guests (`*-guest` service types), the counterpart of
+    # MLPA_GUEST_VIRTUAL_KEY. Declared with the same owner as OTARI_SERVICE_KEY,
+    # so the service key still manages guests, with its own ceiling as the guest
+    # spend cap and only the guest budgets to assign. Unset, guests get 503.
+    OTARI_GUEST_SERVICE_KEY: str = ""
+    # The Otari user that owns the service key and every end user, and the key's name.
+    OTARI_OWNER_USER: str = "mlpa"
+    # End users known to exist in Otari, remembered so the signup cap is checked
+    # without a lookup on every request.
+    OTARI_KNOWN_USERS_CACHE_SIZE: int = 100_000
+
     # Privacy Filter
     PRIVACY_FILTER_ENABLED: bool = False
     PRIVACY_FILTER_MASTER_KEY: str = "sk-default"
     PRIVACY_FILTER_API_BASE: str = "http://localhost:5000"
 
-    # Read-only admin dashboard (`/admin`) and GET /user/counts-by-service-type; not LiteLLM's master key
+    # Read-only admin dashboard (`/admin`) and GET /user/counts-by-service-type; not LiteLLM's master key.
+    # Under Otari its default is refused: set a real one.
     MLPA_UI_ACCESS_KEY: str = "sk-ui-access-default"
+    # MLPA's admin routes (block, unblock, budget moves, user lists). Unset, they
+    # take LiteLLM's MASTER_KEY under LiteLLM, and are closed under Otari, where
+    # MASTER_KEY no longer exists and its default would otherwise open them.
+    MLPA_ADMIN_KEY: str = ""
     MLPA_VIRTUAL_KEY: str = "sk-virtual"  # Enforces LiteLLM.max_budget
     # Separate key for `*-guest` service types (AIPLAT-1449). Its LiteLLM
     # max_budget is the total guest spend cap, so running it out never touches
@@ -724,10 +749,40 @@ def capacity_id_for_service_type(service_type: str) -> int | None:
     return None
 
 
-LITELLM_READINESS_URL = f"{env.LITELLM_API_BASE}/health/readiness"
-LITELLM_INFO_URL = f"{env.LITELLM_API_BASE}/public/model_hub/info"
-LITELLM_COMPLETIONS_URL = f"{env.LITELLM_API_BASE}/v1/chat/completions"
-LITELLM_SEARCH_URL = f"{env.LITELLM_API_BASE}/v1/search"
+USE_OTARI = env.GATEWAY_BACKEND == "otari"
+OTARI_API_ROOT = f"{env.OTARI_API_BASE.rstrip('/')}/api/v1"
+
+
+_DEFAULT_UI_ACCESS_KEY = "sk-ui-access-default"
+
+
+def admin_key() -> str | None:
+    """The key MLPA's admin routes accept, or None when they are closed."""
+    if env.MLPA_ADMIN_KEY:
+        return env.MLPA_ADMIN_KEY
+    return None if USE_OTARI else env.MASTER_KEY
+
+
+def ui_access_key() -> str | None:
+    """The key the read-only admin UI accepts, or None when it is closed."""
+    if USE_OTARI and env.MLPA_UI_ACCESS_KEY in ("", _DEFAULT_UI_ACCESS_KEY):
+        return None
+    return env.MLPA_UI_ACCESS_KEY
+
+
+# The upstream gateway's URLs. The LITELLM_ names are kept for the call sites;
+# with GATEWAY_BACKEND=otari they point at Otari's equivalents.
+if USE_OTARI:
+    LITELLM_READINESS_URL = f"{OTARI_API_ROOT}/health/readiness"
+    # Otari's readiness body carries its version, so it doubles as the info URL.
+    LITELLM_INFO_URL = LITELLM_READINESS_URL
+    LITELLM_COMPLETIONS_URL = f"{OTARI_API_ROOT}/chat/completions"
+    LITELLM_SEARCH_URL = f"{OTARI_API_ROOT}/search"
+else:
+    LITELLM_READINESS_URL = f"{env.LITELLM_API_BASE}/health/readiness"
+    LITELLM_INFO_URL = f"{env.LITELLM_API_BASE}/public/model_hub/info"
+    LITELLM_COMPLETIONS_URL = f"{env.LITELLM_API_BASE}/v1/chat/completions"
+    LITELLM_SEARCH_URL = f"{env.LITELLM_API_BASE}/v1/search"
 LITELLM_MASTER_AUTH_HEADERS = {
     "Content-Type": "application/json",
     "Authorization": f"Bearer {env.MASTER_KEY}",
@@ -739,14 +794,46 @@ LITELLM_VIRTUAL_AUTH_HEADERS = {
 }
 
 
+def is_guest_service_type(service_type: str | None) -> bool:
+    """Whether MLPA serves this service type to guests (set only after guest auth)."""
+    return (service_type or "").endswith("-guest")
+
+
+def otari_service_key(service_type: str | None) -> str:
+    """MLPA's Otari key for a service type: the guest key for guests, never the other's."""
+    if is_guest_service_type(service_type):
+        if not env.OTARI_GUEST_SERVICE_KEY:
+            raise RuntimeError(
+                "No Otari guest key; set OTARI_GUEST_SERVICE_KEY to the secret Otari's config.yml declares"
+            )
+        return env.OTARI_GUEST_SERVICE_KEY
+    if not env.OTARI_SERVICE_KEY:
+        raise RuntimeError(
+            "No Otari service key; set OTARI_SERVICE_KEY to the secret Otari's config.yml declares"
+        )
+    return env.OTARI_SERVICE_KEY
+
+
 def resolve_litellm_virtual_auth_headers(
     custom_virtual_key: str | None = None,
+    service_type: str | None = None,
 ) -> dict[str, str]:
     """
     Resolve virtual key to be forwarded to litellm, if passing custom virtual key
     the custom key will be used. Otherwise, the default LITELLM_VIRTUAL_AUTH_HEADERS
-    will be used
+    will be used. With GATEWAY_BACKEND=otari the default is MLPA's Otari service
+    key (its guest key for guests), with the budget of the request's service
+    type, which Otari puts a new end user on.
     """
+    if custom_virtual_key is None and USE_OTARI:
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {otari_service_key(service_type)}",
+        }
+        config = env.service_type_config.get(service_type or "")
+        if config is not None:
+            headers[OTARI_HEADER_END_USER_BUDGET] = config["budget_id"]
+        return headers
     if custom_virtual_key is None:
         return LITELLM_VIRTUAL_AUTH_HEADERS
     return {
@@ -762,6 +849,20 @@ LITELLM_HEADER_ATTEMPTED_FALLBACKS = "x-litellm-attempted-fallbacks"
 LITELLM_HEADER_ATTEMPTED_RETRIES = "x-litellm-attempted-retries"
 LITELLM_HEADER_RESPONSE_DURATION_MS = "x-litellm-response-duration-ms"
 LITELLM_HEADER_RESPONSE_COST = "x-litellm-response-cost"
+# Otari's equivalents (Otari sends the cost in the body, as usage.cost_usd).
+OTARI_HEADER_PROVIDER = "otari-provider"
+OTARI_HEADER_ATTEMPT_COUNT = "otari-attempt-count"
+OTARI_HEADER_FALLBACK = "otari-fallback"
+OTARI_HEADER_RESPONSE_DURATION_MS = "otari-response-duration-ms"
+
+# Otari's stable refusal codes (Otari-Error-Code), and the headers beside them.
+OTARI_HEADER_ERROR_CODE = "otari-error-code"
+# Names the budget a new end user starts on, and, on a response, the one it is on.
+OTARI_HEADER_END_USER_BUDGET = "otari-end-user-budget"
+OTARI_HEADER_BUDGET_SCOPE = "otari-budget-scope"
+# A provider's own failure, on a search Otari answers 502 (Exa's status and tag).
+OTARI_HEADER_ERROR_STATUS = "otari-error-status"
+OTARI_HEADER_ERROR_TAG = "otari-error-tag"
 
 # Privacy Filter
 PRIVACY_FILTER_READINESS_URL = f"{env.PRIVACY_FILTER_API_BASE}/readyz"

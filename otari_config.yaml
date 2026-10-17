@@ -1,0 +1,54 @@
+# Otari for src/tests/otari_compatibility, locally and in CI
+# (otari_docker_compose.yaml). No real providers: fake_upstream.py stands in as
+# an OpenAI-compatible instance, priced so Otari records spend.
+database_url: "postgresql://otari:otari@postgres:5432/otari"
+master_key: ${OTARI_MASTER_KEY}
+auto_migrate: true
+default_pricing: false
+# Provider file copies need a pepper secret, and MLPA sends no files.
+files_provider_upload_enabled: false
+
+providers:
+  fake:
+    provider_type: openai
+    api_base: "http://fake_upstream:9100/v1"
+    api_key: fake
+    models: [mock]
+
+# tests.helpers.MOCK_MODEL, the name MLPA's tests send.
+aliases:
+  mock: fake:mock
+
+pricing:
+  fake:mock: {input_price_per_million: 1.0, output_price_per_million: 2.0}
+
+# MLPA's budgets, one per service type under MLPA's budget id with MLPA's default
+# limits, and its service key, which may start an end user on any of them but
+# the guests'. Guests get their own key (mlpa-guest), with the same owner so the
+# service key still manages them, the guest budgets alone, and a ceiling of its
+# own: the pool every guest shares, apart from signed-in users.
+# mochi-dev's max_budget is too small for any request, so the per-user budget
+# refusal can be tested. A production config declares the same sections.
+budgets:
+  end-user-budget-ai: {"max_budget": 0.1, "reset_alignment": "calendar_day", "rpm_limit": 40, "tpm_limit": 2000}
+  end-user-budget-s2s: {"max_budget": 0.1, "reset_alignment": "calendar_day", "rpm_limit": 40, "tpm_limit": 2000}
+  end-user-budget-s2s-android: {"max_budget": 0.1, "reset_alignment": "calendar_day", "rpm_limit": 40, "tpm_limit": 2000}
+  end-user-budget-memories: {"max_budget": 0.1, "reset_alignment": "calendar_day", "rpm_limit": 10, "tpm_limit": 2000}
+  end-user-budget-search: {"max_budget": 0.01, "reset_alignment": "calendar_day", "rpm_limit": 10, "tpm_limit": 2000}
+  end-user-budget-answer: {"max_budget": 0.1, "reset_alignment": "calendar_day", "rpm_limit": 10, "tpm_limit": 2000}
+  end-user-budget-sw-answer: {"max_budget": 0.1, "reset_alignment": "calendar_day", "rpm_limit": 10, "tpm_limit": 2000}
+  end-user-budget-liner-answer: {"max_budget": 0.06, "reset_alignment": "calendar_day", "rpm_limit": 10, "tpm_limit": 2000}
+  end-user-budget-telemetry: {"max_budget": 0.1, "reset_alignment": "calendar_day", "rpm_limit": 10, "tpm_limit": 2000}
+  end-user-budget-agent: {"max_budget": 0.1, "reset_alignment": "calendar_week", "rpm_limit": 10, "tpm_limit": 2000}
+  end-user-budget-agent-search: {"max_budget": 0.1, "reset_alignment": "calendar_week", "rpm_limit": 10, "tpm_limit": 2000}
+  end-user-budget-ai-dev: {"max_budget": 1.0, "reset_alignment": "calendar_day", "rpm_limit": 200, "tpm_limit": 10000}
+  end-user-budget-memories-dev: {"max_budget": 1.0, "reset_alignment": "calendar_day", "rpm_limit": 50, "tpm_limit": 5000}
+  end-user-budget-mochi-dev: {"max_budget": 0.0001, "reset_alignment": "calendar_day", "rpm_limit": 200, "tpm_limit": 10000}
+  end-user-budget-search-dev: {"max_budget": 1.0, "reset_alignment": "calendar_day", "rpm_limit": 200, "tpm_limit": 10000}
+  end-user-budget-ai-guest: {"max_budget": 0.05, "reset_alignment": "calendar_day", "rpm_limit": 20, "tpm_limit": 2000}
+  end-user-budget-memories-guest: {"max_budget": 0.05, "reset_alignment": "calendar_day", "rpm_limit": 10, "tpm_limit": 2000}
+  end-user-budget-search-guest: {"max_budget": 0.01, "reset_alignment": "calendar_day", "rpm_limit": 5, "tpm_limit": 2000}
+  mlpa-guest-global: {"max_budget": 1.0, "reset_alignment": "calendar_day"}
+api_keys:
+  mlpa: {"secret": "${MLPA_SERVICE_KEY}", "user_id": "mlpa", "is_service_key": true, "end_user_budget_ids": ["end-user-budget-ai", "end-user-budget-s2s", "end-user-budget-s2s-android", "end-user-budget-memories", "end-user-budget-search", "end-user-budget-answer", "end-user-budget-sw-answer", "end-user-budget-liner-answer", "end-user-budget-telemetry", "end-user-budget-agent", "end-user-budget-agent-search", "end-user-budget-ai-dev", "end-user-budget-memories-dev", "end-user-budget-mochi-dev", "end-user-budget-search-dev"], "end_user_budget_id": "end-user-budget-ai"}
+  mlpa-guest: {"secret": "${MLPA_GUEST_SERVICE_KEY}", "user_id": "mlpa", "is_service_key": true, "end_user_budget_ids": ["end-user-budget-ai-guest", "end-user-budget-memories-guest", "end-user-budget-search-guest"], "end_user_budget_id": "end-user-budget-ai-guest", "ceiling": "mlpa-guest-global"}

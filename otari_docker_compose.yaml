@@ -1,0 +1,58 @@
+# The Otari stack src/tests/otari_compatibility runs MLPA against, locally and
+# in CI: Postgres (Otari's database and MLPA's app_attest), a fake
+# OpenAI-compatible provider, and Otari serving otari_config.yaml.
+#
+# Otari's image is pinned to a release (mzdotai/otari:<version>), as LiteLLM's is
+# in litellm_docker_compose.yaml: bumping it is how a new Otari is tested.
+#
+# OTARI_SERVICE_KEY and OTARI_GUEST_SERVICE_KEY default to the values CI sets for
+# MLPA (.github/actions/otari-compatibility), so both sides hold the same secrets;
+# Otari's config reads them as MLPA_SERVICE_KEY and MLPA_GUEST_SERVICE_KEY.
+# OTARI_MASTER_KEY is Otari's own: MLPA never uses it.
+services:
+  postgres:
+    image: postgres:18
+    container_name: otari_postgres
+    restart: always
+    environment:
+      POSTGRES_USER: otari
+      POSTGRES_PASSWORD: otari
+      POSTGRES_DB: otari
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U otari -d otari"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  fake_upstream:
+    image: python:3.12-slim
+    container_name: otari_fake_upstream
+    command: ["python", "/app/fake_upstream.py", "--port", "9100"]
+    volumes:
+      - ./src/tests/otari_compatibility/fake_upstream.py:/app/fake_upstream.py:ro
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:9100/health')"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  otari:
+    image: mzdotai/otari:0.25.0
+    container_name: otari
+    depends_on:
+      postgres:
+        condition: service_healthy
+      fake_upstream:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./otari_config.yaml:/config/otari_config.yaml:ro
+    environment:
+      OTARI_MASTER_KEY: ${OTARI_MASTER_KEY:-sk-otari-ci}
+      MLPA_SERVICE_KEY: ${OTARI_SERVICE_KEY:-tk-YXPI1CW0aDO2jB9R9nmBouDos1jKmqEMidv6iBnSZ8vqhJ2sDlgLbTawowd8BJZz}
+      MLPA_GUEST_SERVICE_KEY: ${OTARI_GUEST_SERVICE_KEY:-tk-ob35KujLWClpnYti4XPdwQrZhFr4UEfCAmIS7kAnm4vfaslmgQX-p9eDrD1Klzz4}
+    # The image listens on 0.0.0.0:8000.
+    command: ["otari", "serve", "-c", "/config/otari_config.yaml"]
