@@ -15,6 +15,7 @@ from mlpa.core.config import (
     OTARI_HEADER_BUDGET_SCOPE,
     OTARI_HEADER_ERROR_CODE,
     env,
+    is_guest_service_type,
 )
 from mlpa.core.prometheus_metrics import AvailabilityReason, PrometheusRejectionReason
 from mlpa.core.utils import (
@@ -160,7 +161,9 @@ def _classify_otari_error(
     """Map Otari's stable Otari-Error-Code to MLPA's error codes; no text matching."""
     if error_code == "budget_exceeded":
         # The end user's own budget is MLPA's per-user budget; any other scope
-        # (the service key's ceiling, the workspace) is the global one.
+        # (the service key's ceiling, the workspace) is the global one, or for a
+        # guest the guest key's ceiling: the pool every guest shares. Otari names
+        # both ceilings' scope alike, so the service type tells them apart.
         if headers.get(OTARI_HEADER_BUDGET_SCOPE) == "user":
             # Otari's Retry-After is the wait until the refusing budget resets.
             return _rejection(
@@ -169,6 +172,8 @@ def _classify_otari_error(
                 error_text,
                 headers.get("retry-after"),
             )
+        if is_guest_service_type(user.partition(":")[2]):
+            return _rejection(ERROR_CODE_GUEST_BUDGET_LIMIT_EXCEEDED, user, error_text)
         return _rejection(ERROR_CODE_GLOBAL_BUDGET_LIMIT_EXCEEDED, user, error_text)
     if error_code == "rate_limited":
         return _rejection(

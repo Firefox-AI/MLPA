@@ -28,7 +28,7 @@ _SKIP_REASON = (
     "`docker compose -f otari_docker_compose.yaml up -d --build`, "
     "`POSTGRES_CONTAINER_NAME=otari_postgres DB_USERNAME=otari DB_PASSWORD=otari "
     "bash scripts/migrate-app-attest-database-local.sh`, then pytest with the "
-    "otari-compatibility-tests job's env from .github/workflows/linters_and_tests.yml."
+    "env from .github/actions/otari-compatibility/action.yml."
 )
 
 
