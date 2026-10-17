@@ -8,7 +8,7 @@ from pathlib import Path
 import httpx
 import pytest
 
-from mlpa.core.config import OTARI_API_ROOT
+from mlpa.core.config import OTARI_API_ROOT, env
 from mlpa.core.services.otari_service import OtariService
 
 
@@ -244,3 +244,21 @@ async def test_a_network_error_fails_without_raising(client, httpx_mock):
 
     assert outcome.result == "failed"
     assert "ConnectError" in outcome.detail
+
+
+async def test_a_guest_is_written_with_the_guest_key(client, httpx_mock, monkeypatch):
+    """Only the guest key may assign the guest budgets; reads stay on the service key."""
+    monkeypatch.setattr(env, "OTARI_GUEST_SERVICE_KEY", "tk-guest")
+    url = httpx.URL(f"{OTARI_API_ROOT}/end-users", params={"external_id": "g:ai-guest"})
+    httpx_mock.add_response(method="GET", url=url, json=[])
+    httpx_mock.add_response(method="PUT", url=url, status_code=201, json={})
+    httpx_mock.add_response(method="PATCH", url=url, json={})
+
+    target = Target("g:ai-guest", "end-user-budget-ai-guest", blocked=True)
+    outcome = await migrate_end_user(client, target, apply=True)
+
+    assert outcome.result == "created"
+    get, put, patch = httpx_mock.get_requests()
+    assert get.headers["Authorization"] != "Bearer tk-guest"
+    assert put.headers["Authorization"] == "Bearer tk-guest"
+    assert patch.headers["Authorization"] == "Bearer tk-guest"
