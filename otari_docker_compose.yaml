@@ -39,7 +39,7 @@ services:
       retries: 10
 
   otari:
-    image: mzdotai/otari:0.25.0
+    image: mzdotai/otari:0.28.0
     container_name: otari
     depends_on:
       postgres:
