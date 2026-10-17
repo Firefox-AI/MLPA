@@ -77,9 +77,8 @@ def _build_litellm_body(req: AuthorizedChatRequest, *, stream: bool) -> dict:
             "country_code": req.client_country,
         }
     }
-    if USE_OTARI:
-        # Otari serves no mock model.
-        body.pop("mock_response", None)
+    # mock_response rides through to Otari too, which answers it itself on a key
+    # with allow_mock_response (mozilla-ai/otari#2419) and refuses it on any other.
     return sanitize_request_body(body)
 
 

@@ -492,3 +492,23 @@ async def test_startup_checks_guest_budgets_against_the_guest_key(
     error.assert_called_once()
     assert "OTARI_GUEST_SERVICE_KEY" in error.call_args.args[0]
     assert "end-user-budget-ai-guest" in error.call_args.args[0]
+
+
+def test_a_load_tests_mock_response_is_forwarded_to_otari(monkeypatch):
+    """Otari answers mock_response itself on a key that allows it (mozilla-ai/otari#2419)."""
+    from mlpa.core import completions
+    from mlpa.core.classes import AuthorizedChatRequest
+
+    monkeypatch.setattr(completions, "USE_OTARI", True)
+    req = AuthorizedChatRequest(
+        user="load:ai",
+        service_type="ai",
+        purpose="chat",
+        model="test-model",
+        messages=[{"role": "user", "content": "hi"}],
+        mock_response="canned",
+    )
+
+    assert (
+        completions._build_litellm_body(req, stream=False)["mock_response"] == "canned"
+    )
