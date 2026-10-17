@@ -4,11 +4,14 @@ import json
 
 import httpx
 import pytest
+from fastapi import HTTPException
 
 from mlpa.core import config as config_module
+from mlpa.core.auth import authorize
 from mlpa.core.config import (
     ERROR_CODE_BUDGET_LIMIT_EXCEEDED,
     ERROR_CODE_GLOBAL_BUDGET_LIMIT_EXCEEDED,
+    ERROR_CODE_GUEST_BUDGET_LIMIT_EXCEEDED,
     ERROR_CODE_INVALID_MODEL_NAME,
     ERROR_CODE_INVALID_REQUEST,
     ERROR_CODE_RATE_LIMIT_EXCEEDED,
@@ -26,11 +29,11 @@ from mlpa.core.errors import (
 from mlpa.core.services.otari_service import OtariService
 
 
-def _classify(code: str, status: int = 429, **headers: str):
+def _classify(code: str, status: int = 429, user: str = "u:ai", **headers: str):
     return classify_upstream_error(
         error_text='{"detail": "reworded at will"}',
         status_code=status,
-        user="u:ai",
+        user=user,
         headers=httpx.Headers({"Otari-Error-Code": code, **headers}),
     )
 
@@ -365,3 +368,127 @@ async def test_an_app_attest_user_is_named_by_its_own_id(otari, httpx_mock):
 
     assert user is not None
     assert user["user_id"] == "a/b=:s2s"
+
+
+# Guests: a second service key with the same owner (OTARI_GUEST_SERVICE_KEY).
+
+_GUEST_CONFIG = {
+    **_AI_CONFIG,
+    "ai-guest": {**_AI_CONFIG["ai"], "budget_id": "end-user-budget-ai-guest"},
+}
+
+
+@pytest.fixture
+def ai_and_guest(monkeypatch):
+    monkeypatch.setitem(env.__dict__, "service_type_config", _GUEST_CONFIG)
+    monkeypatch.setattr(env, "OTARI_SERVICE_KEY", "tk-service")
+    monkeypatch.setattr(env, "OTARI_GUEST_SERVICE_KEY", "tk-guest")
+
+
+def test_the_guest_keys_ceiling_is_the_guest_budget():
+    match = _classify(
+        "budget_exceeded", 403, user="g:ai-guest", **{"Otari-Budget-Scope": "api_token"}
+    )
+
+    assert match is not None
+    assert match.error_code == ERROR_CODE_GUEST_BUDGET_LIMIT_EXCEEDED
+    assert match.http_status == 429
+
+
+def test_a_guests_own_budget_is_still_the_per_user_budget():
+    match = _classify(
+        "budget_exceeded", 403, user="g:ai-guest", **{"Otari-Budget-Scope": "user"}
+    )
+
+    assert match is not None
+    assert match.error_code == ERROR_CODE_BUDGET_LIMIT_EXCEEDED
+
+
+def test_a_coded_stream_error_for_a_guest_maps_to_the_guest_budget():
+    match = classify_otari_stream_error(
+        {"error": {"code": "budget_exceeded"}}, "g:ai-guest"
+    )
+
+    assert match is not None
+    assert match.error_code == ERROR_CODE_GUEST_BUDGET_LIMIT_EXCEEDED
+
+
+def test_guests_are_sent_on_the_guest_key_with_the_guest_budget(
+    monkeypatch, ai_and_guest
+):
+    monkeypatch.setattr(config_module, "USE_OTARI", True)
+
+    guest = resolve_litellm_virtual_auth_headers(service_type="ai-guest")
+    user = resolve_litellm_virtual_auth_headers(service_type="ai")
+
+    assert guest["Authorization"] == "Bearer tk-guest"
+    assert guest["otari-end-user-budget"] == "end-user-budget-ai-guest"
+    assert user["Authorization"] == "Bearer tk-service"
+
+
+def test_guests_never_fall_back_to_the_service_key(monkeypatch, ai_and_guest):
+    monkeypatch.setattr(config_module, "USE_OTARI", True)
+    monkeypatch.setattr(env, "OTARI_GUEST_SERVICE_KEY", "")
+
+    with pytest.raises(RuntimeError, match="OTARI_GUEST_SERVICE_KEY"):
+        resolve_litellm_virtual_auth_headers(service_type="ai-guest")
+
+
+def test_guest_auth_needs_the_otari_guest_key(monkeypatch):
+    monkeypatch.setattr(authorize, "USE_OTARI", True)
+    monkeypatch.setattr(env, "MLPA_GUEST_VIRTUAL_KEY", "sk-litellm-guest")
+    monkeypatch.setattr(env, "OTARI_GUEST_SERVICE_KEY", "")
+
+    with pytest.raises(HTTPException) as exc_info:
+        authorize.guest_virtual_key()
+    assert exc_info.value.status_code == 503
+
+    monkeypatch.setattr(env, "OTARI_GUEST_SERVICE_KEY", "tk-guest")
+    # None: the headers pick the guest key by service type.
+    assert authorize.guest_virtual_key() is None
+
+
+async def test_guests_are_counted_from_the_guest_keys_budgets(
+    otari, httpx_mock, ai_and_guest
+):
+    httpx_mock.add_response(
+        method="GET",
+        url=f"{OTARI_API_ROOT}/end-user-budgets",
+        match_headers={"Authorization": "Bearer tk-service"},
+        json=[{"budget_id": "end-user-budget-ai", "end_user_count": 42}],
+    )
+    httpx_mock.add_response(
+        method="GET",
+        url=f"{OTARI_API_ROOT}/end-user-budgets",
+        match_headers={"Authorization": "Bearer tk-guest"},
+        json=[{"budget_id": "end-user-budget-ai-guest", "end_user_count": 5}],
+    )
+
+    assert await otari.count_users_by_service_type() == {
+        "service_type_counts": {"ai": 42, "ai-guest": 5},
+        "total_users": 47,
+    }
+
+
+async def test_startup_checks_guest_budgets_against_the_guest_key(
+    otari, httpx_mock, ai_and_guest, mocker
+):
+    error = mocker.patch("mlpa.core.services.otari_service.logger.error")
+    httpx_mock.add_response(
+        method="GET",
+        url=f"{OTARI_API_ROOT}/end-user-budgets",
+        match_headers={"Authorization": "Bearer tk-service"},
+        json=[{"budget_id": "end-user-budget-ai", "end_user_count": 0}],
+    )
+    httpx_mock.add_response(
+        method="GET",
+        url=f"{OTARI_API_ROOT}/end-user-budgets",
+        match_headers={"Authorization": "Bearer tk-guest"},
+        json=[],
+    )
+
+    await otari.create_budget()
+
+    error.assert_called_once()
+    assert "OTARI_GUEST_SERVICE_KEY" in error.call_args.args[0]
+    assert "end-user-budget-ai-guest" in error.call_args.args[0]

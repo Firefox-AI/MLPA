@@ -107,6 +107,11 @@ class Env(BaseSettings):
     # (MLPA_SERVICE_KEY in scripts/otari_config.py's output). It serves requests
     # and manages MLPA's end users; MLPA needs no other Otari credential.
     OTARI_SERVICE_KEY: str = ""
+    # MLPA's Otari key for guests (`*-guest` service types), the counterpart of
+    # MLPA_GUEST_VIRTUAL_KEY. Declared with the same owner as OTARI_SERVICE_KEY,
+    # so the service key still manages guests, with its own ceiling as the guest
+    # spend cap and only the guest budgets to assign. Unset, guests get 503.
+    OTARI_GUEST_SERVICE_KEY: str = ""
     # The Otari user that owns the service key and every end user, and the key's name.
     OTARI_OWNER_USER: str = "mlpa"
     # End users known to exist in Otari, remembered so the signup cap is checked
@@ -789,6 +794,26 @@ LITELLM_VIRTUAL_AUTH_HEADERS = {
 }
 
 
+def is_guest_service_type(service_type: str | None) -> bool:
+    """Whether MLPA serves this service type to guests (set only after guest auth)."""
+    return (service_type or "").endswith("-guest")
+
+
+def otari_service_key(service_type: str | None) -> str:
+    """MLPA's Otari key for a service type: the guest key for guests, never the other's."""
+    if is_guest_service_type(service_type):
+        if not env.OTARI_GUEST_SERVICE_KEY:
+            raise RuntimeError(
+                "No Otari guest key; set OTARI_GUEST_SERVICE_KEY to the secret Otari's config.yml declares"
+            )
+        return env.OTARI_GUEST_SERVICE_KEY
+    if not env.OTARI_SERVICE_KEY:
+        raise RuntimeError(
+            "No Otari service key; set OTARI_SERVICE_KEY to the secret Otari's config.yml declares"
+        )
+    return env.OTARI_SERVICE_KEY
+
+
 def resolve_litellm_virtual_auth_headers(
     custom_virtual_key: str | None = None,
     service_type: str | None = None,
@@ -797,17 +822,13 @@ def resolve_litellm_virtual_auth_headers(
     Resolve virtual key to be forwarded to litellm, if passing custom virtual key
     the custom key will be used. Otherwise, the default LITELLM_VIRTUAL_AUTH_HEADERS
     will be used. With GATEWAY_BACKEND=otari the default is MLPA's Otari service
-    key, with the budget of the request's service type, which Otari puts a new
-    end user on.
+    key (its guest key for guests), with the budget of the request's service
+    type, which Otari puts a new end user on.
     """
     if custom_virtual_key is None and USE_OTARI:
-        if not env.OTARI_SERVICE_KEY:
-            raise RuntimeError(
-                "No Otari service key; set OTARI_SERVICE_KEY to the secret Otari's config.yml declares"
-            )
         headers = {
             "Content-Type": "application/json",
-            "Authorization": f"Bearer {env.OTARI_SERVICE_KEY}",
+            "Authorization": f"Bearer {otari_service_key(service_type)}",
         }
         config = env.service_type_config.get(service_type or "")
         if config is not None:

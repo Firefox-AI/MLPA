@@ -16,6 +16,11 @@ How MLPA's model maps onto Otari's:
   ``tpm_limit``, so moving a user to another budget moves its limits too.
 - The service key also reads, blocks and moves its own end users
   (``/api/v1/end-users``), so MLPA holds no other Otari credential.
+- Guests (``*-guest`` service types) are served on a second key,
+  ``OTARI_GUEST_SERVICE_KEY``, with the same owner: its ceiling pools every guest
+  apart from signed-in users, and it may assign only the guest budgets. Being
+  end users of the same owner, guests are read and blocked with the service key;
+  only the budget list a key may assign has to be read with each key.
 
 Otari's config.yml declares the budgets and the key (``budgets:`` and
 ``api_keys:``), and Otari applies them at every start. MLPA itself only reads
@@ -32,6 +37,7 @@ from mlpa.core.config import (
     LITELLM_READINESS_URL,
     OTARI_API_ROOT,
     env,
+    is_guest_service_type,
 )
 from mlpa.core.logger import logger
 
@@ -158,44 +164,79 @@ class OtariService:
             "offset": offset,
         }
 
+    async def _end_user_budgets(self, key: str) -> list[dict[str, Any]]:
+        """The budgets ``key`` may assign, with how many end users are on each."""
+        return await self._request(
+            "GET", "/end-user-budgets", headers={"Authorization": f"Bearer {key}"}
+        )
+
+    @staticmethod
+    def _keys_and_service_types() -> list[tuple[str, str, list[str]]]:
+        """Each of MLPA's Otari keys, by setting name, with the service types it serves."""
+        service_types = list(env.service_type_config)
+        keys = [
+            (
+                "OTARI_SERVICE_KEY",
+                env.OTARI_SERVICE_KEY,
+                [st for st in service_types if not is_guest_service_type(st)],
+            )
+        ]
+        if env.OTARI_GUEST_SERVICE_KEY:
+            keys.append(
+                (
+                    "OTARI_GUEST_SERVICE_KEY",
+                    env.OTARI_GUEST_SERVICE_KEY,
+                    [st for st in service_types if is_guest_service_type(st)],
+                )
+            )
+        return keys
+
     async def count_users_by_service_type(self) -> dict:
         """Users per service type, counted as the users on each service type's budget.
 
         Otari counts users per budget, so a user moved to another service type's
         budget (a tester on ai-dev) counts under that one, where LiteLLM counted it
-        under the service type in its id.
+        under the service type in its id. A key lists only the budgets it may
+        assign, so the guest budgets are read with the guest key.
         """
-        budgets = await self._request("GET", "/end-user-budgets")
-        users_on = {b["budget_id"]: b["end_user_count"] for b in budgets}
-        counts = {
-            service_type: users_on.get(config["budget_id"], 0)
-            for service_type, config in env.service_type_config.items()
-        }
-        counts = {st: count for st, count in counts.items() if count}
+        counts = {}
+        for _name, key, service_types in self._keys_and_service_types():
+            users_on = {
+                b["budget_id"]: b["end_user_count"]
+                for b in await self._end_user_budgets(key)
+            }
+            for service_type in service_types:
+                budget_id = env.service_type_config[service_type]["budget_id"]
+                if users_on.get(budget_id):
+                    counts[service_type] = users_on[budget_id]
         return {"service_type_counts": counts, "total_users": sum(counts.values())}
 
     async def create_budget(self) -> None:
-        """Say which service type's budget Otari's config does not give MLPA's key.
+        """Say which service type's budget Otari's config does not give MLPA's keys.
 
         Called at startup in place of the LiteLLM budget upsert, and read-only:
-        Otari's config.yml is what declares budgets and the key.
+        Otari's config.yml is what declares budgets and the keys.
         """
-        try:
-            budgets = await self._request("GET", "/end-user-budgets")
-        except httpx.HTTPStatusError as e:
-            logger.error(
-                f"Otari refused MLPA's service key ({e.response.status_code}); "
-                "declare it in Otari's config.yml and set OTARI_SERVICE_KEY to its secret"
-            )
-            return
-        except Exception as e:
-            logger.error(f"Error reading MLPA's budgets from Otari: {e}")
-            return
-        assignable = {budget["budget_id"] for budget in budgets}
-        for service_type, config in env.service_type_config.items():
-            if config["budget_id"] not in assignable:
+        if not env.OTARI_GUEST_SERVICE_KEY:
+            logger.info("OTARI_GUEST_SERVICE_KEY is unset: guest requests get 503")
+        for name, key, service_types in self._keys_and_service_types():
+            try:
+                budgets = await self._end_user_budgets(key)
+            except httpx.HTTPStatusError as e:
                 logger.error(
-                    f"MLPA's Otari key may not assign budget {config['budget_id']!r} "
-                    f"(service type {service_type}); declare it and list it in the "
-                    "key's end_user_budget_ids in Otari's config.yml"
+                    f"Otari refused MLPA's {name} ({e.response.status_code}); "
+                    f"declare it in Otari's config.yml and set {name} to its secret"
                 )
+                continue
+            except Exception as e:
+                logger.error(f"Error reading {name}'s budgets from Otari: {e}")
+                continue
+            assignable = {budget["budget_id"] for budget in budgets}
+            for service_type in service_types:
+                budget_id = env.service_type_config[service_type]["budget_id"]
+                if budget_id not in assignable:
+                    logger.error(
+                        f"MLPA's {name} may not assign budget {budget_id!r} "
+                        f"(service type {service_type}); declare it and list it in "
+                        "the key's end_user_budget_ids in Otari's config.yml"
+                    )
