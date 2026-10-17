@@ -183,6 +183,7 @@ async def stream_completion(
                         status_code=e.response.status_code,
                         error_text=error_text_str,
                         rejected=match is not None,
+                        headers=e.response.headers,
                     )
                     if match is not None:
                         if match.log_message:
@@ -458,6 +459,7 @@ async def _get_completion(
                 status_code=e.response.status_code,
                 error_text=e.response.text,
                 rejected=match is not None,
+                headers=e.response.headers,
             )
             if match is not None:
                 if match.log_message:
