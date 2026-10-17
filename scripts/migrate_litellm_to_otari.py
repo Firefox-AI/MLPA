@@ -3,7 +3,8 @@ Carry LiteLLM's blocked and moved end users over to Otari, and check the signup 
 
 Reads LiteLLM_EndUserTable with the settings MLPA's litellm pool uses (DB_HOST,
 DB_PORT, DB_USERNAME, DB_PASSWORD, LITELLM_DB_NAME), and writes to Otari's
-end-user API at OTARI_API_BASE with OTARI_SERVICE_KEY. GATEWAY_BACKEND does not
+end-user API at OTARI_API_BASE with OTARI_SERVICE_KEY, and guests with
+OTARI_GUEST_SERVICE_KEY. GATEWAY_BACKEND does not
 matter, so it runs before or after MLPA is switched.
 
 - A blocked user is blocked in Otari, and a user on a budget other than its
@@ -31,7 +32,7 @@ from typing import Any, Literal
 
 import httpx
 
-from mlpa.core.config import USER_CAPACITY_ID, env
+from mlpa.core.config import USER_CAPACITY_ID, env, is_guest_service_type
 from mlpa.core.errors import otari_code
 from mlpa.core.services.app_attest_pg_service import AppAttestPGService
 from mlpa.core.services.litellm_pg_service import LiteLLMPGService
@@ -164,6 +165,20 @@ def _end_user_params(user_id: str) -> dict[str, str]:
     return {"external_id": user_id}
 
 
+def _is_guest(user_id: str) -> bool:
+    return is_guest_service_type(user_id.partition(":")[2])
+
+
+def _write_headers(user_id: str) -> dict[str, str]:
+    """Guests are written with the guest key: only it may assign the guest budgets.
+
+    Reads need no other key: both keys' end users belong to the same owner.
+    """
+    if _is_guest(user_id):
+        return {"Authorization": f"Bearer {env.OTARI_GUEST_SERVICE_KEY}"}
+    return {}
+
+
 def _refusal(target: Target, response: httpx.Response) -> Outcome:
     code = otari_code(response.headers, response.text)
     if response.status_code == 403 and code == END_USER_BUDGET_NOT_ALLOWED:
@@ -203,7 +218,11 @@ async def migrate_end_user(
             return Outcome(target.user_id, result)
         for method, body in calls:
             response = await client.request(
-                method, "/end-users", params=params, json=body
+                method,
+                "/end-users",
+                params=params,
+                json=body,
+                headers=_write_headers(target.user_id),
             )
             if not response.is_success:
                 return _refusal(target, response)
@@ -268,21 +287,40 @@ def print_plan(plan: Plan, count: int) -> None:
 
 
 async def check_budgets(otari: OtariService, plan: Plan) -> bool:
-    """Say which budget the plan needs that the key may not assign; False if the key is refused."""
-    response = await otari.client.get("/end-user-budgets")
-    if not response.is_success:
-        print(
-            f"Otari refused /end-user-budgets ({response.status_code}): "
-            "check OTARI_API_BASE and OTARI_SERVICE_KEY",
-            file=sys.stderr,
+    """Say which budget the plan needs that its key may not assign; False if a key is refused.
+
+    Guests are written with OTARI_GUEST_SERVICE_KEY, everyone else with
+    OTARI_SERVICE_KEY, and each key lists only the budgets it may assign.
+    """
+    needed: dict[str, set[str]] = {}
+    for target in plan.targets:
+        name = (
+            "OTARI_GUEST_SERVICE_KEY"
+            if _is_guest(target.user_id)
+            else "OTARI_SERVICE_KEY"
         )
-        return False
-    assignable = {b["budget_id"] for b in response.json()}
-    for budget_id in sorted({t.budget_id for t in plan.targets} - assignable):
-        print(
-            f"WARNING: the key may not assign {budget_id!r}; its users will be refused. "
-            "List it in the key's end_user_budget_ids in Otari's config.yml"
+        needed.setdefault(name, set()).add(target.budget_id)
+    for name, budget_ids in sorted(needed.items()):
+        key = getattr(env, name)
+        if not key:
+            print(f"Set {name}: the plan has its users", file=sys.stderr)
+            return False
+        response = await otari.client.get(
+            "/end-user-budgets", headers={"Authorization": f"Bearer {key}"}
         )
+        if not response.is_success:
+            print(
+                f"Otari refused /end-user-budgets ({response.status_code}): "
+                f"check OTARI_API_BASE and {name}",
+                file=sys.stderr,
+            )
+            return False
+        assignable = {b["budget_id"] for b in response.json()}
+        for budget_id in sorted(budget_ids - assignable):
+            print(
+                f"WARNING: {name} may not assign {budget_id!r}; its users will be refused. "
+                "List it in the key's end_user_budget_ids in Otari's config.yml"
+            )
     return True
 
 
