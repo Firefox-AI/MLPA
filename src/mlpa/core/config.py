@@ -144,6 +144,11 @@ class Env(BaseSettings):
     # (MLPA_SERVICE_KEY in scripts/otari_config.py's output). It serves requests
     # and manages MLPA's end users; MLPA needs no other Otari credential.
     OTARI_SERVICE_KEY: str = ""
+    # MLPA's Otari key for guests (`*-guest` service types), the counterpart of
+    # MLPA_GUEST_VIRTUAL_KEY. Declared with the same owner as OTARI_SERVICE_KEY,
+    # so the service key still manages guests, with its own ceiling as the guest
+    # spend cap and only the guest budgets to assign. Unset, guests get 503.
+    OTARI_GUEST_SERVICE_KEY: str = ""
     # The Otari user that owns the service key and every end user, and the key's name.
     OTARI_OWNER_USER: str = "mlpa"
     # End users known to exist in Otari, remembered so the signup cap is checked
@@ -620,8 +625,14 @@ class Env(BaseSettings):
             "search-dev": self.MLPA_VIRTUAL_KEY,
         }
         if self.GATEWAY_BACKEND == "otari":
-            # MLPA's Otari service key serves every service type.
-            return {service_type: self.OTARI_SERVICE_KEY for service_type in keys}
+            # MLPA's Otari service key serves every service type but the guests',
+            # which its guest key serves: never the other's, as under LiteLLM.
+            return {
+                service_type: self.OTARI_GUEST_SERVICE_KEY
+                if service_type.endswith("-guest")
+                else self.OTARI_SERVICE_KEY
+                for service_type in keys
+            }
         return keys
 
     @cached_property
@@ -999,13 +1010,19 @@ def resolve_litellm_virtual_key(
     return key
 
 
+def is_guest_service_type(service_type: str | None) -> bool:
+    """Whether MLPA serves this service type to guests (set only after guest auth)."""
+    return (service_type or "").endswith("-guest")
+
+
 def resolve_litellm_virtual_auth_headers(
     service_type: str,
     custom_virtual_key: str | None = None,
 ) -> dict[str, str]:
     """Build inference headers using the service key or a custom override.
 
-    With GATEWAY_BACKEND=otari the service key is MLPA's Otari service key, and
+    With GATEWAY_BACKEND=otari the service key is MLPA's Otari service key (its
+    guest key for guests), and
     the headers name the service type's budget, which Otari puts a new end user on.
     """
     key = resolve_litellm_virtual_key(service_type, custom_virtual_key)
