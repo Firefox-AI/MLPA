@@ -54,6 +54,9 @@ jobs:
       - name: Run unit tests
         run: uv run pytest src/tests/unit -v --junit-xml=unit-results.xml
 
+      - name: Check gateway image update script
+        run: python -m unittest discover -s scripts -p test_update_gateway_image.py -v
+
       - name: Summarize failures
         if: always()
         run: uv run python scripts/ci_failure_summary.py unit-results.xml

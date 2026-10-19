@@ -94,22 +94,45 @@ Service account configured to hit VertexAI: `service_account.json` should be in 
 
 After running, Swagger can be viewed at `http://localhost:<PORT>/api/docs`
 
-## Test a gateway image
+## Test and promote a gateway image
 
-In GitHub Actions, select **Test gateway image → Run workflow** and supply the full
-published `litellm-gateway` image reference from Artifact Registry. Use a commit
-tag or digest to identify the candidate:
+In GitHub Actions, select **Test gateway image → Run workflow** on `main`.
+Leave `image` blank to select the latest published gateway image, or enter a full
+commit-tag/digest reference from the gateway Artifact Registry repository.
+The workflow resolves the selected image to an immutable digest before testing.
 
 ```bash
-gh workflow run test-gateway-image.yml --repo Firefox-AI/MLPA \
-  -f 'image=us-docker.pkg.dev/moz-fx-llm-proxy-prod-b0b8/llm-proxy-prod/litellm-gateway:<commit-sha>'
+# Test latest and propose it as the default if tests pass.
+gh workflow run test-gateway-image.yml --repo Firefox-AI/MLPA --ref main
+
+# Test a specific image without proposing a default change.
+gh workflow run test-gateway-image.yml --repo Firefox-AI/MLPA --ref main \
+  -f 'image=us-docker.pkg.dev/moz-fx-llm-proxy-prod-b0b8/llm-proxy-prod/litellm-gateway:<commit-sha>' \
+  -F update_default=false
 ```
 
-The workflow pulls the image and runs `src/tests/litellm_compatibility` with
-PostgreSQL, Redis, and the local Exa stub. Normal CI uses the upstream image pinned
-in `litellm_docker_compose.yaml`; the manual workflow overrides only that image.
-Both use the same compatibility tests and configuration. The workflow does not
-deploy the candidate or enable its custom handlers in the test configuration.
+With `update_default` enabled (the default), passing tests open a draft PR that
+updates only `services.litellm.image` in `litellm_docker_compose.yaml`. The PR
+records the tested digest, MLPA revision and test run. If the default already
+matches, no PR is created. Promotion is allowed only from `main`; branch runs
+must disable `update_default`.
+
+The workflow uses the existing `src/tests/litellm_compatibility` suite with
+PostgreSQL, Redis, and the local Exa stub. It does not enable the custom handlers
+in the test configuration. Gateway handler tests provide separate coverage.
+No deployment changes: production still selects its image in `dataservices-infra`.
+
+**Setup required before enabling promotion:** allow GitHub Actions to create pull
+requests in repository Actions settings, and provide registry access for regular
+compatibility jobs (including fork and Dependabot PRs). Regular checks currently
+use the public upstream Compose image; this draft does not yet change their
+authentication. Do not merge a generated private-image update until that access
+is implemented. Local developers will also need Artifact Registry read access
+and `gcloud auth configure-docker us-docker.pkg.dev`.
+
+Review the generated PR and approve any bot-triggered workflow runs that require
+approval. Wait for all checks before merging. Dependabot ignores gateway images
+so future digest updates continue through this test-and-promote workflow.
 
 ## Auth benchmarks
 
