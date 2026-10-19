@@ -8,6 +8,7 @@ import httpx
 import pytest
 from fastapi import HTTPException, Request
 from pytest_httpx import HTTPXMock, IteratorStream
+from starlette.responses import StreamingResponse
 
 from mlpa.core.classes import AuthorizedChatRequest
 from mlpa.core.completions import (
@@ -2095,3 +2096,89 @@ async def test_get_completion_non_exa_model_skips_exa_error(mocker, metrics_spy)
         await get_completion(Request({"type": "http", "headers": []}), SAMPLE_REQUEST)
 
     assert "exa_errors" not in metrics_spy.touched()
+
+
+@pytest.mark.parametrize("spec_version", ["2.3", "2.4"])
+@pytest.mark.parametrize("cancel_during_poll", [False, True])
+async def test_stream_cleanup_finishes_without_client_disconnect(
+    mocker, metrics_spy, cancel_during_poll, spec_version
+):
+    """A swallowed watcher cancellation must not hold HTTP EOF until disconnect.
+
+    Use Starlette's real Request.is_disconnected (including its AnyIO cancel
+    scope). Coordinate upstream close with an active poll to force the race;
+    cancellation between polls is the control case. Cover Uvicorn's ASGI 2.3
+    task-group path and the ASGI 2.4 direct-send path. No network calls are made.
+    """
+    mocker.patch("socket.socket.connect", side_effect=AssertionError("No network"))
+    mocker.patch("socket.socket.connect_ex", side_effect=AssertionError("No network"))
+    mocker.patch(
+        "mlpa.core.completions.redis_service.update_contracts", new_callable=AsyncMock
+    )
+    mocker.patch.object(env, "DISCONNECT_POLL_INTERVAL_SECONDS", 0.1)
+    messages = asyncio.Queue()
+    poll_during_close = asyncio.Event()
+    closing_upstream = False
+    watch_task = None
+    sent = []
+    chunks = [
+        b'data: {"choices":[{"delta":{"content":"offline answer"}}]}\n\n',
+        b"data: [DONE]\n\n",
+    ]
+
+    async def receive():
+        nonlocal watch_task
+        watch_task = asyncio.current_task()
+        if closing_upstream:
+            poll_during_close.set()
+        return await messages.get()
+
+    async def upstream_chunks():
+        for chunk in chunks:
+            yield chunk
+
+    async def close_upstream():
+        nonlocal closing_upstream
+        closing_upstream = True
+        await poll_during_close.wait()
+        if not cancel_during_poll:
+            # Allow the poll's internal cancellation to finish first.
+            await asyncio.sleep(0.005)
+
+    capture = {}
+    _patch_mock_stream_client(mocker, upstream_chunks, capture, close_upstream)
+    request = Request({"type": "http", "headers": []}, receive=receive)
+    response = StreamingResponse(stream_completion(request, SAMPLE_REQUEST))
+
+    async def send(message):
+        sent.append(message)
+
+    task = asyncio.create_task(
+        response(
+            {"type": "http", "asgi": {"spec_version": spec_version}}, receive, send
+        )
+    )
+    try:
+        # asyncio.wait does not cancel the task and accidentally unstick cleanup.
+        done, _ = await asyncio.wait({task}, timeout=1)
+        assert task in done, "HTTP completion stalled awaiting the disconnect watcher"
+        await task
+        bodies = [m for m in sent if m["type"] == "http.response.body"]
+        assert [m["body"] for m in bodies[:-1]] == chunks
+        assert bodies[-1] == {
+            "type": "http.response.body",
+            "body": b"",
+            "more_body": False,
+        }
+        assert watch_task is not None and watch_task.done()
+        assert capture["close_count"] == 1
+        assert _latency_count(metrics_spy, PrometheusResult.SUCCESS) == 1
+        assert _latency_count(metrics_spy, PrometheusResult.ABORT) == 0
+    finally:
+        # Release the old buggy implementation so a failing regression is bounded.
+        messages.put_nowait({"type": "http.disconnect"})
+        done, _ = await asyncio.wait({task}, timeout=1)
+        if task not in done:
+            task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await task
