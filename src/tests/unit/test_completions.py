@@ -2098,15 +2098,17 @@ async def test_get_completion_non_exa_model_skips_exa_error(mocker, metrics_spy)
     assert "exa_errors" not in metrics_spy.touched()
 
 
+@pytest.mark.parametrize("spec_version", ["2.3", "2.4"])
 @pytest.mark.parametrize("cancel_during_poll", [False, True])
 async def test_stream_cleanup_finishes_without_client_disconnect(
-    mocker, metrics_spy, cancel_during_poll
+    mocker, metrics_spy, cancel_during_poll, spec_version
 ):
     """A swallowed watcher cancellation must not hold HTTP EOF until disconnect.
 
     Use Starlette's real Request.is_disconnected (including its AnyIO cancel
     scope). Coordinate upstream close with an active poll to force the race;
-    cancellation between polls is the control case. No network calls are made.
+    cancellation between polls is the control case. Cover Uvicorn's ASGI 2.3
+    task-group path and the ASGI 2.4 direct-send path. No network calls are made.
     """
     mocker.patch("socket.socket.connect", side_effect=AssertionError("No network"))
     mocker.patch("socket.socket.connect_ex", side_effect=AssertionError("No network"))
@@ -2152,7 +2154,9 @@ async def test_stream_cleanup_finishes_without_client_disconnect(
         sent.append(message)
 
     task = asyncio.create_task(
-        response({"type": "http", "asgi": {"spec_version": "2.4"}}, receive, send)
+        response(
+            {"type": "http", "asgi": {"spec_version": spec_version}}, receive, send
+        )
     )
     try:
         # asyncio.wait does not cancel the task and accidentally unstick cleanup.
