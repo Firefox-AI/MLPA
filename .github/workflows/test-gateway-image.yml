@@ -4,11 +4,11 @@ on:
   workflow_dispatch:
     inputs:
       image:
-        description: "Gateway image tag or digest; leave blank to test the latest published image"
+        description: "Full gateway image reference (tag or digest); leave blank to test latest"
         required: false
         type: string
       update_default:
-        description: "Open a PR updating the Compose default after tests pass (main only)"
+        description: "Open an update PR after tests pass (ignored on branches other than main)"
         required: false
         type: boolean
         default: true
@@ -33,11 +33,9 @@ jobs:
       - name: Validate request
         env:
           INPUT_IMAGE: ${{ inputs.image }}
-          UPDATE_DEFAULT: ${{ inputs.update_default }}
         run: |
-          if [[ "$UPDATE_DEFAULT" == true && "$GITHUB_REF" != refs/heads/main ]]; then
-            echo "Default-image updates must run from main. Disable update_default for branch tests."
-            exit 1
+          if [[ "$GITHUB_REF" != refs/heads/main ]]; then
+            echo "Testing only: default-image update PRs can only be created from main." >> "$GITHUB_STEP_SUMMARY"
           fi
           image="${INPUT_IMAGE:-$GATEWAY_REPOSITORY:latest}"
           suffix="${image#"$GATEWAY_REPOSITORY"}"
@@ -124,7 +122,7 @@ jobs:
           Tested MLPA revision: \`$GITHUB_SHA\`
 
           This updates local development and CI defaults, not the deployed gateway in dataservices-infra.
-          Review and approve the PR's checks before merging; GitHub may require approval for bot-created PR workflows.
+          Select "Approve workflows to run" on this PR, then review the completed checks before merging.
           EOF
           gh pr create --base main --head "$branch" --draft \
             --title 'chore: update tested gateway image' --body-file "$body" \
