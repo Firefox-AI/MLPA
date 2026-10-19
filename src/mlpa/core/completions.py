@@ -157,7 +157,13 @@ async def stream_completion(
     )
 
     async def _watch_disconnect() -> None:
+        task = asyncio.current_task()
+        assert task is not None
         while not await request.is_disconnected():
+            # Starlette's AnyIO cancel scope can swallow task cancellation.
+            # Honor the pending cancellation before starting another poll.
+            if task.cancelling():
+                raise asyncio.CancelledError
             await asyncio.sleep(env.DISCONNECT_POLL_INTERVAL_SECONDS)
         disconnect_event.set()
 
