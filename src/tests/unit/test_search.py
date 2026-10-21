@@ -172,7 +172,14 @@ async def test_get_search_budget_limit_exceeded_records_rejection(mocker, metric
     assert exc_info.value.status_code == 429
     assert exc_info.value.detail == {"error": ERROR_CODE_BUDGET_LIMIT_EXCEEDED}
     assert exc_info.value.headers == {"Retry-After": "86400"}
-    metrics_spy.assert_only({"search_request_rejections", "search_latency"})
+    metrics_spy.assert_only(
+        {
+            "search_request_rejections",
+            "search_latency",
+            "search_availability",
+            "search_availability_by_country",
+        }
+    )
     assert (
         _search_rejection_count(
             metrics_spy, PrometheusRejectionReason.BUDGET_EXCEEDED, req
@@ -212,7 +219,14 @@ async def test_get_search_global_budget_limit_exceeded_records_rejection(
     assert exc_info.value.status_code == 500
     assert exc_info.value.detail == {"error": ERROR_CODE_GLOBAL_BUDGET_LIMIT_EXCEEDED}
     assert exc_info.value.headers == {"Retry-After": "300"}
-    metrics_spy.assert_only({"search_request_rejections", "search_latency"})
+    metrics_spy.assert_only(
+        {
+            "search_request_rejections",
+            "search_latency",
+            "search_availability",
+            "search_availability_by_country",
+        }
+    )
     assert (
         _search_rejection_count(
             metrics_spy, PrometheusRejectionReason.GLOBAL_BUDGET_EXCEEDED, req
@@ -251,7 +265,14 @@ async def test_get_search_context_window_exceeded_records_rejection(
 
     assert exc_info.value.status_code == 413
     assert exc_info.value.detail == {"error": ERROR_CODE_REQUEST_TOO_LARGE}
-    metrics_spy.assert_only({"search_request_rejections", "search_latency"})
+    metrics_spy.assert_only(
+        {
+            "search_request_rejections",
+            "search_latency",
+            "search_availability",
+            "search_availability_by_country",
+        }
+    )
     assert (
         _search_rejection_count(
             metrics_spy, PrometheusRejectionReason.PAYLOAD_TOO_LARGE, req
@@ -297,7 +318,14 @@ async def test_get_search_upstream_error_records_exa_error(
         await get_search(Request({"type": "http", "headers": []}), req)
 
     assert exc_info.value.status_code == status_code
-    metrics_spy.assert_only({"exa_errors", "search_latency"})
+    metrics_spy.assert_only(
+        {
+            "exa_errors",
+            "search_latency",
+            "search_availability",
+            "search_availability_by_country",
+        }
+    )
     assert (
         metrics_spy.value(
             "exa_errors", endpoint="/v1/search", model=SEARCH_MODEL, **expected_labels
@@ -325,7 +353,13 @@ async def test_get_search_exa_rate_limit_records_rejection_and_exa_error(
         await get_search(Request({"type": "http", "headers": []}), req)
 
     metrics_spy.assert_only(
-        {"exa_errors", "search_request_rejections", "search_latency"}
+        {
+            "exa_errors",
+            "search_request_rejections",
+            "search_latency",
+            "search_availability",
+            "search_availability_by_country",
+        }
     )
     assert (
         metrics_spy.value(

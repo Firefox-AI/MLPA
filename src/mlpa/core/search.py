@@ -1,8 +1,10 @@
 import asyncio
 import time
+from asyncio import CancelledError
 
 import httpx
 from fastapi import HTTPException, Request
+from starlette.requests import ClientDisconnect
 
 from mlpa.core.classes import AuthorizedSearchRequest
 from mlpa.core.config import (
@@ -16,10 +18,11 @@ from mlpa.core.metrics import (
     SEARCH_ENDPOINT,
     SEARCH_MODEL,
     record_exa_error,
+    record_search_availability,
     record_search_latency,
     record_search_request_rejection,
 )
-from mlpa.core.prometheus_metrics import PrometheusResult
+from mlpa.core.prometheus_metrics import AvailabilityReason, PrometheusResult
 from mlpa.core.request_timings import measure
 from mlpa.core.sanitization import sanitize_request_body, sanitize_response_body
 from mlpa.core.services.services import redis_service
@@ -51,6 +54,7 @@ async def _get_search(
             )
         )
     result = PrometheusResult.ERROR
+    availability_reason = AvailabilityReason.UPSTREAM_ERROR
     usage = None
     logger.debug(
         f"Starting a search request using for user {authorized_search_request.user}",
@@ -84,6 +88,7 @@ async def _get_search(
                 if match.log_message:
                     logger.warning(match.log_message)
                 record_search_request_rejection(authorized_search_request, match.reason)
+                availability_reason = match.availability_reason()
                 headers = (
                     {"Retry-After": match.retry_after} if match.retry_after else None
                 )
@@ -95,16 +100,34 @@ async def _get_search(
             raise_and_log(e)
 
         data = sanitize_response_body(response.json())
+        # Empty results are valid. Missing/non-list results, non-object entries,
+        # and error envelopes are not valid successful search responses.
+        if (
+            not isinstance(data, dict)
+            or "error" in data
+            or not isinstance(data.get("results"), list)
+            or any(not isinstance(item, dict) for item in data["results"])
+        ):
+            availability_reason = AvailabilityReason.INVALID_RESPONSE
+            raise HTTPException(
+                status_code=502, detail="Invalid upstream search response"
+            )
         usage = data.get("usage")
 
         result = PrometheusResult.SUCCESS
+        availability_reason = AvailabilityReason.VALID_RESPONSE
         return data
+    except (CancelledError, ClientDisconnect):
+        result = PrometheusResult.ABORT
+        availability_reason = AvailabilityReason.CLIENT_DISCONNECT
+        raise
     except HTTPException:
         raise
     except Exception as e:
         raise_and_log(e, False, 502, "Failed to proxy request")
     finally:
         record_search_latency(result, time.perf_counter() - start_time)
+        record_search_availability(authorized_search_request, availability_reason)
         asyncio.create_task(
             redis_service.update_contracts(
                 service_type=authorized_search_request.service_type,

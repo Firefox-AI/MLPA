@@ -7,10 +7,8 @@ from collections.abc import AsyncIterator
 import httpx
 from fastapi import HTTPException, Request
 
-from mlpa.core.classes import AuthorizedChatRequest, AuthorizedSearchRequest
+from mlpa.core.classes import AuthorizedChatRequest
 from mlpa.core.config import (
-    ERROR_CODE_MAX_GUESTS_REACHED,
-    ERROR_CODE_MAX_USERS_REACHED,
     LITELLM_COMPLETIONS_URL,
     env,
     resolve_litellm_virtual_auth_headers,
@@ -32,7 +30,6 @@ from mlpa.core.metrics import (
 )
 from mlpa.core.prometheus_metrics import (
     AvailabilityReason,
-    PrometheusRejectionReason,
     PrometheusResult,
 )
 from mlpa.core.request_timings import (
@@ -42,7 +39,6 @@ from mlpa.core.request_timings import (
 from mlpa.core.sanitization import sanitize_request_body, sanitize_response_body
 from mlpa.core.services.services import redis_service
 from mlpa.core.utils import (
-    get_or_create_user,
     raise_and_log,
 )
 
@@ -72,52 +68,6 @@ def _build_litellm_body(req: AuthorizedChatRequest, *, stream: bool) -> dict:
         }
     }
     return sanitize_request_body(body)
-
-
-_CAP_EXCEEDED_REASONS = {
-    ERROR_CODE_MAX_USERS_REACHED: (
-        PrometheusRejectionReason.SIGNUP_CAP_EXCEEDED,
-        AvailabilityReason.SIGNUP_CAP_EXCEEDED,
-    ),
-    ERROR_CODE_MAX_GUESTS_REACHED: (
-        PrometheusRejectionReason.GUEST_CAP_EXCEEDED,
-        AvailabilityReason.GUEST_CAP_EXCEEDED,
-    ),
-}
-
-
-async def get_or_create_user_for_completion(
-    request: Request, user_id: str, req: AuthorizedChatRequest | AuthorizedSearchRequest
-):
-    """
-    Wraps get_or_create_user and records availability for chat requests:
-    - signup or guest cap (403 + MAX_USERS_REACHED / MAX_GUESTS_REACHED): excluded,
-      alongside the existing rejection metric
-    - user-resolution server or system failure (status >= 500): failure
-    - search requests and non-signup-cap, non-5xx failures: not recorded
-    """
-    with measure("db", request):
-        try:
-            return await get_or_create_user(user_id)
-        except HTTPException as exc:
-            if isinstance(req, AuthorizedChatRequest):
-                cap_reasons = (
-                    _CAP_EXCEEDED_REASONS.get(exc.detail.get("error"))
-                    if exc.status_code == 403 and isinstance(exc.detail, dict)
-                    else None
-                )
-                if cap_reasons:
-                    rejection_reason, availability_reason = cap_reasons
-                    record_chat_request_rejection(req, rejection_reason)
-                    record_chat_availability(req, availability_reason)
-                elif exc.status_code >= 500:
-                    # User-resolution server or system failure. Non-signup-cap 4xx errors
-                    # are not recorded; a client-side 4xx should get its own classification
-                    # rather than counting as an availability failure.
-                    record_chat_availability(
-                        req, AvailabilityReason.PROVISIONING_FAILURE
-                    )
-            raise
 
 
 async def stream_completion(
@@ -157,7 +107,13 @@ async def stream_completion(
     )
 
     async def _watch_disconnect() -> None:
+        task = asyncio.current_task()
+        assert task is not None
         while not await request.is_disconnected():
+            # Starlette's AnyIO cancel scope can swallow task cancellation.
+            # Honor the pending cancellation before starting another poll.
+            if task.cancelling():
+                raise asyncio.CancelledError
             await asyncio.sleep(env.DISCONNECT_POLL_INTERVAL_SECONDS)
         disconnect_event.set()
 

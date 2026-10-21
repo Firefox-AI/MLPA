@@ -15,7 +15,10 @@ from mlpa.core.classes import (
     ServiceType,
 )
 from mlpa.core.config import ERROR_CODE_INVALID_MODEL_NAME, env
-from mlpa.core.metrics import record_chat_availability_for
+from mlpa.core.metrics import (
+    record_chat_availability_for,
+    record_search_availability_for,
+)
 from mlpa.core.prometheus_metrics import AvailabilityReason
 from mlpa.core.request_timings import measure
 from mlpa.core.routers.appattest import app_attest_auth
@@ -314,24 +317,46 @@ async def authorize_search_request(
     with measure("context_checks", request):
         client_country = get_client_country(request)
         custom_virtual_key = _resolve_custom_virtual_key(litellm_virtual_key)
-    return await _authorize_common_request(
-        request=request,
-        build_authorized_request=lambda user, purpose_value: AuthorizedSearchRequest(
-            user=user,
+    try:
+        return await _authorize_common_request(
+            request=request,
+            build_authorized_request=lambda user,
+            purpose_value: AuthorizedSearchRequest(
+                user=user,
+                service_type=service_type.value,
+                purpose=purpose_value,
+                client_country=client_country,
+                litellm_virtual_key=custom_virtual_key,
+                **search_request.model_dump(exclude_unset=True),
+            ),
+            authorization=authorization,
+            service_type=service_type,
+            purpose=purpose,
+            x_dev_authorization=x_dev_authorization,
+            use_app_attest=use_app_attest,
+            use_qa_certificates=use_qa_certificates,
+            use_play_integrity=use_play_integrity,
+        )
+    except HTTPException as exc:
+        # As for chat, normalized 401s are excluded, including backend failures
+        # that auth cannot currently distinguish from invalid credentials.
+        if exc.status_code == 401:
+            reason = (
+                AvailabilityReason.GUEST_AUTH_REJECTED
+                if is_guest_token(authorization)
+                else AvailabilityReason.AUTH_REJECTED
+            )
+        elif exc.status_code == 400:
+            reason = AvailabilityReason.INVALID_AUTH_REQUEST
+        else:
+            raise
+        record_search_availability_for(
+            reason,
             service_type=service_type.value,
-            purpose=purpose_value,
+            purpose=purpose or "",
             client_country=client_country,
-            litellm_virtual_key=custom_virtual_key,
-            **search_request.model_dump(exclude_unset=True),
-        ),
-        authorization=authorization,
-        service_type=service_type,
-        purpose=purpose,
-        x_dev_authorization=x_dev_authorization,
-        use_app_attest=use_app_attest,
-        use_qa_certificates=use_qa_certificates,
-        use_play_integrity=use_play_integrity,
-    )
+        )
+        raise
 
 
 async def authorize_filter_request(
