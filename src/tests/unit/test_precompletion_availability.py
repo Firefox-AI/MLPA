@@ -18,13 +18,14 @@ from mlpa.core.classes import (
     AuthorizedSearchRequest,
     ChatRequest,
 )
-from mlpa.core.completions import get_completion, get_or_create_user_for_completion
+from mlpa.core.completions import get_completion
 from mlpa.core.config import (
     ERROR_CODE_GLOBAL_BUDGET_LIMIT_EXCEEDED,
     ERROR_CODE_MAX_GUESTS_REACHED,
     ERROR_CODE_MAX_USERS_REACHED,
     env,
 )
+from mlpa.core.metrics import get_or_create_user_for_inference
 from mlpa.core.prometheus_metrics import (
     AvailabilityOutcome,
     AvailabilityReason,
@@ -332,12 +333,12 @@ async def test_wrapper_shared_call_non_http_exception_records_nothing(
     assert "chat_availability" not in metrics_spy.touched()
 
 
-# --- route body: get_or_create_user_for_completion ----------------------------
+# --- route body: get_or_create_user_for_inference ----------------------------
 
 
 async def test_signup_cap_records_excluded_alongside_rejection(mocker, metrics_spy):
     mocker.patch(
-        "mlpa.core.completions.get_or_create_user",
+        "mlpa.core.metrics.get_or_create_user",
         mocker.AsyncMock(
             side_effect=HTTPException(
                 status_code=403, detail={"error": ERROR_CODE_MAX_USERS_REACHED}
@@ -346,7 +347,7 @@ async def test_signup_cap_records_excluded_alongside_rejection(mocker, metrics_s
     )
 
     with pytest.raises(HTTPException) as exc_info:
-        await get_or_create_user_for_completion(
+        await get_or_create_user_for_inference(
             _make_request(), SAMPLE_REQUEST.user, SAMPLE_REQUEST
         )
 
@@ -369,7 +370,7 @@ async def test_signup_cap_records_excluded_alongside_rejection(mocker, metrics_s
 
 async def test_guest_cap_records_excluded_alongside_rejection(mocker, metrics_spy):
     mocker.patch(
-        "mlpa.core.completions.get_or_create_user",
+        "mlpa.core.metrics.get_or_create_user",
         mocker.AsyncMock(
             side_effect=HTTPException(
                 status_code=403, detail={"error": ERROR_CODE_MAX_GUESTS_REACHED}
@@ -378,7 +379,7 @@ async def test_guest_cap_records_excluded_alongside_rejection(mocker, metrics_sp
     )
 
     with pytest.raises(HTTPException) as exc_info:
-        await get_or_create_user_for_completion(
+        await get_or_create_user_for_inference(
             _make_request(), SAMPLE_REQUEST.user, SAMPLE_REQUEST
         )
 
@@ -401,7 +402,7 @@ async def test_guest_cap_records_excluded_alongside_rejection(mocker, metrics_sp
 
 async def test_provisioning_failure_records_failure(mocker, metrics_spy):
     mocker.patch(
-        "mlpa.core.completions.get_or_create_user",
+        "mlpa.core.metrics.get_or_create_user",
         mocker.AsyncMock(
             side_effect=HTTPException(
                 status_code=500, detail={"error": "Error fetching user info"}
@@ -410,7 +411,7 @@ async def test_provisioning_failure_records_failure(mocker, metrics_spy):
     )
 
     with pytest.raises(HTTPException) as exc_info:
-        await get_or_create_user_for_completion(
+        await get_or_create_user_for_inference(
             _make_request(), SAMPLE_REQUEST.user, SAMPLE_REQUEST
         )
 
@@ -477,7 +478,7 @@ async def test_non_signup_non_5xx_records_nothing(mocker, metrics_spy):
     # The strict gate leaves a non-signup-cap, non-5xx disposition unrecorded so a
     # client-side 4xx is not counted as an availability failure.
     mocker.patch(
-        "mlpa.core.completions.get_or_create_user",
+        "mlpa.core.metrics.get_or_create_user",
         mocker.AsyncMock(
             side_effect=HTTPException(
                 status_code=400, detail={"error": "Invalid user_id format"}
@@ -486,7 +487,7 @@ async def test_non_signup_non_5xx_records_nothing(mocker, metrics_spy):
     )
 
     with pytest.raises(HTTPException) as exc_info:
-        await get_or_create_user_for_completion(
+        await get_or_create_user_for_inference(
             _make_request(), SAMPLE_REQUEST.user, SAMPLE_REQUEST
         )
 
@@ -499,7 +500,7 @@ async def test_search_request_records_no_chat_availability(mocker, metrics_spy):
         user="user-1:search", service_type="search", query="q", max_results=2
     )
     mocker.patch(
-        "mlpa.core.completions.get_or_create_user",
+        "mlpa.core.metrics.get_or_create_user",
         mocker.AsyncMock(
             side_effect=HTTPException(
                 status_code=500, detail={"error": "Error fetching user info"}
@@ -508,7 +509,7 @@ async def test_search_request_records_no_chat_availability(mocker, metrics_spy):
     )
 
     with pytest.raises(HTTPException):
-        await get_or_create_user_for_completion(
+        await get_or_create_user_for_inference(
             _make_request(), search_req.user, search_req
         )
 
@@ -521,7 +522,7 @@ async def test_search_request_records_no_chat_availability(mocker, metrics_spy):
 async def test_blocked_user_records_blocked(mocker, metrics_spy):
     mocker.patch.object(
         run_module,
-        "get_or_create_user_for_completion",
+        "get_or_create_user_for_inference",
         mocker.AsyncMock(return_value=({"blocked": True}, False)),
     )
 

@@ -1,9 +1,15 @@
 from collections.abc import Iterable
 
+from fastapi import HTTPException, Request
+
 from mlpa.core.classes import (
     AuthorizedChatRequest,
     AuthorizedSearchRequest,
     LitellmRoutingSnapshot,
+)
+from mlpa.core.config import (
+    ERROR_CODE_MAX_GUESTS_REACHED,
+    ERROR_CODE_MAX_USERS_REACHED,
 )
 from mlpa.core.prometheus_metrics import (
     AvailabilityReason,
@@ -13,6 +19,9 @@ from mlpa.core.prometheus_metrics import (
     availability_outcome_for,
     metrics,
 )
+from mlpa.core.request_timings import (
+    measure,
+)
 from mlpa.core.utils import (
     clamp_country,
     clamp_exa_error_labels,
@@ -21,6 +30,7 @@ from mlpa.core.utils import (
     clamp_purpose,
     clamp_service_type,
     extract_exa_error_tag,
+    get_or_create_user,
 )
 
 SEARCH_MODEL = "exa-search"
@@ -102,6 +112,35 @@ def record_chat_availability(
     record_chat_availability_for(
         reason,
         model=req.model,
+        service_type=req.service_type,
+        purpose=req.purpose,
+        client_country=req.client_country,
+    )
+
+
+def record_search_availability_for(
+    reason: AvailabilityReason, *, service_type: str, purpose: str, client_country: str
+) -> None:
+    outcome = availability_outcome_for(reason)
+    metrics.search_availability.labels(
+        outcome=outcome,
+        reason=reason,
+        model=SEARCH_MODEL,
+        service_type=clamp_service_type(service_type),
+        purpose=clamp_purpose(purpose),
+    ).inc()
+    metrics.search_availability_by_country.labels(
+        outcome=outcome,
+        client_country=clamp_launch_country(client_country),
+        service_type=clamp_service_type(service_type),
+    ).inc()
+
+
+def record_search_availability(
+    req: AuthorizedSearchRequest, reason: AvailabilityReason
+) -> None:
+    record_search_availability_for(
+        reason,
         service_type=req.service_type,
         purpose=req.purpose,
         client_country=req.client_country,
@@ -253,3 +292,51 @@ def record_completion_success(
             _record_token_side(req, token_type, count)
     record_tool_metrics(req, tool_names)
     record_litellm_routing_metrics(req, snapshot, prompt_tokens, completion_tokens)
+
+
+_CAP_EXCEEDED_REASONS = {
+    ERROR_CODE_MAX_USERS_REACHED: (
+        PrometheusRejectionReason.SIGNUP_CAP_EXCEEDED,
+        AvailabilityReason.SIGNUP_CAP_EXCEEDED,
+    ),
+    ERROR_CODE_MAX_GUESTS_REACHED: (
+        PrometheusRejectionReason.GUEST_CAP_EXCEEDED,
+        AvailabilityReason.GUEST_CAP_EXCEEDED,
+    ),
+}
+
+
+async def get_or_create_user_for_inference(
+    request: Request, user_id: str, req: AuthorizedChatRequest | AuthorizedSearchRequest
+):
+    """
+    Wraps get_or_create_user and records availability:
+    - signup or guest cap (403 + MAX_USERS_REACHED / MAX_GUESTS_REACHED): excluded,
+      alongside the existing rejection metric
+    - user-resolution server or system failure (status >= 500): failure
+    - non-cap, non-5xx failures: not recorded
+    """
+    try:
+        with measure("db", request):
+            return await get_or_create_user(user_id)
+    except HTTPException as exc:
+        cap_reasons = (
+            _CAP_EXCEEDED_REASONS.get(exc.detail.get("error"))
+            if exc.status_code == 403 and isinstance(exc.detail, dict)
+            else None
+        )
+        if cap_reasons:
+            rejection_reason, availability_reason = cap_reasons
+            if isinstance(req, AuthorizedChatRequest):
+                record_chat_request_rejection(req, rejection_reason)
+                record_chat_availability(req, availability_reason)
+            elif isinstance(req, AuthorizedSearchRequest):
+                record_search_request_rejection(req, rejection_reason)
+                record_search_availability(req, availability_reason)
+        elif exc.status_code >= 500:
+            # Match chat's provisioning failure policy for both endpoints.
+            if isinstance(req, AuthorizedChatRequest):
+                record_chat_availability(req, AvailabilityReason.PROVISIONING_FAILURE)
+            else:
+                record_search_availability(req, AvailabilityReason.PROVISIONING_FAILURE)
+        raise

@@ -23,7 +23,10 @@ from mlpa.core.config import (
 from mlpa.core.consts.country_codes import COUNTRY_CODES
 from mlpa.core.http_client import get_http_client
 from mlpa.core.logger import logger
-from mlpa.core.prometheus_metrics import PrometheusResult, metrics
+from mlpa.core.prometheus_metrics import (
+    PrometheusResult,
+    metrics,
+)
 from mlpa.core.services.services import app_attest_pg, litellm_pg
 
 KNOWN_HTTP_METHODS = frozenset(

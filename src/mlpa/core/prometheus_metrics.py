@@ -43,17 +43,13 @@ class AvailabilityReason(StrEnum):
     BLOCKED = "blocked"  # excluded
     PROVISIONING_FAILURE = "provisioning_failure"  # failure
 
-    # Defined but not yet emitted: auth backends normalize system failures to 401,
-    # making them indistinguishable from expected rejections. Capturing this
-    # properly requires a follow-on change to the auth backends themselves.
-    AUTH_SYSTEM_FAILURE = "auth_system_failure"  # failure
-
     # --- completion-stage reasons (recorded inside stream_completion / get_completion) ---
     # INVALID_MODEL_NAME is the exception: also recorded pre-completion, in
     # authorize_chat_request, when the model fails the charset/length check.
     VALID_RESPONSE = "valid_response"  # success
     UPSTREAM_ERROR = "upstream_error"  # failure
     EMPTY_RESPONSE = "empty_response"  # failure
+    INVALID_RESPONSE = "invalid_response"  # failure
     BUDGET_EXCEEDED = "budget_exceeded"  # excluded
     GLOBAL_BUDGET_EXCEEDED = "global_budget_exceeded"  # failure
     GUEST_BUDGET_EXCEEDED = "guest_budget_exceeded"  # excluded
@@ -74,10 +70,10 @@ _AVAILABILITY_OUTCOME_BY_REASON: dict[AvailabilityReason, AvailabilityOutcome] =
     AvailabilityReason.GUEST_CAP_EXCEEDED: AvailabilityOutcome.EXCLUDED,
     AvailabilityReason.BLOCKED: AvailabilityOutcome.EXCLUDED,
     AvailabilityReason.PROVISIONING_FAILURE: AvailabilityOutcome.FAILURE,
-    AvailabilityReason.AUTH_SYSTEM_FAILURE: AvailabilityOutcome.FAILURE,
     AvailabilityReason.VALID_RESPONSE: AvailabilityOutcome.SUCCESS,
     AvailabilityReason.UPSTREAM_ERROR: AvailabilityOutcome.FAILURE,
     AvailabilityReason.EMPTY_RESPONSE: AvailabilityOutcome.FAILURE,
+    AvailabilityReason.INVALID_RESPONSE: AvailabilityOutcome.FAILURE,
     AvailabilityReason.BUDGET_EXCEEDED: AvailabilityOutcome.EXCLUDED,
     AvailabilityReason.GLOBAL_BUDGET_EXCEEDED: AvailabilityOutcome.FAILURE,
     # Guest spend cap or kill switch working as intended, like a personal budget.
@@ -199,6 +195,8 @@ class PrometheusMetrics:
     # search
     search_latency: Histogram
     search_request_rejections: Counter
+    search_availability: Counter
+    search_availability_by_country: Counter
 
     # exa
     exa_errors: Counter
@@ -404,6 +402,22 @@ def build_metrics(registry: CollectorRegistry = REGISTRY) -> PrometheusMetrics:
             "Interim availability outcomes for chat completions, by launch-market "
             "client country and service_type (AIPLAT-1266). outcome only (no reason "
             "breakdown) to keep cardinality bounded; see chat_availability for the "
+            "full reason breakdown without country.",
+            ["outcome", "client_country", "service_type"],
+            registry=registry,
+        ),
+        search_availability=Counter(
+            "mlpa_search_availability_total",
+            "Final availability outcomes for POST /v1/search. Availability = "
+            "success / (success + failure); excluded and abort are ineligible.",
+            ["outcome", "reason", "model", "service_type", "purpose"],
+            registry=registry,
+        ),
+        search_availability_by_country=Counter(
+            "mlpa_search_availability_by_country_total",
+            "Interim availability outcomes for search completions, by launch-market "
+            "client country and service_type (AIPLAT-1266). outcome only (no reason "
+            "breakdown) to keep cardinality bounded; see search_availability for the "
             "full reason breakdown without country.",
             ["outcome", "client_country", "service_type"],
             registry=registry,

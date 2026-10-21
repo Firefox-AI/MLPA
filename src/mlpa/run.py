@@ -16,7 +16,6 @@ from mlpa.core.auth.authorize import authorize_chat_request, authorize_search_re
 from mlpa.core.classes import AuthorizedChatRequest, AuthorizedSearchRequest
 from mlpa.core.completions import (
     get_completion,
-    get_or_create_user_for_completion,
     stream_completion,
 )
 from mlpa.core.config import (
@@ -37,8 +36,10 @@ from mlpa.core.http_client import close_http_client, get_http_client
 from mlpa.core.logger import logger, setup_logger
 from mlpa.core.metrics import (
     SEARCH_MODEL,
+    get_or_create_user_for_inference,
     record_chat_availability,
     record_request_country,
+    record_search_availability,
 )
 from mlpa.core.middleware import register_middleware
 from mlpa.core.middleware.traffic_contract_enforcer import (
@@ -177,11 +178,14 @@ async def chat_completion(
     await enforce_traffic_contract(request, authorized_chat_request.service_type)
     user_id = authorized_chat_request.user
     if not user_id:
+        record_chat_availability(
+            authorized_chat_request, AvailabilityReason.INVALID_AUTH_REQUEST
+        )
         raise HTTPException(
             status_code=400,
             detail={"error": "User not found from authorization response."},
         )
-    user, _ = await get_or_create_user_for_completion(
+    user, _ = await get_or_create_user_for_inference(
         request, user_id, authorized_chat_request
     )
     if user.get("blocked"):
@@ -217,6 +221,9 @@ async def search(
     if not env.valid_service_type_for_model(
         authorized_search_request.service_type, SEARCH_MODEL
     ):
+        record_search_availability(
+            authorized_search_request, AvailabilityReason.INVALID_SERVICE_TYPE_FOR_MODEL
+        )
         raise HTTPException(
             status_code=400,
             detail=f"service-type header must be one of {env.forced_model_service_type_pairs.get(SEARCH_MODEL)}",
@@ -224,14 +231,20 @@ async def search(
     await enforce_traffic_contract(request, authorized_search_request.service_type)
     user_id = authorized_search_request.user
     if not user_id:
+        record_search_availability(
+            authorized_search_request, AvailabilityReason.INVALID_AUTH_REQUEST
+        )
         raise HTTPException(
             status_code=400,
             detail={"error": "User not found from authorization response."},
         )
-    user, _ = await get_or_create_user_for_completion(
+    user, _ = await get_or_create_user_for_inference(
         request, user_id, authorized_search_request
     )
     if user.get("blocked"):
+        record_search_availability(
+            authorized_search_request, AvailabilityReason.BLOCKED
+        )
         raise HTTPException(status_code=403, detail={"error": "User is blocked."})
 
     return await get_search(request, authorized_search_request)
