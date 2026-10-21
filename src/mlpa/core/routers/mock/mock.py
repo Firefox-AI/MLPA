@@ -9,8 +9,8 @@ from fxa.errors import TrustError
 
 from mlpa.core.auth.authorize import authorize_chat_request
 from mlpa.core.classes import AuthorizedChatRequest, ChatRequest
-from mlpa.core.completions import get_or_create_user_for_completion
 from mlpa.core.config import env
+from mlpa.core.metrics import get_or_create_user_for_inference
 from mlpa.core.utils import get_fxa_client, get_or_create_user
 from tests.consts import MOCK_CHAT_RESPONSE, MOCK_STREAMING_CHUNKS
 
@@ -86,7 +86,7 @@ async def chat_completion(
             detail={"error": "User not found from authorization response."},
         )
 
-    user, _ = await get_or_create_user_for_completion(
+    user, _ = await get_or_create_user_for_inference(
         request, user_id, authorized_chat_request
     )
     if user.get("blocked"):
