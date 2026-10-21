@@ -61,7 +61,29 @@ Web search proxied to Exa via LiteLLM. Authorize the same way as /v1/chat/comple
 - **service-type**: `search` by default; use `search-dev` for experiments. Search has its own budget pool and no `purpose` header.
 - **x-dev-authorization** (required for search-dev): Experimentation token; also requires FxA in Authorization.
 
-**Body:** `{"query": str, "max_results": int (1-10)}`.
+**Required body fields:** `query` (string) and `max_results` (integer, 1-10).
+
+**Optional Exa filters:**
+
+- **includeDomains** (array of strings): Restrict results to the specified domains.
+- **excludeDomains** (array of strings): Exclude results from the specified domains.
+- **startPublishedDate** (string): Return results published after this ISO 8601 timestamp.
+- **category** (string): Focus the search on a category, such as `news`.
+
+Send filters at the top level of the JSON body. Omitted or null filters are not sent to Exa.
+
+**Example:**
+
+```json
+{
+  "query": "Firefox browser news",
+  "max_results": 5,
+  "includeDomains": ["mozilla.org"],
+  "excludeDomains": ["example.org"],
+  "startPublishedDate": "2026-01-01T00:00:00Z",
+  "category": "news"
+}
+```
 """
 
 # Success (200) response docs for the proxied LiteLLM endpoints. The chat endpoint
