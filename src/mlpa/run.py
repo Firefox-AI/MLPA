@@ -178,6 +178,9 @@ async def chat_completion(
     await enforce_traffic_contract(request, authorized_chat_request.service_type)
     user_id = authorized_chat_request.user
     if not user_id:
+        record_chat_availability(
+            authorized_chat_request, AvailabilityReason.INVALID_AUTH_REQUEST
+        )
         raise HTTPException(
             status_code=400,
             detail={"error": "User not found from authorization response."},
