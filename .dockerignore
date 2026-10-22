@@ -1,0 +1,12 @@
+.git
+.github
+.venv
+.env*
+service_account.json
+logs/
+.benchmarks/
+.claude/
+.frontend-slides/
+.pytest_cache/
+.ruff_cache/
+**/__pycache__
