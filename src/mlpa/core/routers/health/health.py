@@ -108,6 +108,28 @@ def _eval_privacy_filter(privacy_filter_http) -> tuple[bool, dict]:
 
 @router.get("/readiness", tags=["Health"])
 async def readiness_probe():
+    # Pod-local on purpose: every pod shares the same pgbouncer and LiteLLM, so
+    # pulling pods out when those are slow only turns a slowdown into an outage.
+    postgres_connected = litellm_pg.connected
+    app_attest_connected = app_attest_pg.connected
+    ready = postgres_connected and app_attest_connected
+
+    body = {
+        "status": "connected" if ready else "degraded",
+        "mlpa_version": mlpa_version,
+        "pg_server_dbs": {
+            "postgres": "connected" if postgres_connected else "offline",
+            "app_attest": "connected" if app_attest_connected else "offline",
+        },
+    }
+
+    if ready:
+        return body
+    return JSONResponse(status_code=503, content=body)
+
+
+@router.get("/dependencies", tags=["Health"])
+async def dependencies_probe():
     client = get_http_client()
 
     # Run the checks concurrently. return_exceptions keeps one failure from

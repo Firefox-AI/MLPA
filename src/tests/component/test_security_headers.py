@@ -65,6 +65,7 @@ def test_security_headers_on_all_endpoints(
     endpoints = [
         "/health/liveness",
         "/health/readiness",
+        "/health/dependencies",
         "/metrics",
     ]
 
