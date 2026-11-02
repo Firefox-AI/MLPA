@@ -10,6 +10,7 @@ from jwt.utils import base64url_encode
 
 from mlpa.core.config import env
 from mlpa.core.logger import logger
+from mlpa.core.prometheus_metrics import metrics
 
 router = APIRouter()
 
@@ -122,7 +123,9 @@ async def get_guest_token(
         raise HTTPException(status_code=404, detail="Guest tokens are disabled")
     params = {"access_token": issue_guest_token(), "token_type": "Bearer"}
     if "application/json" in accept:
+        metrics.guest_tokens_issued_total.labels(flow="json").inc()
         return JSONResponse(params, headers=NO_STORE_HEADERS)
+    metrics.guest_tokens_issued_total.labels(flow="redirect").inc()
     if state is not None:
         params["state"] = state
     fragment = urlencode(params)

@@ -19,6 +19,8 @@ def single_fxa_scope(mocker):
 
 
 class _FakeResponse:
+    is_success = True
+
     def __init__(self, payload: dict):
         self._payload = payload
 

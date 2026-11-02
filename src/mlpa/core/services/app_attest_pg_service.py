@@ -1,3 +1,5 @@
+import asyncio
+
 from fastapi import HTTPException
 
 from mlpa.core.config import (
@@ -7,14 +9,21 @@ from mlpa.core.config import (
     env,
 )
 from mlpa.core.logger import logger
+from mlpa.core.prometheus_metrics import metrics
 from mlpa.core.services.litellm_pg_service import LiteLLMPGService
 from mlpa.core.services.pg_service import PGService
+
+CAPACITY_POOLS = {USER_CAPACITY_ID: "user", GUEST_CAPACITY_ID: "guest"}
+# How long /metrics waits for the capacity query. statement_timeout can't fire
+# when the DB stops answering, and a hung /metrics drops every MLPA metric
+CAPACITY_GAUGE_REFRESH_TIMEOUT_S = 1.0
 
 
 class AppAttestPGService(PGService):
     def __init__(self, litellm_pg: LiteLLMPGService):
         super().__init__(env.APP_ATTEST_DB_NAME)
         self.litellm_pg = litellm_pg
+        self._capacity_refresh: asyncio.Task | None = None
 
     # Challenges #
     async def store_challenge(self, key_id_b64: str, challenge: str):
@@ -345,6 +354,40 @@ class AppAttestPGService(PGService):
                 WHERE id = $1
                 """,
                 capacity_id,
+            )
+
+    async def refresh_capacity_gauges(self) -> None:
+        """Set capacity gauges from mlpa_user_capacity; called on each /metrics scrape.
+
+        Waits at most CAPACITY_GAUGE_REFRESH_TIMEOUT_S and never cancels the query:
+        asyncpg sends the cancel over a new connection, which hangs on a dead DB too.
+        A slow query keeps running in the background (one at a time) and later
+        scrapes pick up its values, until then the last values stay.
+        """
+        metrics.guest_enabled.set(int(env.MLPA_GUEST_ENABLED))
+        if self._capacity_refresh is None or self._capacity_refresh.done():
+            self._capacity_refresh = asyncio.create_task(self._refresh_capacity_rows())
+        await asyncio.wait(
+            {self._capacity_refresh}, timeout=CAPACITY_GAUGE_REFRESH_TIMEOUT_S
+        )
+
+    async def _refresh_capacity_rows(self) -> None:
+        try:
+            rows = await self.pool.fetch(
+                "SELECT id, max_identities, current_identities FROM mlpa_user_capacity"
+            )
+        except Exception as e:
+            logger.error(f"Capacity gauge refresh failed: {e!r}")
+            return
+        for row in rows:
+            pool = CAPACITY_POOLS.get(row["id"])
+            if pool is None:
+                continue
+            enforced, _max, _types = capacity_settings(row["id"])
+            metrics.capacity_enforced.labels(pool=pool).set(int(enforced))
+            metrics.capacity_max_identities.labels(pool=pool).set(row["max_identities"])
+            metrics.capacity_current_identities.labels(pool=pool).set(
+                row["current_identities"]
             )
 
     async def get_signup_cap_status(self) -> dict:
