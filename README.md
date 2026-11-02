@@ -56,7 +56,7 @@ Starts LiteLLM, PostgreSQL and Redis, migrates the app_attest database, creates 
 > .venv/bin/mlpa
 > ```
 
-Privacy Filter is disabled by default. To run it, build the [privacy-filter](https://github.com/Firefox-AI/privacy-filter) image and set `PRIVACY_FILTER_ENABLED=true` in `.env`; `start.sh` then enables the `privacy-filter` Compose profile. When disabled, `/health/readiness` skips it.
+Privacy Filter is disabled by default. To run it, build the [privacy-filter](https://github.com/Firefox-AI/privacy-filter) image and set `PRIVACY_FILTER_ENABLED=true` in `.env`; `start.sh` then enables the `privacy-filter` Compose profile. When disabled, `/health/dependencies` skips it.
 
 <details>
 <summary>Manual steps</summary>

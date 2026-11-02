@@ -56,13 +56,57 @@ def test_health_liveness(mocked_client_integration, httpx_mock):
     assert liveness_response.json() == {"status": "alive"}
 
 
-def test_readiness_200_when_privacy_filter_disabled(
+def test_readiness_200_when_pools_connected(mocked_client_integration, httpx_mock):
+    response = mocked_client_integration.get("/health/readiness")
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "status": "connected",
+        "mlpa_version": importlib.metadata.version("mlpa"),
+        "pg_server_dbs": {"postgres": "connected", "app_attest": "connected"},
+    }
+
+
+def test_readiness_ignores_shared_dependencies(
+    mocked_client_integration, httpx_mock, mocker, privacy_filter_enabled
+):
+    # No LiteLLM or Privacy Filter responses are registered, so httpx_mock fails
+    # the test if readiness makes any outbound call.
+    for pool in ("litellm_pg", "app_attest_pg"):
+        mocker.patch(
+            f"mlpa.core.routers.health.health.{pool}.ping",
+            AsyncMock(return_value=False),
+        )
+
+    response = mocked_client_integration.get("/health/readiness")
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "connected"
+
+
+@pytest.mark.parametrize(
+    ("pool", "key"), [("litellm_pg", "postgres"), ("app_attest_pg", "app_attest")]
+)
+def test_readiness_503_when_pool_not_connected(
+    mocked_client_integration, httpx_mock, mocker, pool, key
+):
+    mocker.patch(f"mlpa.core.routers.health.health.{pool}.connected", False)
+
+    response = mocked_client_integration.get("/health/readiness")
+    body = response.json()
+
+    assert response.status_code == 503
+    assert body["status"] == "degraded"
+    assert body["pg_server_dbs"][key] == "offline"
+
+
+def test_dependencies_200_when_privacy_filter_disabled(
     mocked_client_integration, httpx_mock, mocker
 ):
     mocker.patch.object(env, "PRIVACY_FILTER_ENABLED", False)
     _mock_litellm_ready(httpx_mock)
 
-    response = mocked_client_integration.get("/health/readiness")
+    response = mocked_client_integration.get("/health/dependencies")
     body = response.json()
 
     assert response.status_code == 200
@@ -70,13 +114,13 @@ def test_readiness_200_when_privacy_filter_disabled(
     assert body["privacy_filter"] == {"status": "disabled"}
 
 
-def test_readiness_200_when_all_healthy(
+def test_dependencies_200_when_all_healthy(
     mocked_client_integration, httpx_mock, privacy_filter_enabled
 ):
     mlpa_version = importlib.metadata.version("mlpa")
     _mock_dependencies_ready(httpx_mock)
 
-    response = mocked_client_integration.get("/health/readiness")
+    response = mocked_client_integration.get("/health/dependencies")
     body = response.json()
 
     assert response.status_code == 200
@@ -91,7 +135,7 @@ def test_readiness_200_when_all_healthy(
     }
 
 
-def test_readiness_503_when_litellm_pool_down(
+def test_dependencies_503_when_litellm_pool_down(
     mocked_client_integration, httpx_mock, mocker, privacy_filter_enabled
 ):
     _mock_dependencies_ready(httpx_mock)
@@ -100,7 +144,7 @@ def test_readiness_503_when_litellm_pool_down(
         AsyncMock(return_value=False),
     )
 
-    response = mocked_client_integration.get("/health/readiness")
+    response = mocked_client_integration.get("/health/dependencies")
     body = response.json()
 
     assert response.status_code == 503
@@ -108,7 +152,7 @@ def test_readiness_503_when_litellm_pool_down(
     assert body["pg_server_dbs"]["postgres"] == "offline"
 
 
-def test_readiness_503_when_app_attest_pool_down(
+def test_dependencies_503_when_app_attest_pool_down(
     mocked_client_integration, httpx_mock, mocker, privacy_filter_enabled
 ):
     _mock_dependencies_ready(httpx_mock)
@@ -117,44 +161,44 @@ def test_readiness_503_when_app_attest_pool_down(
         AsyncMock(return_value=False),
     )
 
-    response = mocked_client_integration.get("/health/readiness")
+    response = mocked_client_integration.get("/health/dependencies")
     body = response.json()
 
     assert response.status_code == 503
     assert body["pg_server_dbs"]["app_attest"] == "offline"
 
 
-def test_readiness_503_when_litellm_non_200(
+def test_dependencies_503_when_litellm_non_200(
     mocked_client_integration, httpx_mock, privacy_filter_enabled
 ):
     _mock_litellm_ready(httpx_mock, status_code=503)
     _mock_privacy_filter_ready(httpx_mock)
 
-    response = mocked_client_integration.get("/health/readiness")
+    response = mocked_client_integration.get("/health/dependencies")
     body = response.json()
 
     assert response.status_code == 503
     assert body["litellm"]["status"] == "unreachable"
 
 
-def test_readiness_503_when_litellm_db_not_connected(
+def test_dependencies_503_when_litellm_db_not_connected(
     mocked_client_integration, httpx_mock, privacy_filter_enabled
 ):
     _mock_litellm_ready(httpx_mock, status="healthy", db="disconnected")
     _mock_privacy_filter_ready(httpx_mock)
 
-    response = mocked_client_integration.get("/health/readiness")
+    response = mocked_client_integration.get("/health/dependencies")
 
     assert response.status_code == 503
 
 
-def test_readiness_503_when_privacy_filter_not_ready(
+def test_dependencies_503_when_privacy_filter_not_ready(
     mocked_client_integration, httpx_mock, privacy_filter_enabled
 ):
     _mock_litellm_ready(httpx_mock)
     _mock_privacy_filter_ready(httpx_mock, ready=False)
 
-    response = mocked_client_integration.get("/health/readiness")
+    response = mocked_client_integration.get("/health/dependencies")
     body = response.json()
 
     assert response.status_code == 503
@@ -165,20 +209,20 @@ def test_readiness_503_when_privacy_filter_not_ready(
     }
 
 
-def test_readiness_503_when_privacy_filter_non_200(
+def test_dependencies_503_when_privacy_filter_non_200(
     mocked_client_integration, httpx_mock, privacy_filter_enabled
 ):
     _mock_litellm_ready(httpx_mock)
     _mock_privacy_filter_ready(httpx_mock, status_code=503)
 
-    response = mocked_client_integration.get("/health/readiness")
+    response = mocked_client_integration.get("/health/dependencies")
     body = response.json()
 
     assert response.status_code == 503
     assert body["privacy_filter"] == {"version": "N/A", "status": "unreachable"}
 
 
-def test_readiness_503_when_litellm_times_out(
+def test_dependencies_503_when_litellm_times_out(
     mocked_client_integration, httpx_mock, privacy_filter_enabled
 ):
     httpx_mock.add_exception(
@@ -193,7 +237,7 @@ def test_readiness_503_when_litellm_times_out(
     )
     _mock_privacy_filter_ready(httpx_mock)
 
-    response = mocked_client_integration.get("/health/readiness")
+    response = mocked_client_integration.get("/health/dependencies")
     body = response.json()
 
     assert response.status_code == 503

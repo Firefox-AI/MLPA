@@ -22,7 +22,9 @@ RUN chmod +x /app/scripts/rollback-app-attest-database.sh
 # Install dependencies
 RUN pip install --no-cache-dir uv==0.10.8
 RUN apt-get update && apt-get install -y git
-RUN uv pip install --system --editable .
+RUN uv export --locked --no-dev --no-emit-project -o /tmp/requirements.txt && \
+    uv pip install --system -r /tmp/requirements.txt
+RUN uv pip install --system --no-deps --editable .
 
 # Expose the application port
 EXPOSE 8080

@@ -70,10 +70,10 @@ curl --location 'http://0.0.0.0:8080/health/liveness' \
 --header 'Content-Type: application/json'
 ```
 
-1. MLPA readiness:
+1. MLPA dependencies (DBs, LiteLLM, Privacy Filter):
 
 ```bash
-curl --location 'http://0.0.0.0:8080/health/readiness' \
+curl --location 'http://0.0.0.0:8080/health/dependencies' \
 --header 'Content-Type: application/json'
 ```
 
