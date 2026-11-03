@@ -118,6 +118,7 @@ BUCKETS_COMPLETION = (
     0.5,
     1.0,
     2.5,
+    4.0,
     5.0,
     10.0,
     20.0,
@@ -133,12 +134,13 @@ BUCKETS_SEARCH = (
     0.5,
     1.0,
     2.5,
+    4.0,
     5.0,
     10.0,
     20.0,
     float("inf"),
 )
-BUCKETS_TTFT = (0.05, 0.1, 0.25, 0.5, 1.0, 2.5, 5.0, 10.0, float("inf"))
+BUCKETS_TTFT = (0.05, 0.1, 0.25, 0.5, 1.0, 2.0, 2.5, 5.0, 10.0, float("inf"))
 BUCKETS_TOOL_CALLS = (0, 1, 2, 3, 5, 10, 20, 50, float("inf"))
 BUCKETS_TOKENS = (
     0,
