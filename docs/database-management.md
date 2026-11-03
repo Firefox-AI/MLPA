@@ -206,6 +206,32 @@ The `mlpa_user_capacity*` tables are created by migration, then reconciled on
 every startup via `ensure_capacity_state()`. Deploy runs
 `scripts/migrate-app-attest-database.sh` with `-x sqlalchemy.url=...`.
 
+### Schema check on pod startup
+
+The migration Job runs as an Argo CD Sync hook, and Argo CD skips hooks on a
+partial sync. A partial sync of just the MLPA Deployment therefore rolls out
+new code without running its migrations. That happened in the 15.10.2026
+SEV3 ([AIPLAT-1577](https://mozilla-hub.atlassian.net/browse/AIPLAT-1577)).
+
+`scripts/check_app_attest_migrations.py` is the guard, run as an init container
+on the MLPA Deployment. It never migrates. It polls `alembic_version` and
+lets the pod start once the DB is at this image's head, or on a revision
+this image doesn't know about (a newer release's schema: canary, or old pods
+scaling up after a code rollback). Anything else (DB missing, empty, or on an
+older revision) keeps the pod in `Init` until `MIGRATION_CHECK_TIMEOUT_S`
+(default 300) runs out, then the container exits 1 and Kubernetes retries it.
+With `maxUnavailable: 0`, the old pods keep serving and the rollout stalls
+instead of breaking.
+
+If pods are stuck in `Init` with `[mlpa-appattest-check] ... is behind`, the
+Job didn't run: do a full (not partial) sync of the app so the Sync hook
+runs. Locally:
+
+```bash
+DB_HOST=localhost DB_PORT=5432 DB_USERNAME=litellm DB_PASSWORD=litellm \
+APP_ATTEST_DB_NAME=app_attest uv run python scripts/check_app_attest_migrations.py
+```
+
 ### Rollback procedure
 
 [AIPLAT-1189](https://mozilla-hub.atlassian.net/browse/AIPLAT-1189) covers the
