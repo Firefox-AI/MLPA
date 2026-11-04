@@ -209,6 +209,9 @@ class MockAppAttestPGService:
         if not has_managed_user_rows:
             claims.remove(base_identity)
 
+    async def refresh_capacity_gauges(self):
+        pass
+
     async def get_signup_cap_status(self) -> dict:
         current = len(self.managed_capacity_claims)
         max_i = env.MLPA_MAX_SIGNED_IN_USERS

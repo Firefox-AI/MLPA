@@ -228,7 +228,7 @@ async def get_or_create_user(user_id: str):
                 if newly_claimed:
                     claimed_capacity_id = capacity_id
 
-            await client.post(
+            create_response = await client.post(
                 f"{env.LITELLM_API_BASE}/customer/new",
                 json={"user_id": user_id, "budget_id": budget_id},
                 headers=LITELLM_MASTER_AUTH_HEADERS,
@@ -247,6 +247,9 @@ async def get_or_create_user(user_id: str):
                     detail={"error": "User creation failed after admission"},
                 )
 
+            # A concurrent request that lost the create race gets a 400 here
+            if create_response.is_success:
+                metrics.users_created_total.labels(service_type=service_type).inc()
             return [created_user, True]
 
         return [db_user, False]

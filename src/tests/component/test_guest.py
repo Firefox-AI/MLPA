@@ -112,3 +112,13 @@ def test_issue_guest_token_rejects_bad_state(mocked_client_integration, params):
     )
 
     assert response.status_code == 422
+
+
+def test_guest_observability_metrics(mocked_client_integration, metrics_spy):
+    mocked_client_integration.get(
+        "/verify/v1/guest", headers={"accept": "application/json"}
+    )
+    mocked_client_integration.get("/verify/v1/guest", follow_redirects=False)
+    mocked_client_integration.get("/verify/v1/guest", follow_redirects=False)
+    assert metrics_spy.value("guest_tokens_issued_total", flow="json") == 1
+    assert metrics_spy.value("guest_tokens_issued_total", flow="redirect") == 2
