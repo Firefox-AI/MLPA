@@ -70,6 +70,28 @@ async def test_new_user_created_and_returned(
     mock_http_client.get.assert_not_called()
 
 
+async def test_users_created_counted_only_on_creation(
+    mock_litellm_pg, mock_app_attest_pg, mock_http_client, metrics_spy
+):
+    mock_litellm_pg.get_user.side_effect = [None, _DB_USER, _DB_USER]
+
+    await get_or_create_user(_USER_ID)
+    await get_or_create_user(_USER_ID)
+
+    assert metrics_spy.value("users_created_total", service_type="ai") == 1
+
+
+async def test_users_created_skips_lost_create_race(
+    mock_litellm_pg, mock_app_attest_pg, mock_http_client, metrics_spy
+):
+    mock_litellm_pg.get_user.side_effect = [None, _DB_USER]
+    mock_http_client.post.return_value.is_success = False
+
+    await get_or_create_user(_USER_ID)
+
+    assert metrics_spy.value("users_created_total", service_type="ai") == 0
+
+
 async def test_new_user_posts_correct_budget_id(
     mock_litellm_pg, mock_app_attest_pg, mock_http_client
 ):

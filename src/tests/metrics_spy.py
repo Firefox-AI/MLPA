@@ -16,6 +16,8 @@ _METRICS_REFS = (
     "mlpa.core.routers.play.play.metrics",
     "mlpa.core.routers.appattest.appattest.metrics",
     "mlpa.core.middleware.instrumentation.metrics",
+    "mlpa.core.routers.guest.guest.metrics",
+    "mlpa.core.services.app_attest_pg_service.metrics",
 )
 
 

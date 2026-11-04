@@ -179,6 +179,14 @@ class PrometheusMetrics:
     play_verifications_total: Counter
     access_token_verifications_total: Counter
 
+    # capacity gates and guests
+    capacity_current_identities: Gauge
+    capacity_max_identities: Gauge
+    capacity_enforced: Gauge
+    guest_enabled: Gauge
+    guest_tokens_issued_total: Counter
+    users_created_total: Counter
+
     # chat completions
     chat_completion_latency: Histogram
     chat_completion_ttft: Histogram
@@ -314,6 +322,42 @@ def build_metrics(registry: CollectorRegistry = REGISTRY) -> PrometheusMetrics:
         access_token_verifications_total=Counter(
             "mlpa_access_token_verifications_total",
             "Total number of Access token verifications.",
+            registry=registry,
+        ),
+        # Every pod mirrors the same DB counter, aggregate with max() not sum()
+        capacity_current_identities=Gauge(
+            "mlpa_capacity_current_identities",
+            "Identities holding a slot in a capacity gate (pool=user|guest), read from mlpa_user_capacity on each scrape; use max(). user = MLPA_CAPPED_SERVICE_TYPES, guest = MLPA_GUEST_SERVICE_TYPES.",
+            ["pool"],
+            registry=registry,
+        ),
+        capacity_max_identities=Gauge(
+            "mlpa_capacity_max_identities",
+            "Capacity gate ceiling (pool=user|guest), read from mlpa_user_capacity on each scrape.",
+            ["pool"],
+            registry=registry,
+        ),
+        capacity_enforced=Gauge(
+            "mlpa_capacity_enforced",
+            "1 when the capacity gate is enforced (pool=user|guest), else 0.",
+            ["pool"],
+            registry=registry,
+        ),
+        guest_enabled=Gauge(
+            "mlpa_guest_enabled",
+            "Guest kill switch (MLPA_GUEST_ENABLED): 1 when guest tokens are issued and accepted, else 0.",
+            registry=registry,
+        ),
+        users_created_total=Counter(
+            "mlpa_users_created_total",
+            "New LiteLLM end users created by MLPA, by service_type. A guest using two services counts twice.",
+            ["service_type"],
+            registry=registry,
+        ),
+        guest_tokens_issued_total=Counter(
+            "mlpa_guest_tokens_issued_total",
+            "Guest tokens issued by GET /verify/v1/guest, by flow (json|redirect).",
+            ["flow"],
             registry=registry,
         ),
         chat_completion_latency=Histogram(

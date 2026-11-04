@@ -139,6 +139,7 @@ register_middleware(app)
 
 @app.get("/metrics", tags=["Metrics"])
 async def get_metrics():
+    await app_attest_pg.refresh_capacity_gauges()
     return Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
 
