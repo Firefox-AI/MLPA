@@ -11,6 +11,10 @@ class TrafficContractConfig(TypedDict):
     tpm_limit: int
 
 
+class VirtualKeyConfigurationError(ValueError):
+    """No LiteLLM virtual key is configured for this service type."""
+
+
 class Env(BaseSettings):
     MLPA_DEBUG: bool = False
     APP_ATTEST_PRODUCTION: bool = False
@@ -110,6 +114,28 @@ class Env(BaseSettings):
     # max_budget is the total guest spend cap, so running it out never touches
     # FxA users. Unset means guest requests get 503, never MLPA_VIRTUAL_KEY.
     MLPA_GUEST_VIRTUAL_KEY: str | None = None
+    MLPA_WIDGET_GENERATION_VIRTUAL_KEY: str | None = None
+
+    # JSON object of service-type overrides. Guest types keep their separate
+    # default and never fall back to the signed-in key.
+    MLPA_SERVICE_TYPE_VIRTUAL_KEYS: dict[str, str | None] = {}
+
+    @property
+    def service_type_virtual_keys(self) -> dict[str, str | None]:
+        """Resolve defaults and explicit overrides for every service type."""
+        default = {
+            service_type: self.MLPA_SERVICE_TYPE_VIRTUAL_KEYS.get(
+                service_type,
+                self.MLPA_GUEST_VIRTUAL_KEY
+                if service_type.endswith("-guest")
+                else self.MLPA_VIRTUAL_KEY,
+            )
+            for service_type in self.valid_service_types
+        }
+        default["widget-generation"] = self.MLPA_SERVICE_TYPE_VIRTUAL_KEYS.get(
+            "widget-generation", self.MLPA_WIDGET_GENERATION_VIRTUAL_KEY
+        )
+        return default
 
     USER_FEATURE_BUDGET_AI_BUDGET_ID: str = "end-user-budget-ai"
     USER_FEATURE_BUDGET_AI_BUDGET_DURATION: str = "1d"
@@ -756,25 +782,34 @@ LITELLM_MASTER_AUTH_HEADERS = {
     "Authorization": f"Bearer {env.MASTER_KEY}",
 }
 
-LITELLM_VIRTUAL_AUTH_HEADERS = {
-    "Content-Type": "application/json",
-    "Authorization": f"Bearer {env.MLPA_VIRTUAL_KEY}",
-}
+
+def resolve_litellm_virtual_key(
+    service_type: str,
+    custom_virtual_key: str | None = None,
+) -> str:
+    """Choose the service key, allowing custom keys only for signed-in types."""
+    is_guest = service_type.endswith("-guest")
+    key = env.service_type_virtual_keys.get(service_type)
+    if not is_guest and custom_virtual_key is not None:
+        key = custom_virtual_key
+    if not key:
+        raise VirtualKeyConfigurationError(
+            "Guest access is not configured."
+            if is_guest
+            else "Service access is not configured."
+        )
+    return key
 
 
 def resolve_litellm_virtual_auth_headers(
+    service_type: str,
     custom_virtual_key: str | None = None,
 ) -> dict[str, str]:
-    """
-    Resolve virtual key to be forwarded to litellm, if passing custom virtual key
-    the custom key will be used. Otherwise, the default LITELLM_VIRTUAL_AUTH_HEADERS
-    will be used
-    """
-    if custom_virtual_key is None:
-        return LITELLM_VIRTUAL_AUTH_HEADERS
+    """Build inference headers using the service key or a custom override."""
+    key = resolve_litellm_virtual_key(service_type, custom_virtual_key)
     return {
         "Content-Type": "application/json",
-        "Authorization": f"Bearer {custom_virtual_key}",
+        "Authorization": f"Bearer {key}",
     }
 
 

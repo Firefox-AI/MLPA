@@ -60,14 +60,10 @@ class TestMlpaAuthenticatesToLiteLLM:
         reporting 500 error, or some other unexpected rejection.
         """
         client, token, _ = real_backend_client
-        bad_headers = {
-            "Content-Type": "application/json",
-            "Authorization": "Bearer sk-mlpa-key-that-was-never-issued",
-        }
-
-        with patch(
-            "mlpa.core.config.LITELLM_VIRTUAL_AUTH_HEADERS",
-            bad_headers,
+        with patch.object(
+            env,
+            "MLPA_SERVICE_TYPE_VIRTUAL_KEYS",
+            {"ai": "sk-mlpa-key-that-was-never-issued"},
         ):
             response = client.post(
                 CHAT_COMPLETIONS_PATH,

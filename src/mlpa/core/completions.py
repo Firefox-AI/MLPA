@@ -10,6 +10,7 @@ from fastapi import HTTPException, Request
 from mlpa.core.classes import AuthorizedChatRequest
 from mlpa.core.config import (
     LITELLM_COMPLETIONS_URL,
+    VirtualKeyConfigurationError,
     env,
     resolve_litellm_virtual_auth_headers,
 )
@@ -86,9 +87,13 @@ async def stream_completion(
     start_time = time.perf_counter()
     record_request_with_tools(authorized_chat_request)
     with measure("request_preparation", request):
-        auth_headers = resolve_litellm_virtual_auth_headers(
-            authorized_chat_request.litellm_virtual_key
-        )
+        try:
+            auth_headers = resolve_litellm_virtual_auth_headers(
+                authorized_chat_request.service_type,
+                authorized_chat_request.litellm_virtual_key,
+            )
+        except VirtualKeyConfigurationError as exc:
+            raise HTTPException(status_code=503, detail={"error": str(exc)}) from exc
         body = _build_litellm_body(authorized_chat_request, stream=True)
     result = PrometheusResult.ERROR
     availability_reason = AvailabilityReason.UPSTREAM_ERROR
@@ -388,7 +393,8 @@ async def _get_completion(
             response = await client.post(
                 LITELLM_COMPLETIONS_URL,
                 headers=resolve_litellm_virtual_auth_headers(
-                    authorized_chat_request.litellm_virtual_key
+                    authorized_chat_request.service_type,
+                    authorized_chat_request.litellm_virtual_key,
                 ),
                 json=body,
             )
@@ -451,6 +457,8 @@ async def _get_completion(
         availability_reason = AvailabilityReason.VALID_RESPONSE
 
         return data
+    except VirtualKeyConfigurationError as exc:
+        raise HTTPException(status_code=503, detail={"error": str(exc)}) from exc
     except HTTPException:
         raise
     except Exception as e:
