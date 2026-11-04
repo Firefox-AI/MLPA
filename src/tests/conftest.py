@@ -6,6 +6,14 @@ from mlpa.core.config import env
 from tests.metrics_spy import metrics_spy  # noqa: F401 — re-export as fixture
 
 
+@pytest.fixture(autouse=True)
+def _reset_service_type_virtual_keys():
+    # Tests patch settings on the shared Env; build its cached map per test.
+    env.__dict__.pop("service_type_virtual_keys", None)
+    yield
+    env.__dict__.pop("service_type_virtual_keys", None)
+
+
 @pytest.fixture
 def mock_request():
     req = MagicMock()

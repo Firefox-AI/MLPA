@@ -66,35 +66,49 @@ def test_custom_key_becomes_the_bearer_token():
     }
 
 
-def test_service_key_map_covers_all_types_with_separate_guest_defaults(mocker):
+def test_service_key_map_covers_all_types_with_separate_guest_and_widget_defaults(
+    mocker,
+):
     mocker.patch.object(env, "MLPA_VIRTUAL_KEY", "sk-signed-in")
     mocker.patch.object(env, "MLPA_GUEST_VIRTUAL_KEY", "sk-guest")
-    mocker.patch.object(env, "MLPA_SERVICE_TYPE_VIRTUAL_KEYS", {})
+    mocker.patch.object(env, "MLPA_WIDGET_GENERATION_VIRTUAL_KEY", "sk-widget")
     assert set(env.service_type_virtual_keys) == set(env.valid_service_types)
     for service_type, key in env.service_type_virtual_keys.items():
-        assert key == (
-            "sk-guest" if service_type.endswith("-guest") else "sk-signed-in"
-        )
+        if service_type == "widget-generation":
+            expected_key = "sk-widget"
+        elif service_type.endswith("-guest"):
+            expected_key = "sk-guest"
+        else:
+            expected_key = "sk-signed-in"
+        assert key == expected_key, service_type
 
 
-def test_service_key_overrides_load_from_environment(monkeypatch):
-    monkeypatch.setenv(
-        "MLPA_SERVICE_TYPE_VIRTUAL_KEYS",
-        '{"widget-generation": "sk-widget", "search-guest": "sk-guest-search"}',
-    )
+def test_widget_without_dedicated_key_does_not_use_signed_in_key(mocker):
+    mocker.patch.object(env, "MLPA_VIRTUAL_KEY", "sk-signed-in")
+    mocker.patch.object(env, "MLPA_WIDGET_GENERATION_VIRTUAL_KEY", None)
+    with pytest.raises(
+        VirtualKeyConfigurationError, match="Service access is not configured"
+    ):
+        resolve_litellm_virtual_auth_headers("widget-generation")
+
+
+def test_service_keys_load_from_environment(monkeypatch):
+    monkeypatch.setenv("MLPA_VIRTUAL_KEY", "sk-signed-in")
+    monkeypatch.setenv("MLPA_GUEST_VIRTUAL_KEY", "sk-guest")
+    monkeypatch.setenv("MLPA_WIDGET_GENERATION_VIRTUAL_KEY", "sk-widget")
     settings = Env()
     assert settings.service_type_virtual_keys["widget-generation"] == "sk-widget"
-    assert settings.service_type_virtual_keys["search-guest"] == "sk-guest-search"
-    assert settings.service_type_virtual_keys["ai"] == settings.MLPA_VIRTUAL_KEY
+    assert settings.service_type_virtual_keys["search-guest"] == "sk-guest"
+    assert settings.service_type_virtual_keys["ai"] == "sk-signed-in"
 
 
 @pytest.mark.parametrize(
     "service_type", ["widget-generation", "search", "ai-guest", "search-guest"]
 )
-def test_resolver_uses_service_key_override(mocker, service_type):
-    mocker.patch.object(
-        env, "MLPA_SERVICE_TYPE_VIRTUAL_KEYS", {service_type: "sk-service"}
-    )
+def test_resolver_uses_configured_service_key(mocker, service_type):
+    mocker.patch.object(env, "MLPA_VIRTUAL_KEY", "sk-service")
+    mocker.patch.object(env, "MLPA_GUEST_VIRTUAL_KEY", "sk-service")
+    mocker.patch.object(env, "MLPA_WIDGET_GENERATION_VIRTUAL_KEY", "sk-service")
     assert (
         resolve_litellm_virtual_auth_headers(service_type)["Authorization"]
         == "Bearer sk-service"
@@ -102,31 +116,19 @@ def test_resolver_uses_service_key_override(mocker, service_type):
 
 
 def test_custom_key_takes_precedence_over_signed_in_service_key(mocker):
-    mocker.patch.object(env, "MLPA_SERVICE_TYPE_VIRTUAL_KEYS", {"ai": "sk-service"})
+    mocker.patch.object(env, "MLPA_VIRTUAL_KEY", "sk-service")
     assert resolve_litellm_virtual_key("ai", CUSTOM_KEY) == CUSTOM_KEY
 
 
-def test_guest_ignores_custom_key_and_uses_service_override(mocker):
-    mocker.patch.object(
-        env, "MLPA_SERVICE_TYPE_VIRTUAL_KEYS", {"ai-guest": "sk-service-guest"}
-    )
+def test_guest_ignores_custom_key_and_uses_guest_key(mocker):
+    mocker.patch.object(env, "MLPA_GUEST_VIRTUAL_KEY", "sk-service-guest")
     assert resolve_litellm_virtual_key("ai-guest", CUSTOM_KEY) == "sk-service-guest"
 
 
 def test_guest_without_key_rejects_custom_key_instead_of_falling_back(mocker):
     mocker.patch.object(env, "MLPA_GUEST_VIRTUAL_KEY", None)
-    mocker.patch.object(env, "MLPA_SERVICE_TYPE_VIRTUAL_KEYS", {})
     with pytest.raises(VirtualKeyConfigurationError) as exc:
         resolve_litellm_virtual_auth_headers("ai-guest", CUSTOM_KEY)
-    assert "access is not configured." in str(exc.value)
-
-
-def test_explicitly_unconfigured_service_is_unavailable(mocker):
-    mocker.patch.object(
-        env, "MLPA_SERVICE_TYPE_VIRTUAL_KEYS", {"widget-generation": None}
-    )
-    with pytest.raises(VirtualKeyConfigurationError) as exc:
-        resolve_litellm_virtual_auth_headers("widget-generation")
     assert "access is not configured." in str(exc.value)
 
 
@@ -297,9 +299,8 @@ async def test_proxy_uses_service_key_with_custom_override_precedence(
     mocker, httpx_mock, mock_request, metrics_spy, endpoint, custom_key
 ):
     service_type = "search" if endpoint == "search" else "widget-generation"
-    mocker.patch.object(
-        env, "MLPA_SERVICE_TYPE_VIRTUAL_KEYS", {service_type: "sk-service"}
-    )
+    mocker.patch.object(env, "MLPA_VIRTUAL_KEY", "sk-service")
+    mocker.patch.object(env, "MLPA_WIDGET_GENERATION_VIRTUAL_KEY", "sk-service")
     if endpoint == "stream":
         httpx_mock.add_response(stream=IteratorStream([b"data: [DONE]\n\n"]))
     else:
@@ -335,16 +336,13 @@ async def test_proxy_uses_service_key_with_custom_override_precedence(
     assert CUSTOM_KEY.encode() not in upstream_request.content
 
 
-async def test_guest_authorization_uses_service_override_and_ignores_custom_header(
+async def test_guest_authorization_uses_guest_key_and_ignores_custom_header(
     allow_custom_virtual_key, mocker
 ):
     from mlpa.core.routers.guest.guest import issue_guest_token
 
     mocker.patch.object(env, "MLPA_GUEST_ENABLED", True)
-    mocker.patch.object(env, "MLPA_GUEST_VIRTUAL_KEY", None)
-    mocker.patch.object(
-        env, "MLPA_SERVICE_TYPE_VIRTUAL_KEYS", {"search-guest": "sk-search-guest"}
-    )
+    mocker.patch.object(env, "MLPA_GUEST_VIRTUAL_KEY", "sk-search-guest")
     authorized = await authorize_module.authorize_search_request(
         request=_make_request(),
         search_request=SearchRequest(query="q", max_results=3),
@@ -359,9 +357,7 @@ async def test_guest_authorization_uses_service_override_and_ignores_custom_head
 async def test_proxy_translates_missing_key_to_503(
     mocker, mock_request, metrics_spy, endpoint
 ):
-    mocker.patch.object(
-        env, "MLPA_SERVICE_TYPE_VIRTUAL_KEYS", {"ai": None, "search": None}
-    )
+    mocker.patch.object(env, "MLPA_VIRTUAL_KEY", "")
     upstream = mocker.AsyncMock()
     mocker.patch("mlpa.core.completions.get_http_client", return_value=upstream)
     mocker.patch("mlpa.core.search.get_http_client", return_value=upstream)
@@ -395,11 +391,8 @@ async def test_authorization_translates_missing_key_before_proxying(
     from mlpa.core.routers.guest.guest import issue_guest_token
 
     mocker.patch.object(env, "MLPA_GUEST_ENABLED", True)
-    mocker.patch.object(
-        env,
-        "MLPA_SERVICE_TYPE_VIRTUAL_KEYS",
-        {"ai": None, "search": None, "ai-guest": None, "search-guest": None},
-    )
+    mocker.patch.object(env, "MLPA_VIRTUAL_KEY", "")
+    mocker.patch.object(env, "MLPA_GUEST_VIRTUAL_KEY", None)
     mocker.patch.object(
         authorize_module, "fxa_auth", return_value={"user": "test-user"}
     )

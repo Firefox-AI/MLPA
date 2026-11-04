@@ -60,9 +60,8 @@ class TestMlpaAuthenticatesToLiteLLM:
         reporting 500 error, or some other unexpected rejection.
         """
         client, token, _ = real_backend_client
-        with patch.object(
-            env,
-            "MLPA_SERVICE_TYPE_VIRTUAL_KEYS",
+        with patch.dict(
+            env.service_type_virtual_keys,
             {"ai": "sk-mlpa-key-that-was-never-issued"},
         ):
             response = client.post(

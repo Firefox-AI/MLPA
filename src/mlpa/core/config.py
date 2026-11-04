@@ -116,27 +116,6 @@ class Env(BaseSettings):
     MLPA_GUEST_VIRTUAL_KEY: str | None = None
     MLPA_WIDGET_GENERATION_VIRTUAL_KEY: str | None = None
 
-    # JSON object of service-type overrides. Guest types keep their separate
-    # default and never fall back to the signed-in key.
-    MLPA_SERVICE_TYPE_VIRTUAL_KEYS: dict[str, str | None] = {}
-
-    @property
-    def service_type_virtual_keys(self) -> dict[str, str | None]:
-        """Resolve defaults and explicit overrides for every service type."""
-        default = {
-            service_type: self.MLPA_SERVICE_TYPE_VIRTUAL_KEYS.get(
-                service_type,
-                self.MLPA_GUEST_VIRTUAL_KEY
-                if service_type.endswith("-guest")
-                else self.MLPA_VIRTUAL_KEY,
-            )
-            for service_type in self.valid_service_types
-        }
-        default["widget-generation"] = self.MLPA_SERVICE_TYPE_VIRTUAL_KEYS.get(
-            "widget-generation", self.MLPA_WIDGET_GENERATION_VIRTUAL_KEY
-        )
-        return default
-
     USER_FEATURE_BUDGET_AI_BUDGET_ID: str = "end-user-budget-ai"
     USER_FEATURE_BUDGET_AI_BUDGET_DURATION: str = "1d"
     USER_FEATURE_BUDGET_AI_MAX_BUDGET: float = 0.1
@@ -482,6 +461,31 @@ class Env(BaseSettings):
         }
 
     @cached_property
+    def service_type_virtual_keys(self) -> dict[str, str | None]:
+        """Build the service-key map once from environment settings."""
+        return {
+            "ai": self.MLPA_VIRTUAL_KEY,
+            "s2s": self.MLPA_VIRTUAL_KEY,
+            "s2s-android": self.MLPA_VIRTUAL_KEY,
+            "memories": self.MLPA_VIRTUAL_KEY,
+            "search": self.MLPA_VIRTUAL_KEY,
+            "answer": self.MLPA_VIRTUAL_KEY,
+            "sw-answer": self.MLPA_VIRTUAL_KEY,
+            "liner-answer": self.MLPA_VIRTUAL_KEY,
+            "telemetry": self.MLPA_VIRTUAL_KEY,
+            "agent": self.MLPA_VIRTUAL_KEY,
+            "agent-search": self.MLPA_VIRTUAL_KEY,
+            "widget-generation": self.MLPA_WIDGET_GENERATION_VIRTUAL_KEY,
+            "ai-dev": self.MLPA_VIRTUAL_KEY,
+            "memories-dev": self.MLPA_VIRTUAL_KEY,
+            "ai-guest": self.MLPA_GUEST_VIRTUAL_KEY,
+            "memories-guest": self.MLPA_GUEST_VIRTUAL_KEY,
+            "search-guest": self.MLPA_GUEST_VIRTUAL_KEY,
+            "mochi-dev": self.MLPA_VIRTUAL_KEY,
+            "search-dev": self.MLPA_VIRTUAL_KEY,
+        }
+
+    @cached_property
     def valid_service_types(self) -> list[str]:
         """
         Returns a list of valid service types from user_feature_budget configuration.
@@ -789,9 +793,10 @@ def resolve_litellm_virtual_key(
 ) -> str:
     """Choose the service key, allowing custom keys only for signed-in types."""
     is_guest = service_type.endswith("-guest")
-    key = env.service_type_virtual_keys.get(service_type)
     if not is_guest and custom_virtual_key is not None:
         key = custom_virtual_key
+    else:
+        key = env.service_type_virtual_keys.get(service_type)
     if not key:
         raise VirtualKeyConfigurationError(
             "Guest access is not configured."

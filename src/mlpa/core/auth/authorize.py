@@ -264,10 +264,10 @@ async def authorize_chat_request(
             use_qa_certificates=use_qa_certificates,
             use_play_integrity=use_play_integrity,
         )
-        # Validate before the route can start a streaming response.
-        resolve_litellm_virtual_key(
-            authorized.service_type, authorized.litellm_virtual_key
-        )
+        # Guest keys were resolved above; custom keys were normalized already.
+        # Check defaults before the route can start a streaming response.
+        if authorized.litellm_virtual_key is None:
+            resolve_litellm_virtual_key(authorized.service_type)
         return authorized
     except VirtualKeyConfigurationError as exc:
         raise HTTPException(status_code=503, detail={"error": str(exc)}) from exc
@@ -335,10 +335,10 @@ async def authorize_search_request(
             use_qa_certificates=use_qa_certificates,
             use_play_integrity=use_play_integrity,
         )
-        # Validate before the route can start a streaming response.
-        resolve_litellm_virtual_key(
-            authorized.service_type, authorized.litellm_virtual_key
-        )
+        # Guest keys were resolved above; custom keys were normalized already.
+        # Check defaults before the route can start a streaming response.
+        if authorized.litellm_virtual_key is None:
+            resolve_litellm_virtual_key(authorized.service_type)
         return authorized
     except VirtualKeyConfigurationError as exc:
         raise HTTPException(status_code=503, detail={"error": str(exc)}) from exc
