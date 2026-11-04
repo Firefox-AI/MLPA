@@ -8,11 +8,13 @@ from starlette.requests import ClientDisconnect
 
 from mlpa.core.classes import AuthorizedSearchRequest
 from mlpa.core.config import (
+    LITELLM_HEADER_KEY_ALIAS,
     LITELLM_SEARCH_URL,
     resolve_litellm_virtual_auth_headers,
 )
 from mlpa.core.errors import classify_upstream_error
 from mlpa.core.http_client import get_http_client
+from mlpa.core.litellm_routing import litellm_key_alias_from_header
 from mlpa.core.logger import logger
 from mlpa.core.metrics import (
     SEARCH_ENDPOINT,
@@ -40,6 +42,7 @@ async def get_search(
 async def _get_search(
     request: Request, authorized_search_request: AuthorizedSearchRequest
 ):
+    log = logger.bind(**authorized_search_request.log_fields, key_alias="unknown")
     start_time = time.perf_counter()
     with measure("request_preparation", request):
         body = sanitize_request_body(
@@ -56,7 +59,7 @@ async def _get_search(
     result = PrometheusResult.ERROR
     availability_reason = AvailabilityReason.UPSTREAM_ERROR
     usage = None
-    logger.debug(
+    log.debug(
         f"Starting a search request using for user {authorized_search_request.user}",
     )
     try:
@@ -69,6 +72,14 @@ async def _get_search(
                 ),
                 json=body,
             )
+        log = log.bind(
+            key_alias=litellm_key_alias_from_header(
+                response.headers.get(LITELLM_HEADER_KEY_ALIAS)
+            )
+        )
+        log.bind(upstream_status_code=response.status_code).info(
+            "LiteLLM response received"
+        )
         try:
             response.raise_for_status()
         except httpx.HTTPStatusError as e:
@@ -86,7 +97,7 @@ async def _get_search(
             )
             if match is not None:
                 if match.log_message:
-                    logger.warning(match.log_message)
+                    log.warning(match.log_message)
                 record_search_request_rejection(authorized_search_request, match.reason)
                 availability_reason = match.availability_reason()
                 headers = (
@@ -97,7 +108,7 @@ async def _get_search(
                     detail={"error": match.error_code},
                     headers=headers,
                 )
-            raise_and_log(e)
+            raise_and_log(e, log=log)
 
         data = sanitize_response_body(response.json())
         # Empty results are valid. Missing/non-list results, non-object entries,
@@ -124,7 +135,7 @@ async def _get_search(
     except HTTPException:
         raise
     except Exception as e:
-        raise_and_log(e, False, 502, "Failed to proxy request")
+        raise_and_log(e, False, 502, "Failed to proxy request", log=log)
     finally:
         record_search_latency(result, time.perf_counter() - start_time)
         record_search_availability(authorized_search_request, availability_reason)

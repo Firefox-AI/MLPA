@@ -243,6 +243,7 @@ def record_litellm_routing_metrics(
         "backend": snapshot.backend,
         "service_type": clamp_service_type(req.service_type),
         "purpose": clamp_purpose(req.purpose),
+        "key_alias": snapshot.key_alias,
     }
     metrics.litellm_routed_completions.labels(
         **labels_base,

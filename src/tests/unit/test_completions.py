@@ -209,6 +209,7 @@ def _litellm_routing_label_base():
         "backend": "https://api.together.xyz/v1",
         "service_type": SAMPLE_REQUEST.service_type,
         "purpose": SAMPLE_REQUEST.purpose,
+        "key_alias": "unknown",
     }
 
 
@@ -336,6 +337,7 @@ async def test_get_completion_litellm_routing_with_fallback(mocker, metrics_spy)
         "backend": "https://us-central1-aiplatform.googleapis.com/v1/projects/p/locations/us-central1/publishers/google/models/gemini-pro:predict",
         "service_type": SAMPLE_REQUEST.service_type,
         "purpose": SAMPLE_REQUEST.purpose,
+        "key_alias": "unknown",
     }
     assert (
         metrics_spy.value("litellm_routed_completions", **routing, fallback_used="true")
@@ -868,6 +870,7 @@ async def test_get_completion_context_window_exceeded(mocker, metrics_spy):
     mock_client.post.return_value = mock_response
     mocker.patch("mlpa.core.completions.get_http_client", return_value=mock_client)
     mock_logger = mocker.patch("mlpa.core.completions.logger")
+    mock_logger.bind.return_value = mock_logger
 
     with pytest.raises(HTTPException) as exc_info:
         await get_completion(Request({"type": "http", "headers": []}), SAMPLE_REQUEST)
@@ -909,6 +912,7 @@ async def test_get_completion_invalid_model_name(mocker, metrics_spy):
     mock_client.post.return_value = mock_response
     mocker.patch("mlpa.core.completions.get_http_client", return_value=mock_client)
     mock_logger = mocker.patch("mlpa.core.completions.logger")
+    mock_logger.bind.return_value = mock_logger
 
     with pytest.raises(HTTPException) as exc_info:
         await get_completion(Request({"type": "http", "headers": []}), SAMPLE_REQUEST)
@@ -949,6 +953,7 @@ async def test_get_completion_invalid_request_vertex(mocker, metrics_spy):
     mock_client.post.return_value = mock_response
     mocker.patch("mlpa.core.completions.get_http_client", return_value=mock_client)
     mock_logger = mocker.patch("mlpa.core.completions.logger")
+    mock_logger.bind.return_value = mock_logger
 
     with pytest.raises(HTTPException) as exc_info:
         await get_completion(Request({"type": "http", "headers": []}), SAMPLE_REQUEST)

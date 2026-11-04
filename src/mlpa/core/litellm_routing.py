@@ -6,15 +6,34 @@ See https://docs.litellm.ai/docs/proxy/response_headers
 
 import math
 from typing import Mapping
+from urllib.parse import unquote
 
 from mlpa.core.classes import LitellmRoutingSnapshot
 from mlpa.core.config import (
     LITELLM_HEADER_ATTEMPTED_FALLBACKS,
     LITELLM_HEADER_ATTEMPTED_RETRIES,
+    LITELLM_HEADER_KEY_ALIAS,
     LITELLM_HEADER_MODEL_API_BASE,
     LITELLM_HEADER_RESPONSE_COST,
     LITELLM_HEADER_RESPONSE_DURATION_MS,
 )
+
+
+def litellm_key_alias_from_header(raw: str | None) -> str:
+    """Decode the gateway's authenticated key alias, not a client-provided name.
+
+    Missing aliases (including older gateways) remain unknown. Never infer a
+    key identity from a submitted credential or use the credential as a label.
+    """
+    if not isinstance(raw, str) or len(raw) > 255 * 12:
+        return "unknown"
+    try:
+        alias = unquote(raw, encoding="utf-8", errors="strict")
+    except UnicodeDecodeError:
+        return "unknown"
+    if not alias.strip() or len(alias) > 255 or not alias.isprintable():
+        return "unknown"
+    return alias
 
 
 def litellm_model_api_base_from_header(raw: str | None) -> str:
@@ -67,4 +86,5 @@ def parse_litellm_routing_headers(headers: Mapping[str, str]) -> LitellmRoutingS
         attempted_retries=retries,
         response_duration_ms=duration_ms,
         response_cost_usd=cost,
+        key_alias=litellm_key_alias_from_header(headers.get(LITELLM_HEADER_KEY_ALIAS)),
     )

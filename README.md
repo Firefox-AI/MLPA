@@ -111,6 +111,42 @@ in `litellm_docker_compose.yaml`; the manual workflow overrides only that image.
 Both use the same compatibility tests and configuration. The workflow does not
 deploy the candidate or enable its custom handlers in the test configuration.
 
+## Virtual-key cost attribution
+
+The Mozilla LiteLLM gateway supplies the authenticated key's `key_alias` through
+the internal `x-mlpa-key-alias` response header (UTF-8 percent-encoded). MLPA
+decodes it and adds a `key_alias` label to its `mlpa_litellm_*` routing, cost,
+token, and duration metrics. Existing metric labels are retained. Missing,
+blank, or invalid aliases are reported as `unknown`, including responses from
+older gateways. The alias comes from the upstream key record, not client headers
+or metadata; a request using MLPA's shared default key is attributed to that key.
+
+Chat and search responses also emit a structured `LiteLLM response received`
+log with `key_alias` and `upstream_status_code`, including upstream error
+responses. Chat logs include `response_cost_usd` when supplied by LiteLLM.
+The header is consumed internally and is not added to public response headers,
+JSON bodies, or streaming events. Raw credentials and arbitrary key metadata
+are not included in attribution logs or metric labels.
+
+For an operational view of reported chat cost by key:
+
+```promql
+sum by (key_alias) (
+  increase(mlpa_litellm_reported_cost_usd_total[24h])
+)
+```
+
+This counter retains its existing semantics: it records successful completions
+only when LiteLLM supplies a valid response-cost header. Streaming responses may
+not have their final cost available in headers, and interrupted or failed calls
+can still incur provider cost. Use LiteLLM's persisted spend logs, joined to its
+key records, for complete cost reporting. This change does not calculate or
+estimate missing costs and does not alter spend-log accounting.
+
+Use stable workload aliases such as `evals-stage` and `performance-stage` to keep
+metric cardinality manageable. Deploy the gateway header producer before or
+alongside MLPA; MLPA remains compatible with older gateways via `unknown`.
+
 ## Auth benchmarks
 
 `src/tests/bench/` times each auth path with [pytest-benchmark](https://pytest-benchmark.readthedocs.io/). FxA, Google, Apple and Postgres are replaced with in-memory fakes, but the real crypto runs (RS256 FxA tokens, HS256 MLPA access tokens, App Attest ECDSA assertions). The suite covers:

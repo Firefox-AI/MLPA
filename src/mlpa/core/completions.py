@@ -144,6 +144,14 @@ async def stream_completion(
                             ),
                         )
                     )
+                litellm_routing_snapshot = parse_litellm_routing_headers(
+                    response.headers
+                )
+                log = log.bind(key_alias=litellm_routing_snapshot.key_alias)
+                log.bind(
+                    upstream_status_code=response.status_code,
+                    response_cost_usd=litellm_routing_snapshot.response_cost_usd,
+                ).info("LiteLLM response received")
                 try:
                     response.raise_for_status()
                 except httpx.HTTPStatusError as e:
@@ -181,9 +189,6 @@ async def stream_completion(
                     yield raise_and_log(e, True, log=log)
                     return
 
-                litellm_routing_snapshot = parse_litellm_routing_headers(
-                    response.headers
-                )
                 response_iterator = response.aiter_bytes()
 
                 while True:
@@ -372,13 +377,14 @@ async def _get_completion(
     """
     Proxies a non-streaming request to LiteLLM.
     """
+    log = logger.bind(**authorized_chat_request.log_fields, key_alias="unknown")
     start_time = time.perf_counter()
     record_request_with_tools(authorized_chat_request)
     with measure("request_preparation", request):
         body = _build_litellm_body(authorized_chat_request, stream=False)
     result = PrometheusResult.ERROR
     availability_reason = AvailabilityReason.UPSTREAM_ERROR
-    logger.debug(
+    log.debug(
         f"Starting a non-stream completion using {authorized_chat_request.model}, for user {authorized_chat_request.user}",
     )
     usage = None
@@ -392,6 +398,12 @@ async def _get_completion(
                 ),
                 json=body,
             )
+        litellm_routing_snapshot = parse_litellm_routing_headers(response.headers)
+        log = log.bind(key_alias=litellm_routing_snapshot.key_alias)
+        log.bind(
+            upstream_status_code=response.status_code,
+            response_cost_usd=litellm_routing_snapshot.response_cost_usd,
+        ).info("LiteLLM response received")
         try:
             response.raise_for_status()
         except httpx.HTTPStatusError as e:
@@ -409,7 +421,7 @@ async def _get_completion(
             )
             if match is not None:
                 if match.log_message:
-                    logger.warning(match.log_message)
+                    log.warning(match.log_message)
                 record_chat_request_rejection(authorized_chat_request, match.reason)
                 availability_reason = match.availability_reason()
                 headers = (
@@ -420,19 +432,18 @@ async def _get_completion(
                     detail={"error": match.error_code},
                     headers=headers,
                 )
-            raise_and_log(e)
-        litellm_routing_snapshot = parse_litellm_routing_headers(response.headers)
+            raise_and_log(e, log=log)
         data = sanitize_response_body(response.json())
         usage = data.get("usage", {})
         prompt_tokens = usage.get("prompt_tokens", 0)
         completion_tokens = usage.get("completion_tokens", 0)
 
         if "prompt_tokens" not in usage:
-            logger.warning(
+            log.warning(
                 f"Missing 'prompt_tokens' in usage for model {authorized_chat_request.model}"
             )
         if "completion_tokens" not in usage:
-            logger.warning(
+            log.warning(
                 f"Missing 'completion_tokens' in usage for model {authorized_chat_request.model}"
             )
 
@@ -454,7 +465,7 @@ async def _get_completion(
     except HTTPException:
         raise
     except Exception as e:
-        raise_and_log(e, False, 502, "Failed to proxy request")
+        raise_and_log(e, False, 502, "Failed to proxy request", log=log)
     finally:
         record_completion_latency(
             authorized_chat_request, result, time.perf_counter() - start_time
