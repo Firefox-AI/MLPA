@@ -113,16 +113,22 @@ deploy the candidate or enable its custom handlers in the test configuration.
 
 ## Virtual-key cost attribution
 
-The Mozilla LiteLLM gateway supplies the authenticated key's `key_alias` through
-the internal `x-mlpa-key-alias` response header (UTF-8 percent-encoded). MLPA
-decodes it and adds a `key_alias` label to its `mlpa_litellm_*` routing, cost,
-token, and duration metrics. Existing metric labels are retained. Missing,
-blank, or invalid aliases are reported as `unknown`, including responses from
-older gateways. The alias comes from the upstream key record, not client headers
-or metadata; a request using MLPA's shared default key is attributed to that key.
+The Mozilla LiteLLM gateway supplies `metadata.workload` from the authenticated
+key through the internal `x-mlpa-workload` response header. MLPA adds a bounded
+`workload` label to its `mlpa_litellm_*` routing, cost, token, and duration
+metrics. Existing metric labels are retained. Supported buckets are `eval` and
+`load_test`; all other values, missing metadata, and older gateways produce
+`unknown`. The workload comes from the actual upstream key record, not client
+headers or request metadata. An unclassified shared default key is `unknown`.
+
+Each key keeps its unique `key_alias`. Multiple keys can share the same stored
+workload, for example `eval-nightly-key-1` and `eval-manual-key-2` both using
+`metadata: {"workload": "eval"}`. Key aliases are not metric labels or emitted
+by this attribution path. Adding a bucket requires updating the allowlists in
+both MLPA and the gateway; new key names cannot grow the set of label values.
 
 Chat and search responses also emit a structured `LiteLLM response received`
-log with `key_alias` and `upstream_status_code`, including upstream error
+log with `workload` and `upstream_status_code`, including upstream error
 responses. Chat logs include `response_cost_usd` when supplied by LiteLLM.
 The header is consumed internally and is not added to public response headers,
 JSON bodies, or streaming events. Raw credentials and arbitrary key metadata
@@ -131,7 +137,7 @@ are not included in attribution logs or metric labels.
 For an operational view of reported chat cost by key:
 
 ```promql
-sum by (key_alias) (
+sum by (workload) (
   increase(mlpa_litellm_reported_cost_usd_total[24h])
 )
 ```
@@ -143,9 +149,10 @@ can still incur provider cost. Use LiteLLM's persisted spend logs, joined to its
 key records, for complete cost reporting. This change does not calculate or
 estimate missing costs and does not alter spend-log accounting.
 
-Use stable workload aliases such as `evals-stage` and `performance-stage` to keep
-metric cardinality manageable. Deploy the gateway header producer before or
-alongside MLPA; MLPA remains compatible with older gateways via `unknown`.
+Deploy the gateway header producer before or alongside MLPA; MLPA remains
+compatible with older gateways via `unknown`. Set workload metadata when
+provisioning keys. These branches do not provision keys or change budgets,
+service types, authentication, or custom-key acceptance settings.
 
 ## Auth benchmarks
 

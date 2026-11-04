@@ -209,7 +209,7 @@ def _litellm_routing_label_base():
         "backend": "https://api.together.xyz/v1",
         "service_type": SAMPLE_REQUEST.service_type,
         "purpose": SAMPLE_REQUEST.purpose,
-        "key_alias": "unknown",
+        "workload": "unknown",
     }
 
 
@@ -337,7 +337,7 @@ async def test_get_completion_litellm_routing_with_fallback(mocker, metrics_spy)
         "backend": "https://us-central1-aiplatform.googleapis.com/v1/projects/p/locations/us-central1/publishers/google/models/gemini-pro:predict",
         "service_type": SAMPLE_REQUEST.service_type,
         "purpose": SAMPLE_REQUEST.purpose,
-        "key_alias": "unknown",
+        "workload": "unknown",
     }
     assert (
         metrics_spy.value("litellm_routed_completions", **routing, fallback_used="true")

@@ -8,13 +8,13 @@ from starlette.requests import ClientDisconnect
 
 from mlpa.core.classes import AuthorizedSearchRequest
 from mlpa.core.config import (
-    LITELLM_HEADER_KEY_ALIAS,
+    LITELLM_HEADER_WORKLOAD,
     LITELLM_SEARCH_URL,
     resolve_litellm_virtual_auth_headers,
 )
 from mlpa.core.errors import classify_upstream_error
 from mlpa.core.http_client import get_http_client
-from mlpa.core.litellm_routing import litellm_key_alias_from_header
+from mlpa.core.litellm_routing import litellm_workload_from_header
 from mlpa.core.logger import logger
 from mlpa.core.metrics import (
     SEARCH_ENDPOINT,
@@ -42,7 +42,7 @@ async def get_search(
 async def _get_search(
     request: Request, authorized_search_request: AuthorizedSearchRequest
 ):
-    log = logger.bind(**authorized_search_request.log_fields, key_alias="unknown")
+    log = logger.bind(**authorized_search_request.log_fields, workload="unknown")
     start_time = time.perf_counter()
     with measure("request_preparation", request):
         body = sanitize_request_body(
@@ -73,8 +73,8 @@ async def _get_search(
                 json=body,
             )
         log = log.bind(
-            key_alias=litellm_key_alias_from_header(
-                response.headers.get(LITELLM_HEADER_KEY_ALIAS)
+            workload=litellm_workload_from_header(
+                response.headers.get(LITELLM_HEADER_WORKLOAD)
             )
         )
         log.bind(upstream_status_code=response.status_code).info(

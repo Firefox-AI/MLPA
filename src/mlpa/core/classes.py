@@ -168,7 +168,7 @@ class LitellmRoutingSnapshot:
     attempted_retries: int
     response_duration_ms: float | None
     response_cost_usd: float | None
-    key_alias: str = "unknown"
+    workload: str = "unknown"
 
 
 @dataclass(frozen=True)
