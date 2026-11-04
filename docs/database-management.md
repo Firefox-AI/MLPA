@@ -206,6 +206,17 @@ The `mlpa_user_capacity*` tables are created by migration, then reconciled on
 every startup via `ensure_capacity_state()`. Deploy runs
 `scripts/migrate-app-attest-database.sh` with `-x sqlalchemy.url=...`.
 
+### Schema check on pod startup
+
+Argo CD skips the migration Job on a partial sync, so new code can roll out
+against an old schema. `scripts/check_app_attest_migrations.py` runs as an init
+container and holds each new pod until the schema has been migrated. Old pods
+keep serving in the meantime. A schema newer than the image passes, so
+rollbacks aren't blocked.
+
+Pods stuck in `Init` logging `is behind` mean the Job didn't run: do a full
+sync, not a partial one.
+
 ### Rollback procedure
 
 [AIPLAT-1189](https://mozilla-hub.atlassian.net/browse/AIPLAT-1189) covers the
