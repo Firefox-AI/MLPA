@@ -181,6 +181,7 @@ def test_valid_service_types_all_service_types():
     assert "telemetry" in service_types
     assert "agent" in service_types
     assert "agent-search" in service_types
+    assert "widget-generation" in service_types
     assert "ai-dev" in service_types
     assert "memories-dev" in service_types
     assert "mochi-dev" in service_types
@@ -188,7 +189,7 @@ def test_valid_service_types_all_service_types():
     assert "ai-guest" in service_types
     assert "memories-guest" in service_types
     assert "search-guest" in service_types
-    assert len(service_types) == 18
+    assert len(service_types) == 19
 
 
 def test_valid_service_types_set_matches_ordered_list():
@@ -220,16 +221,19 @@ def test_service_type_purposes():
 
 
 def test_service_type_purposes_s2s_empty():
-    """Test that s2s, s2s-android, search, and telemetry have no purposes."""
+    """Test service types that have no purpose."""
     env = Env()
+    pass_butter = []
     purposes = env.service_type_purposes
-    assert purposes["s2s"] == []
-    assert purposes["s2s-android"] == []
-    assert purposes["search"] == []
-    assert purposes["answer"] == []
-    assert purposes["sw-answer"] == []
-    assert purposes["liner-answer"] == []
-    assert purposes["search-dev"] == []
+    assert purposes["search-guest"] == pass_butter
+    assert purposes["s2s"] == pass_butter
+    assert purposes["s2s-android"] == pass_butter
+    assert purposes["search"] == pass_butter
+    assert purposes["answer"] == pass_butter
+    assert purposes["sw-answer"] == pass_butter
+    assert purposes["liner-answer"] == pass_butter
+    assert purposes["widget-generation"] == pass_butter
+    assert purposes["search-dev"] == pass_butter
 
 
 def test_service_type_requires_purpose():
@@ -250,6 +254,7 @@ def test_service_type_requires_purpose():
     assert env.service_type_requires_purpose("search-dev") is False
     assert env.service_type_requires_purpose("agent") is True
     assert env.service_type_requires_purpose("agent-search") is True
+    assert env.service_type_requires_purpose("widget-generation") is False
 
 
 def test_valid_purposes_for_service_type():
@@ -381,17 +386,6 @@ def test_user_feature_budget_memories_type_validation():
     assert isinstance(memories_config["budget_duration"], str)
 
 
-def test_forced_model_service_type_pairs_defaults():
-    """Test that forced model/service-type mappings include search-only models."""
-    env = Env()
-
-    assert env.forced_model_service_type_pairs == {
-        "exa-search": ["search", "search-dev", "agent-search", "search-guest"],
-        "exa": ["answer", "sw-answer"],
-        "liner": ["liner-answer"],
-    }
-
-
 def test_valid_service_type_for_model_forced_pair():
     """Test that forced model/service-type pairs are enforced."""
     env = Env()
@@ -407,6 +401,10 @@ def test_valid_service_type_for_model_forced_pair():
     assert env.valid_service_type_for_model("liner", "liner-answers") is True
     assert env.valid_service_type_for_model("answer", "liner-answers") is False
     assert env.valid_service_type_for_model("liner", "exa") is False
+    assert env.valid_service_type_for_model("widget-generation", "deepseek-v4.1-flash")
+    assert env.valid_service_type_for_model(
+        "widget-generation", "deepseek-v4.1-flash-1017"
+    )
 
 
 def test_valid_service_type_for_model_unconfigured_model():

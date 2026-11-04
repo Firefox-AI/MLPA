@@ -111,28 +111,24 @@ class Env(BaseSettings):
     # FxA users. Unset means guest requests get 503, never MLPA_VIRTUAL_KEY.
     MLPA_GUEST_VIRTUAL_KEY: str | None = None
 
-    # User Feature Budget - AI service type
     USER_FEATURE_BUDGET_AI_BUDGET_ID: str = "end-user-budget-ai"
     USER_FEATURE_BUDGET_AI_BUDGET_DURATION: str = "1d"
     USER_FEATURE_BUDGET_AI_MAX_BUDGET: float = 0.1
     USER_FEATURE_BUDGET_AI_RPM_LIMIT: int = 40
     USER_FEATURE_BUDGET_AI_TPM_LIMIT: int = 2000
 
-    # User Feature Budget - S2S service type
     USER_FEATURE_BUDGET_S2S_BUDGET_ID: str = "end-user-budget-s2s"
     USER_FEATURE_BUDGET_S2S_BUDGET_DURATION: str = "1d"
     USER_FEATURE_BUDGET_S2S_MAX_BUDGET: float = 0.1
     USER_FEATURE_BUDGET_S2S_RPM_LIMIT: int = 40
     USER_FEATURE_BUDGET_S2S_TPM_LIMIT: int = 2000
 
-    # User Feature Budget - S2S Android service type (same values as s2s)
     USER_FEATURE_BUDGET_S2S_ANDROID_BUDGET_ID: str = "end-user-budget-s2s-android"
     USER_FEATURE_BUDGET_S2S_ANDROID_BUDGET_DURATION: str = "1d"
     USER_FEATURE_BUDGET_S2S_ANDROID_MAX_BUDGET: float = 0.1
     USER_FEATURE_BUDGET_S2S_ANDROID_RPM_LIMIT: int = 40
     USER_FEATURE_BUDGET_S2S_ANDROID_TPM_LIMIT: int = 2000
 
-    # User Feature Budget - memories service type
     USER_FEATURE_BUDGET_MEMORIES_BUDGET_ID: str = "end-user-budget-memories"
     USER_FEATURE_BUDGET_MEMORIES_BUDGET_DURATION: str = "1d"
     USER_FEATURE_BUDGET_MEMORIES_MAX_BUDGET: float = 0.1
@@ -181,23 +177,28 @@ class Env(BaseSettings):
     USER_FEATURE_BUDGET_AGENT_SEARCH_RPM_LIMIT: int = 10
     USER_FEATURE_BUDGET_AGENT_SEARCH_TPM_LIMIT: int = 2000
 
-    # User Feature Budget - ai-dev service type (experimentation, batch predictions)
+    USER_FEATURE_BUDGET_WIDGET_GENERATION_BUDGET_ID: str = (
+        "end-user-budget-widget-generation"
+    )
+    USER_FEATURE_BUDGET_WIDGET_GENERATION_BUDGET_DURATION: str = "1d"
+    USER_FEATURE_BUDGET_WIDGET_GENERATION_MAX_BUDGET: float = 0.1
+    USER_FEATURE_BUDGET_WIDGET_GENERATION_RPM_LIMIT: int = 10
+    USER_FEATURE_BUDGET_WIDGET_GENERATION_TPM_LIMIT: int = 2000
+
+    # Dev tier
     USER_FEATURE_BUDGET_AI_DEV_BUDGET_ID: str = "end-user-budget-ai-dev"
     USER_FEATURE_BUDGET_AI_DEV_BUDGET_DURATION: str = "1d"
     USER_FEATURE_BUDGET_AI_DEV_MAX_BUDGET: float = 1.0
     USER_FEATURE_BUDGET_AI_DEV_RPM_LIMIT: int = 200
     USER_FEATURE_BUDGET_AI_DEV_TPM_LIMIT: int = 10000
 
-    # User Feature Budget - memories-dev service type (experimentation)
     USER_FEATURE_BUDGET_MEMORIES_DEV_BUDGET_ID: str = "end-user-budget-memories-dev"
     USER_FEATURE_BUDGET_MEMORIES_DEV_BUDGET_DURATION: str = "1d"
     USER_FEATURE_BUDGET_MEMORIES_DEV_MAX_BUDGET: float = 1.0
     USER_FEATURE_BUDGET_MEMORIES_DEV_RPM_LIMIT: int = 50
     USER_FEATURE_BUDGET_MEMORIES_DEV_TPM_LIMIT: int = 5000
 
-    # User Feature Budget - guest service types (AIPLAT-1449). Clients never
-    # send these, MLPA appends "-guest" to the service-type header when the
-    # request carries an MLPA guest token.
+    # Guest tier - Clients never send these, MLPA appends "-guest" to the service-type header when the request carries an MLPA guest token.
     USER_FEATURE_BUDGET_AI_GUEST_BUDGET_ID: str = "end-user-budget-ai-guest"
     USER_FEATURE_BUDGET_AI_GUEST_BUDGET_DURATION: str = "1d"
     USER_FEATURE_BUDGET_AI_GUEST_MAX_BUDGET: float = 0.05
@@ -251,6 +252,10 @@ class Env(BaseSettings):
     FEATURE_S2S_ANDROID: str = "s2s-android"
     S2S_ANDROID_TRAFFIC_CONTRACT_RPM_LIMIT: int = 0
     S2S_ANDROID_TRAFFIC_CONTRACT_TPM_LIMIT: int = 0
+
+    FEATURE_WIDGET_GENERATION: str = "widget-generation"
+    WIDGET_GENERATION_TRAFFIC_CONTRACT_RPM_LIMIT: int = 0
+    WIDGET_GENERATION_TRAFFIC_CONTRACT_TPM_LIMIT: int = 0
 
     @cached_property
     def service_type_config(self) -> dict[str, dict]:
@@ -348,6 +353,14 @@ class Env(BaseSettings):
                 "rpm_limit": self.USER_FEATURE_BUDGET_AGENT_SEARCH_RPM_LIMIT,
                 "tpm_limit": self.USER_FEATURE_BUDGET_AGENT_SEARCH_TPM_LIMIT,
             },
+            "widget-generation": {
+                "feature": self.FEATURE_WIDGET_GENERATION,
+                "budget_id": self.USER_FEATURE_BUDGET_WIDGET_GENERATION_BUDGET_ID,
+                "budget_duration": self.USER_FEATURE_BUDGET_WIDGET_GENERATION_BUDGET_DURATION,
+                "max_budget": self.USER_FEATURE_BUDGET_WIDGET_GENERATION_MAX_BUDGET,
+                "rpm_limit": self.USER_FEATURE_BUDGET_WIDGET_GENERATION_RPM_LIMIT,
+                "tpm_limit": self.USER_FEATURE_BUDGET_WIDGET_GENERATION_TPM_LIMIT,
+            },
             "ai-dev": {
                 "feature": self.FEATURE_SMART_WINDOW,
                 "budget_id": self.USER_FEATURE_BUDGET_AI_DEV_BUDGET_ID,
@@ -416,17 +429,21 @@ class Env(BaseSettings):
         """
 
         TRAFFIC_CONTRACT_CONFIG = {
-            "smart-window": {
+            self.FEATURE_SMART_WINDOW: {
                 "rpm_limit": self.SMART_WINDOW_TRAFFIC_CONTRACT_RPM_LIMIT,
                 "tpm_limit": self.SMART_WINDOW_TRAFFIC_CONTRACT_TPM_LIMIT,
             },
-            "s2s": {
+            self.FEATURE_S2S: {
                 "rpm_limit": self.S2S_TRAFFIC_CONTRACT_RPM_LIMIT,
                 "tpm_limit": self.S2S_TRAFFIC_CONTRACT_TPM_LIMIT,
             },
-            "s2s-android": {
+            self.FEATURE_S2S_ANDROID: {
                 "rpm_limit": self.S2S_ANDROID_TRAFFIC_CONTRACT_RPM_LIMIT,
                 "tpm_limit": self.S2S_ANDROID_TRAFFIC_CONTRACT_TPM_LIMIT,
+            },
+            self.FEATURE_WIDGET_GENERATION: {
+                "rpm_limit": self.WIDGET_GENERATION_TRAFFIC_CONTRACT_RPM_LIMIT,
+                "tpm_limit": self.WIDGET_GENERATION_TRAFFIC_CONTRACT_TPM_LIMIT,
             },
         }
         return {
@@ -474,6 +491,7 @@ class Env(BaseSettings):
             "auto-tab-grouping",
         ]
         memories_purposes = ["memory-generation"]
+        pass_butter = []
         return {
             "ai": ai_purposes,
             "ai-dev": ai_purposes,
@@ -482,14 +500,15 @@ class Env(BaseSettings):
             "memories-dev": memories_purposes,
             "ai-guest": ai_purposes,
             "memories-guest": memories_purposes,
-            "search-guest": [],
-            "s2s": [],
-            "s2s-android": [],
-            "search": [],
-            "answer": [],
-            "sw-answer": [],
-            "liner-answer": [],
-            "search-dev": [],
+            "search-guest": pass_butter,
+            "s2s": pass_butter,
+            "s2s-android": pass_butter,
+            "search": pass_butter,
+            "answer": pass_butter,
+            "sw-answer": pass_butter,
+            "liner-answer": pass_butter,
+            "widget-generation": pass_butter,
+            "search-dev": pass_butter,
             "telemetry": ["chat"],
             "agent": ["monitor", "research"],
             "agent-search": ["research"],
@@ -534,6 +553,8 @@ class Env(BaseSettings):
             "exa-search": ["search", "search-dev", "agent-search", "search-guest"],
             "exa": ["answer", "sw-answer"],
             "liner": ["liner-answer"],
+            "deepseek-v4.1-flash": ["widget-generation"],
+            "deepseek-v4.1-flash-1017": ["widget-generation"],
         }
 
     def valid_service_type_for_model(self, service_type: str, model: str) -> bool:
@@ -568,6 +589,8 @@ class Env(BaseSettings):
             "moz-summarization",
             "qwen3-235b-a22b-instruct-2507-maas",
             "vertex_ai/mistral-small-2503",
+            "deepseek-v4.1-flash",
+            "deepseek-v4.1-flash-1017",
         }
 
     # Logging

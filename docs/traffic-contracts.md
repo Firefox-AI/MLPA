@@ -36,10 +36,10 @@ It is keyed by service type for request lookup, but Redis stores counts by
 | `smart-window` | `ai`, `memories`, `search`, `answer`, `sw-answer`, `liner-answer`, `telemetry`, `agent`, `agent-search`, `ai-dev`, `memories-dev`, `mochi-dev`, `search-dev` | `SMART_WINDOW_TRAFFIC_CONTRACT_RPM_LIMIT`, `SMART_WINDOW_TRAFFIC_CONTRACT_TPM_LIMIT` |
 | `s2s` | `s2s` | `S2S_TRAFFIC_CONTRACT_RPM_LIMIT`, `S2S_TRAFFIC_CONTRACT_TPM_LIMIT` |
 | `s2s-android` | `s2s-android` | `S2S_ANDROID_TRAFFIC_CONTRACT_RPM_LIMIT`, `S2S_ANDROID_TRAFFIC_CONTRACT_TPM_LIMIT` |
+| `widget-generation` | `widget-generation` | `WIDGET_GENERATION_TRAFFIC_CONTRACT_RPM_LIMIT`, `WIDGET_GENERATION_TRAFFIC_CONTRACT_TPM_LIMIT` |
 | Shared basket | All features whose traffic is counted | `TOTAL_TRAFFIC_CONTRACT_RPM_LIMIT`, `TOTAL_TRAFFIC_CONTRACT_TPM_LIMIT` |
 
-Feature names come from `FEATURE_SMART_WINDOW`, `FEATURE_S2S`, and
-`FEATURE_S2S_ANDROID`. All contract limits default to `0`, meaning no limit for
+Feature names come from `FEATURE_SMART_WINDOW`, `FEATURE_S2S`, `FEATURE_S2S_ANDROID` and `FEATURE_WIDGET_GENERATION`. All contract limits default to `0`, meaning no limit for
 that dimension. A disabled feature limit does not disable an enabled basket limit,
 and vice versa. Counters still increment when the feature is configured and
 contract tracking is enabled, even if its limits are zero.
