@@ -11,6 +11,7 @@ from mlpa.core.config import (
 from mlpa.core.litellm_routing import (
     litellm_model_api_base_from_header,
     parse_litellm_routing_headers,
+    with_usage_cost,
 )
 
 
@@ -90,3 +91,63 @@ def test_parse_litellm_routing_headers_negative_duration():
     h = httpx.Headers({LITELLM_HEADER_RESPONSE_DURATION_MS: "-5"})
     snap = parse_litellm_routing_headers(h)
     assert snap.response_duration_ms is None
+
+
+def test_parse_otari_routing_headers():
+    snapshot = parse_litellm_routing_headers(
+        httpx.Headers(
+            {
+                "Otari-Provider": "vertex_global",
+                "Otari-Attempt-Count": "2",
+                "Otari-Fallback": "true",
+                "Otari-Response-Duration-Ms": "1899",
+            }
+        )
+    )
+
+    assert snapshot.backend == "vertex_global"
+    assert snapshot.attempted_fallbacks == 1
+    assert snapshot.attempted_retries == 0
+    assert snapshot.response_duration_ms == 1899.0
+    assert snapshot.response_cost_usd is None
+
+
+def test_parse_otari_routing_headers_first_candidate():
+    snapshot = parse_litellm_routing_headers(
+        httpx.Headers(
+            {
+                "Otari-Provider": "vertex_ai",
+                "Otari-Attempt-Count": "1",
+                "Otari-Fallback": "false",
+            }
+        )
+    )
+
+    assert snapshot.backend == "vertex_ai"
+    assert snapshot.attempted_fallbacks == 0
+
+
+@pytest.mark.parametrize(
+    ("usage", "expected"),
+    [
+        ({"cost_usd": 0.005, "prompt_tokens": 0}, 0.005),
+        ({"prompt_tokens": 3}, None),
+        ({"cost_usd": -1.0}, None),
+        ({"cost_usd": True}, None),
+        (None, None),
+    ],
+)
+def test_with_usage_cost_reads_otari_cost(usage, expected):
+    snapshot = parse_litellm_routing_headers(
+        httpx.Headers({"Otari-Provider": "exa_answers"})
+    )
+
+    assert with_usage_cost(snapshot, usage).response_cost_usd == expected
+
+
+def test_with_usage_cost_keeps_a_header_cost():
+    snapshot = parse_litellm_routing_headers(
+        httpx.Headers({LITELLM_HEADER_RESPONSE_COST: "0.25"})
+    )
+
+    assert with_usage_cost(snapshot, {"cost_usd": 0.5}).response_cost_usd == 0.25

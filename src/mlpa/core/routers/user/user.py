@@ -9,8 +9,11 @@ from mlpa.core.config import (
     ADMIN_UNAUTHORIZED_RESPONSE,
     LITELLM_MASTER_AUTH_HEADERS,
     UNKNOWN_SERVICE_TYPE_RESPONSE,
+    USE_OTARI,
     USER_NOT_FOUND_RESPONSE,
+    admin_key,
     env,
+    ui_access_key,
 )
 from mlpa.core.http_client import get_http_client
 from mlpa.core.logger import logger
@@ -23,8 +26,12 @@ router = APIRouter()
 def require_master_key(
     master_key: Annotated[str, Header(alias="master_key")],
 ) -> None:
+    expected = admin_key()
+    if expected is None:
+        logger.warning("Admin route refused: MLPA_ADMIN_KEY is not set")
+        raise HTTPException(status_code=401, detail={"error": "Unauthorized"})
     try:
-        if not secrets.compare_digest(master_key, f"Bearer {env.MASTER_KEY}"):
+        if not secrets.compare_digest(master_key, f"Bearer {expected}"):
             raise HTTPException(status_code=401, detail={"error": "Unauthorized"})
     except HTTPException:
         raise
@@ -36,10 +43,12 @@ def require_master_key(
 def require_ui_access_key(
     mlpa_ui_access_key: Annotated[str, Header(alias="mlpa_ui_access_key")],
 ) -> None:
+    expected = ui_access_key()
+    if expected is None:
+        logger.warning("Admin UI route refused: MLPA_UI_ACCESS_KEY is not set")
+        raise HTTPException(status_code=401, detail={"error": "Unauthorized"})
     try:
-        if not secrets.compare_digest(
-            mlpa_ui_access_key, f"Bearer {env.MLPA_UI_ACCESS_KEY}"
-        ):
+        if not secrets.compare_digest(mlpa_ui_access_key, f"Bearer {expected}"):
             raise HTTPException(status_code=401, detail={"error": "Unauthorized"})
     except HTTPException:
         raise
@@ -86,6 +95,12 @@ async def signup_cap_status(
 async def user_info(user_id: str):
     if not user_id or user_id.strip() == "":
         raise HTTPException(status_code=404, detail="User not found")
+
+    if USE_OTARI:
+        user = await litellm_pg.get_user(user_id)
+        if not user:
+            raise HTTPException(status_code=404, detail="User not found")
+        return user
 
     client = get_http_client()
     params = {"end_user_id": user_id}

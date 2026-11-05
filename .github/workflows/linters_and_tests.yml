@@ -99,6 +99,18 @@ jobs:
       - name: Run LiteLLM compatibility tests
         uses: ./.github/actions/litellm-compatibility
 
+  # Tests MLPA with GATEWAY_BACKEND=otari against a real Otari, at the image
+  # otari_docker_compose.yaml pins, behind a fake provider -- the Otari
+  # counterpart of litellm-compatibility-tests.
+  otari-compatibility-tests:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Run Otari compatibility tests
+        uses: ./.github/actions/otari-compatibility
+
   build-and-verify-docs:
     runs-on: ubuntu-latest
     steps:
