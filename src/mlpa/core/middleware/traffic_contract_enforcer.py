@@ -1,8 +1,11 @@
 from fastapi import HTTPException, Request
 
+from mlpa.core.classes import AuthorizedChatRequest, AuthorizedSearchRequest
 from mlpa.core.config import ERROR_CODE_TRAFFIC_CONTRACT_EXCEEDED, env
 from mlpa.core.consts import TrafficContractMode
 from mlpa.core.logger import logger
+from mlpa.core.metrics import record_availability
+from mlpa.core.prometheus_metrics import AvailabilityReason
 from mlpa.core.request_timings import measure
 from mlpa.core.services.services import redis_service
 
@@ -29,14 +32,14 @@ def _set_traffic_contract_modes(
 
 async def enforce_traffic_contract(
     request: Request,
-    service_type: str,
+    authorized_request: AuthorizedSearchRequest | AuthorizedChatRequest,
 ) -> None:
     with measure("traffic_contract", request):
         _set_traffic_contract_modes(request)
 
         if not env.ENABLE_TRAFFIC_CONTRACT_ENFORCEMENT:
             return
-
+        service_type = authorized_request.service_type
         contract = env.traffic_contract_config.get(service_type)
         if contract is None:
             return
@@ -57,12 +60,6 @@ async def enforce_traffic_contract(
                 rpm_window_seconds=env.TRAFFIC_CONTRACT_RPM_WINDOW_SECONDS,
                 tpm_window_seconds=env.TRAFFIC_CONTRACT_TPM_WINDOW_SECONDS,
             )
-
-            _set_traffic_contract_modes(
-                request,
-                rpm_mode=rpm_decision.mode,
-                tpm_mode=tpm_decision.mode,
-            )
         except Exception as exc:
             logger.error(
                 "Traffic contract enforcement failed for "
@@ -75,28 +72,22 @@ async def enforce_traffic_contract(
                 detail={"error": "Traffic contract enforcement unavailable."},
             ) from exc
 
-        if not rpm_decision.allowed:
+        _set_traffic_contract_modes(
+            request, rpm_mode=rpm_decision.mode, tpm_mode=tpm_decision.mode
+        )
+        for dimension, decision in (("RPM", rpm_decision), ("TPM", tpm_decision)):
+            if decision.allowed:
+                continue
             logger.warning(
-                "RPM Traffic contract exceeded for "
+                f"{dimension} Traffic contract exceeded for "
                 f"service_type={service_type}, "
-                f"feature={contract['feature']}, limited_by={rpm_decision.limited_by}, "
-                f"mode={rpm_decision.mode}, ratio_over={rpm_decision.ratio_over}, "
-                f"feature_count={rpm_decision.feature_count}, "
-                f"basket_count={rpm_decision.basket_count}"
+                f"feature={contract['feature']}, limited_by={decision.limited_by}, "
+                f"mode={decision.mode}, ratio_over={decision.ratio_over}, "
+                f"feature_count={decision.feature_count}, "
+                f"basket_count={decision.basket_count}"
             )
-            # Hard deny over limit requests:
             if env.TRAFFIC_CONTRACT_429_IF_NOT_ALLOWED:
-                raise _rate_limit_response(rpm_decision.retry_after_seconds)
-
-        if not tpm_decision.allowed:
-            logger.warning(
-                "TPM Traffic contract exceeded for "
-                f"service_type={service_type}, "
-                f"feature={contract['feature']}, limited_by={tpm_decision.limited_by}, "
-                f"mode={tpm_decision.mode}, ratio_over={tpm_decision.ratio_over}, "
-                f"feature_count={tpm_decision.feature_count}, "
-                f"basket_count={tpm_decision.basket_count}"
-            )
-            # Hard deny over limit requests:
-            if env.TRAFFIC_CONTRACT_429_IF_NOT_ALLOWED:
-                raise _rate_limit_response(tpm_decision.retry_after_seconds)
+                record_availability(
+                    authorized_request, AvailabilityReason.TRAFFIC_CONTRACT_VIOLATION
+                )
+                raise _rate_limit_response(decision.retry_after_seconds)

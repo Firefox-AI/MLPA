@@ -106,6 +106,16 @@ def record_chat_availability_for(
     ).inc()
 
 
+def record_availability(
+    req: AuthorizedChatRequest | AuthorizedSearchRequest,
+    reason: AvailabilityReason,
+) -> None:
+    if isinstance(req, AuthorizedChatRequest):
+        record_chat_availability(req, reason)
+    else:
+        record_search_availability(req, reason)
+
+
 def record_chat_availability(
     req: AuthorizedChatRequest, reason: AvailabilityReason
 ) -> None:

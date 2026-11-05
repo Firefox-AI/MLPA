@@ -1,16 +1,22 @@
 import pytest
+from pytest_httpx import IteratorStream
 
-from mlpa.core.config import env
+from mlpa.core.completions import get_completion as proxy_completion
+from mlpa.core.config import LITELLM_COMPLETIONS_URL, LITELLM_SEARCH_URL, env
 from mlpa.core.middleware import traffic_contract_enforcer
 from mlpa.core.services.redis_service import TrafficContractDecision
 from tests.consts import SAMPLE_CHAT_REQUEST, TEST_FXA_TOKEN
 
 
-@pytest.mark.parametrize("limited_dimension", ["rpm", "tpm"])
+@pytest.mark.parametrize("endpoint", ["chat", "stream", "search"])
+@pytest.mark.parametrize("limited_dimension", ["rpm", "tpm", "both"])
 @pytest.mark.parametrize("hard_deny", [False, True])
-def test_chat_completion_traffic_contract_denial_respects_flag(
+def test_traffic_contract_denial_records_availability_once(
     mocked_client_integration,
     mocker,
+    httpx_mock,
+    metrics_spy,
+    endpoint,
     limited_dimension,
     hard_deny,
 ):
@@ -22,7 +28,7 @@ def test_chat_completion_traffic_contract_denial_respects_flag(
         mocker.AsyncMock(
             return_value=(
                 TrafficContractDecision(
-                    allowed=limited_dimension != "rpm",
+                    allowed=limited_dimension == "tpm",
                     feature_count=10_000,
                     basket_count=10_000,
                     retry_after_seconds=42,
@@ -31,10 +37,13 @@ def test_chat_completion_traffic_contract_denial_respects_flag(
                     ratio_over=1.1,
                 ),
                 TrafficContractDecision(
-                    allowed=limited_dimension != "tpm",
-                    feature_count=0,
-                    basket_count=0,
+                    allowed=limited_dimension == "rpm",
+                    feature_count=10_000,
+                    basket_count=10_000,
                     retry_after_seconds=17,
+                    limited_by="basket",
+                    mode="degraded",
+                    ratio_over=1.2,
                 ),
             )
         ),
@@ -44,29 +53,81 @@ def test_chat_completion_traffic_contract_denial_respects_flag(
         "inc_traffic_contract",
         mocker.AsyncMock(),
     )
-    get_completion = mocker.patch(
-        "mlpa.run.get_completion",
-        mocker.AsyncMock(return_value={"id": "chatcmpl-test"}),
+    # Use the actual completion handler so continuation records its own outcome.
+    mocker.patch("mlpa.run.get_completion", side_effect=proxy_completion)
+    service_type = "search" if endpoint == "search" else "ai"
+    if not hard_deny:
+        if endpoint == "search":
+            httpx_mock.add_response(
+                method="POST",
+                url=f"{LITELLM_SEARCH_URL}/exa-search",
+                json={"results": []},
+            )
+        elif endpoint == "stream":
+            httpx_mock.add_response(
+                method="POST",
+                url=LITELLM_COMPLETIONS_URL,
+                stream=IteratorStream(
+                    [
+                        b'data: {"choices":[{"delta":{"content":"ok"}}]}\n\n',
+                        b"data: [DONE]\n\n",
+                    ]
+                ),
+            )
+        else:
+            httpx_mock.add_response(
+                method="POST",
+                url=LITELLM_COMPLETIONS_URL,
+                json={"choices": [{"message": {"role": "assistant", "content": "ok"}}]},
+            )
+    body = (
+        {"query": "weather", "max_results": 3}
+        if endpoint == "search"
+        else {
+            **SAMPLE_CHAT_REQUEST.model_dump(exclude_unset=True),
+            "stream": endpoint == "stream",
+        }
     )
-
     response = mocked_client_integration.post(
-        "/v1/chat/completions",
+        "/v1/search" if endpoint == "search" else "/v1/chat/completions",
         headers={
             "authorization": f"Bearer {TEST_FXA_TOKEN}",
-            "service-type": "ai",
-            "purpose": "chat",
+            "service-type": service_type,
+            "purpose": "" if endpoint == "search" else "chat",
+            "X-Geo-Country": "US",
         },
-        json=SAMPLE_CHAT_REQUEST.model_dump(exclude_unset=True),
+        json=body,
     )
-
     if hard_deny:
         assert response.status_code == 429
         assert response.json() == {"detail": {"error": 13}}
         assert response.headers["Retry-After"] == (
-            "42" if limited_dimension == "rpm" else "17"
+            "17" if limited_dimension == "tpm" else "42"
         )
-        get_completion.assert_not_awaited()
+        assert not httpx_mock.get_requests()
     else:
         assert response.status_code == 200
-        assert response.json() == {"id": "chatcmpl-test"}
-        get_completion.assert_awaited_once()
+        assert len(httpx_mock.get_requests()) == 1
+
+    metric = "search_availability" if endpoint == "search" else "chat_availability"
+    samples = [s for s in metrics_spy.samples(metric) if s.name.endswith("_total")]
+    assert len(samples) == 1
+    assert samples[0].value == 1
+    assert samples[0].labels["reason"] == (
+        "traffic_contract_violation" if hard_deny else "valid_response"
+    )
+    assert samples[0].labels["outcome"] == ("excluded" if hard_deny else "success")
+    assert samples[0].labels["service_type"] == service_type
+    country_samples = [
+        s
+        for s in metrics_spy.samples(f"{metric}_by_country")
+        if s.name.endswith("_total")
+    ]
+    assert len(country_samples) == 1
+    assert country_samples[0].value == 1
+    assert country_samples[0].labels["client_country"] == "US"
+    assert country_samples[0].labels["outcome"] == samples[0].labels["outcome"]
+    other_metric = (
+        "chat_availability" if endpoint == "search" else "search_availability"
+    )
+    assert not metrics_spy.samples(other_metric)
