@@ -241,6 +241,7 @@ class Env(BaseSettings):
     TRAFFIC_CONTRACT_TPM_WINDOW_SECONDS: int = 60
     TRAFFIC_CONTRACT_COUNTER_TTL_SECONDS: int = 120
     TRAFFIC_CONTRACT_FAIL_OPEN_ON_REDIS_ERROR: bool = True
+    TRAFFIC_CONTRACT_429_IF_NOT_ALLOWED: bool = False
 
     # Global RPM/TPM limit (0 means no limit)
     TOTAL_TRAFFIC_CONTRACT_RPM_LIMIT: int = 0
@@ -850,10 +851,13 @@ ERROR_CODE_GLOBAL_BUDGET_LIMIT_EXCEEDED: int = 10
 ERROR_CODE_GUEST_BUDGET_LIMIT_EXCEEDED: int = 11
 ERROR_CODE_MAX_GUESTS_REACHED: int = 12
 
+# Traffic Contract exceeded
+ERROR_CODE_TRAFFIC_CONTRACT_EXCEEDED: int = 13
+
 ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
     429: {
         "description": (
-            "Too Many Requests — budget or rate limit exceeded from MLPA/LiteLLM, "
+            "Too Many Requests — budget, rate limit, or traffic contract exceeded from MLPA/LiteLLM, "
             "or HTTP 429 from the Fastly WAF in front of MLPA (body `error`: 6)."
         ),
         "content": {
@@ -866,7 +870,8 @@ ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
                             "description": (
                                 "Error code: 1 budget limit exceeded, 2 rate limit (TPM/RPM), "
                                 "5 upstream provider rate limit, 6 Fastly WAF rate limit (edge; not from MLPA), "
-                                "10 global budget limit exceeded, 11 guest budget limit exceeded"
+                                "10 global budget limit exceeded, 11 guest budget limit exceeded, "
+                                "13 traffic contract exceeded"
                             ),
                         }
                     },
@@ -882,6 +887,16 @@ ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
                         "summary": "Rate limit exceeded",
                         "value": {"error": ERROR_CODE_RATE_LIMIT_EXCEEDED},
                         "description": "Rate limit exceeded (TPM/RPM). Check Retry-After header (60 seconds).",
+                    },
+                    "traffic_contract_exceeded": {
+                        "summary": "Traffic contract exceeded",
+                        "value": {"error": ERROR_CODE_TRAFFIC_CONTRACT_EXCEEDED},
+                        "description": (
+                            "Feature or shared-basket RPM/TPM contract exceeded. "
+                            "Returned when ENABLE_TRAFFIC_CONTRACT_ENFORCEMENT and "
+                            "TRAFFIC_CONTRACT_429_IF_NOT_ALLOWED are enabled. "
+                            "Retry-After is the number of seconds until the exceeded counter's next window."
+                        ),
                     },
                     "upstream_rate_limit_exceeded": {
                         "summary": "Upstream rate limit exceeded",
