@@ -1,10 +1,18 @@
 from fastapi import HTTPException, Request
 
-from mlpa.core.config import env
+from mlpa.core.config import ERROR_CODE_TRAFFIC_CONTRACT_EXCEEDED, env
 from mlpa.core.consts import TrafficContractMode
 from mlpa.core.logger import logger
 from mlpa.core.request_timings import measure
 from mlpa.core.services.services import redis_service
+
+
+def _rate_limit_response(retry_after_seconds: int) -> HTTPException:
+    return HTTPException(
+        status_code=429,
+        detail={"error": ERROR_CODE_TRAFFIC_CONTRACT_EXCEEDED},
+        headers={"Retry-After": str(retry_after_seconds)},
+    )
 
 
 def _set_traffic_contract_modes(
@@ -77,7 +85,8 @@ async def enforce_traffic_contract(
                 f"basket_count={rpm_decision.basket_count}"
             )
             # Hard deny over limit requests:
-            # raise _rate_limit_response(rpm_decision.retry_after_seconds)
+            if env.TRAFFIC_CONTRACT_429_IF_NOT_ALLOWED:
+                raise _rate_limit_response(rpm_decision.retry_after_seconds)
 
         if not tpm_decision.allowed:
             logger.warning(
@@ -89,4 +98,5 @@ async def enforce_traffic_contract(
                 f"basket_count={tpm_decision.basket_count}"
             )
             # Hard deny over limit requests:
-            # raise _rate_limit_response(tpm_decision.retry_after_seconds)
+            if env.TRAFFIC_CONTRACT_429_IF_NOT_ALLOWED:
+                raise _rate_limit_response(tpm_decision.retry_after_seconds)

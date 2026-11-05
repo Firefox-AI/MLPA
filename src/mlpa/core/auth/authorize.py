@@ -14,7 +14,12 @@ from mlpa.core.classes import (
     SearchRequest,
     ServiceType,
 )
-from mlpa.core.config import ERROR_CODE_INVALID_MODEL_NAME, env
+from mlpa.core.config import (
+    ERROR_CODE_INVALID_MODEL_NAME,
+    VirtualKeyConfigurationError,
+    env,
+    resolve_litellm_virtual_key,
+)
 from mlpa.core.metrics import (
     record_chat_availability_for,
     record_search_availability_for,
@@ -52,20 +57,6 @@ def _resolve_custom_virtual_key(virtual_key_header: str | None) -> str | None:
     if not key:
         return None
     return key
-
-
-def guest_virtual_key() -> str:
-    """
-    LiteLLM key for requests authenticated with an MLPA guest token.
-
-    Only call it after the guest token is verified, never from client headers.
-    Never falls back to MLPA_VIRTUAL_KEY, that would bill guests to FxA users.
-    """
-    if not env.MLPA_GUEST_VIRTUAL_KEY:
-        raise HTTPException(
-            status_code=503, detail={"error": "Guest access is not configured."}
-        )
-    return env.MLPA_GUEST_VIRTUAL_KEY
 
 
 def _resolve_purpose(service_type_value: str, purpose_header: str | None) -> str:
@@ -123,7 +114,7 @@ def _authorize_guest(
     return authorized.model_copy(
         update={
             "service_type": guest_service_type,
-            "litellm_virtual_key": guest_virtual_key(),
+            "litellm_virtual_key": resolve_litellm_virtual_key(guest_service_type),
         }
     )
 
@@ -255,7 +246,7 @@ async def authorize_chat_request(
             )
 
     try:
-        return await _authorize_common_request(
+        authorized = await _authorize_common_request(
             request=request,
             build_authorized_request=lambda user, purpose_value: AuthorizedChatRequest(
                 user=user,
@@ -273,6 +264,13 @@ async def authorize_chat_request(
             use_qa_certificates=use_qa_certificates,
             use_play_integrity=use_play_integrity,
         )
+        # Guest keys were resolved above; custom keys were normalized already.
+        # Check defaults before the route can start a streaming response.
+        if authorized.litellm_virtual_key is None:
+            resolve_litellm_virtual_key(authorized.service_type)
+        return authorized
+    except VirtualKeyConfigurationError as exc:
+        raise HTTPException(status_code=503, detail={"error": str(exc)}) from exc
     except HTTPException as exc:
         # Only record terminal HTTP failures from the shared auth call:
         # - 401: expected or normalized auth rejection (bad creds, expired token, etc.),
@@ -318,7 +316,7 @@ async def authorize_search_request(
         client_country = get_client_country(request)
         custom_virtual_key = _resolve_custom_virtual_key(litellm_virtual_key)
     try:
-        return await _authorize_common_request(
+        authorized = await _authorize_common_request(
             request=request,
             build_authorized_request=lambda user,
             purpose_value: AuthorizedSearchRequest(
@@ -337,6 +335,13 @@ async def authorize_search_request(
             use_qa_certificates=use_qa_certificates,
             use_play_integrity=use_play_integrity,
         )
+        # Guest keys were resolved above; custom keys were normalized already.
+        # Check defaults before the route can start a streaming response.
+        if authorized.litellm_virtual_key is None:
+            resolve_litellm_virtual_key(authorized.service_type)
+        return authorized
+    except VirtualKeyConfigurationError as exc:
+        raise HTTPException(status_code=503, detail={"error": str(exc)}) from exc
     except HTTPException as exc:
         # As for chat, normalized 401s are excluded, including backend failures
         # that auth cannot currently distinguish from invalid credentials.

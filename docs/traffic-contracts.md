@@ -6,9 +6,12 @@ Traffic contracts classify feature traffic against shared Redis fixed-window
 request and token counters. Windows default to 60 seconds. Each feature has an
 RPM and TPM contract, and all participating features share a total **basket**.
 
-The current behavior is observational: over-contract requests continue. There is
-no contract-based HTTP 429 or soft degradation yet. Decisions are logged and
-attached to `mlpa_requests_total` as `traffic_contract_rpm_mode` and
+By default, over-contract requests continue. With both
+`ENABLE_TRAFFIC_CONTRACT_ENFORCEMENT` and `TRAFFIC_CONTRACT_429_IF_NOT_ALLOWED`
+enabled, an exceeded RPM or TPM contract returns HTTP 429 with
+`ERROR_CODE_TRAFFIC_CONTRACT_EXCEEDED = 13` in `detail.error`. The `Retry-After`
+header gives the seconds until the exceeded counter's next window. Decisions are
+logged and attached to `mlpa_requests_total` as `traffic_contract_rpm_mode` and
 `traffic_contract_tpm_mode`.
 
 | Mode | Meaning | `allowed` |
@@ -17,8 +20,8 @@ attached to `mlpa_requests_total` as `traffic_contract_rpm_mode` and
 | `borrowed` | Feature exceeds its contract, but the basket does not exceed its limit | `False` |
 | `degraded` | Basket exceeds its limit, regardless of feature usage | `False` |
 
-`allowed=False` describes the contract decision; it does not currently stop the
-request. RPM and TPM receive independent decisions and can have different modes.
+`allowed=False` stops the request only when `TRAFFIC_CONTRACT_429_IF_NOT_ALLOWED`
+is enabled. RPM and TPM receive independent decisions and can have different modes.
 
 The flow is **check RPM/TPM → call upstream → increment RPM/TPM**. Checking and
 incrementing are separate because actual token usage is only available after the
@@ -36,10 +39,10 @@ It is keyed by service type for request lookup, but Redis stores counts by
 | `smart-window` | `ai`, `memories`, `search`, `answer`, `sw-answer`, `liner-answer`, `telemetry`, `agent`, `agent-search`, `ai-dev`, `memories-dev`, `mochi-dev`, `search-dev` | `SMART_WINDOW_TRAFFIC_CONTRACT_RPM_LIMIT`, `SMART_WINDOW_TRAFFIC_CONTRACT_TPM_LIMIT` |
 | `s2s` | `s2s` | `S2S_TRAFFIC_CONTRACT_RPM_LIMIT`, `S2S_TRAFFIC_CONTRACT_TPM_LIMIT` |
 | `s2s-android` | `s2s-android` | `S2S_ANDROID_TRAFFIC_CONTRACT_RPM_LIMIT`, `S2S_ANDROID_TRAFFIC_CONTRACT_TPM_LIMIT` |
+| `widget-generation` | `widget-generation` | `WIDGET_GENERATION_TRAFFIC_CONTRACT_RPM_LIMIT`, `WIDGET_GENERATION_TRAFFIC_CONTRACT_TPM_LIMIT` |
 | Shared basket | All features whose traffic is counted | `TOTAL_TRAFFIC_CONTRACT_RPM_LIMIT`, `TOTAL_TRAFFIC_CONTRACT_TPM_LIMIT` |
 
-Feature names come from `FEATURE_SMART_WINDOW`, `FEATURE_S2S`, and
-`FEATURE_S2S_ANDROID`. All contract limits default to `0`, meaning no limit for
+Feature names come from `FEATURE_SMART_WINDOW`, `FEATURE_S2S`, `FEATURE_S2S_ANDROID` and `FEATURE_WIDGET_GENERATION`. All contract limits default to `0`, meaning no limit for
 that dimension. A disabled feature limit does not disable an enabled basket limit,
 and vice versa. Counters still increment when the feature is configured and
 contract tracking is enabled, even if its limits are zero.
@@ -51,6 +54,7 @@ as `normal` can still be rejected by those other controls.
 | Setting | Default | Purpose |
 | --- | --- | --- |
 | `ENABLE_TRAFFIC_CONTRACT_ENFORCEMENT` | `False` | Enable Redis connection, checks, and counter updates; does not enable over-contract rejection |
+| `TRAFFIC_CONTRACT_429_IF_NOT_ALLOWED` | `False` | Reject over-contract requests with HTTP 429 and error code `13` when tracking is enabled |
 | `TRAFFIC_CONTRACT_REDIS_KEY_PREFIX` | `mlpa:traffic_contract` | Namespace for contract keys |
 | `TRAFFIC_CONTRACT_RPM_WINDOW_SECONDS` | `60` | Fixed request-count window |
 | `TRAFFIC_CONTRACT_TPM_WINDOW_SECONDS` | `60` | Fixed token-count window |
@@ -96,7 +100,9 @@ The decision includes `feature_count`, `basket_count`, `limited_by`, `ratio_over
 and `retry_after_seconds`. Returned RPM counts include the proposed request;
 returned TPM counts reflect already recorded usage. `ratio_over` is count divided
 by the exceeded limit, so `1.1` means 110% of that limit. `retry_after_seconds` is
-time until the next window; it is not currently used to reject or delay requests.
+time until the next window. When rejection is enabled, it supplies the
+`Retry-After` response header. RPM is checked before TPM; if both are exceeded,
+the response uses the RPM retry time.
 
 ### After the upstream call
 
@@ -223,15 +229,17 @@ as Prometheus gauges.
 
 Grafana alerts remain useful for sustained traffic or saturation. The contract
 check additionally makes a feature-versus-basket decision available inside each
-request. Today that supports observing the mode distribution and tuning contract
-limits. Later, it could drive shorter token limits, fewer retries, different
-routing, or wait/jitter behavior. None of those changes are currently applied.
+request. This supports observing the mode distribution, tuning contract limits,
+and optionally rejecting over-contract requests. Later, it could drive shorter
+token limits, fewer retries, different routing, or wait/jitter behavior. None of
+those changes are currently applied.
 
 ## Failure behavior and current limitations
 
 - **Check failures:** with fail-open enabled, log the Redis error and continue with
   `N/A` modes. With fail-open disabled, return HTTP 503. This is distinct from an
-  over-contract decision, which never rejects a request today.
+  over-contract decision, which returns HTTP 429 with error code `13` only when
+  `TRAFFIC_CONTRACT_429_IF_NOT_ALLOWED` is enabled.
 - **Startup failures:** enabling tracking requires a successful Redis connection
   and ping at startup. The request-time fail-open setting does not bypass startup
   connection errors.

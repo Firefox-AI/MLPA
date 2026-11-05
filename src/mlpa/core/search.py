@@ -9,6 +9,7 @@ from starlette.requests import ClientDisconnect
 from mlpa.core.classes import AuthorizedSearchRequest
 from mlpa.core.config import (
     LITELLM_SEARCH_URL,
+    VirtualKeyConfigurationError,
     resolve_litellm_virtual_auth_headers,
 )
 from mlpa.core.errors import classify_upstream_error
@@ -65,7 +66,8 @@ async def _get_search(
             response = await client.post(
                 f"{LITELLM_SEARCH_URL}/exa-search",
                 headers=resolve_litellm_virtual_auth_headers(
-                    authorized_search_request.litellm_virtual_key
+                    authorized_search_request.service_type,
+                    authorized_search_request.litellm_virtual_key,
                 ),
                 json=body,
             )
@@ -121,6 +123,8 @@ async def _get_search(
         result = PrometheusResult.ABORT
         availability_reason = AvailabilityReason.CLIENT_DISCONNECT
         raise
+    except VirtualKeyConfigurationError as exc:
+        raise HTTPException(status_code=503, detail={"error": str(exc)}) from exc
     except HTTPException:
         raise
     except Exception as e:

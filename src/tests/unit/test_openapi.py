@@ -22,6 +22,7 @@ def test_chat_service_type_header_docs_exclude_search_types():
             "liner-answer",
             "telemetry",
             "agent",
+            "widget-generation",
             "ai-dev",
             "memories-dev",
             "mochi-dev",

@@ -29,6 +29,7 @@ def mock_litellm_pg(mocker):
 @pytest.fixture
 def mock_app_attest_pg(mocker):
     mock = AsyncMock()
+    mock.admit_managed_base_identity.return_value = (True, True)
     mocker.patch("mlpa.core.utils.app_attest_pg", mock)
     return mock
 
@@ -153,6 +154,7 @@ async def test_new_user_creation_fails_no_slot_to_release(
     mock_litellm_pg, mock_app_attest_pg, mock_http_client
 ):
     mock_litellm_pg.get_user.side_effect = [None, None]
+    mock_app_attest_pg.admit_managed_base_identity.return_value = (True, False)
 
     with pytest.raises(HTTPException) as exc:
         await get_or_create_user(_USER_ID)
