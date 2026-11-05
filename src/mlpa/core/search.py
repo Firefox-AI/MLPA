@@ -9,6 +9,7 @@ from starlette.requests import ClientDisconnect
 from mlpa.core.classes import AuthorizedSearchRequest
 from mlpa.core.config import (
     LITELLM_SEARCH_URL,
+    USE_OTARI,
     resolve_litellm_virtual_auth_headers,
 )
 from mlpa.core.errors import (
@@ -31,6 +32,10 @@ from mlpa.core.request_timings import measure
 from mlpa.core.sanitization import sanitize_request_body, sanitize_response_body
 from mlpa.core.services.services import redis_service
 from mlpa.core.utils import raise_and_log
+
+# Exa's own filters, which Otari takes under provider_options and would
+# otherwise drop, since it ignores fields its search body doesn't name.
+EXA_FILTERS = ("includeDomains", "excludeDomains", "startPublishedDate", "category")
 
 
 async def get_search(
@@ -57,6 +62,10 @@ async def _get_search(
                 exclude_none=True,
             )
         )
+        if USE_OTARI:
+            filters = {key: body.pop(key) for key in EXA_FILTERS if key in body}
+            if filters:
+                body["provider_options"] = filters
     result = PrometheusResult.ERROR
     availability_reason = AvailabilityReason.UPSTREAM_ERROR
     usage = None
