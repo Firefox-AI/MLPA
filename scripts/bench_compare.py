@@ -154,15 +154,38 @@ def report(
         f"Time per operation; median of {runs} alternating runs per side.",
         f"Base: `{base_label}`. Fails when the PR is more than {pct} slower.",
         "",
-        "| Benchmark | Base | PR | Change | Result |",
-        "|---|---:|---:|---:|---|",
     ]
+    table = [("Benchmark", "Base", "PR", "Change", "Result")]
     for row in rows:
         change = "–" if row.change is None else f"{row.change * 100:+.1f}%"
-        lines.append(
-            f"| `{row.name}` | {fmt_time(row.base)} | {fmt_time(row.pr)} "
-            f"| {change} | {icons[row.status]} |"
+        table.append(
+            (
+                f"`{row.name}`",
+                fmt_time(row.base),
+                fmt_time(row.pr),
+                change,
+                icons[row.status],
+            )
         )
+    widths = [max(len(row[i]) for row in table) for i in range(5)]
+    for i, cells in enumerate(table):
+        lines.append(
+            "| "
+            + " | ".join(
+                cell.rjust(width) if 0 < col < 4 else cell.ljust(width)
+                for col, (cell, width) in enumerate(zip(cells, widths))
+            )
+            + " |"
+        )
+        if i == 0:
+            lines.append(
+                "| "
+                + " | ".join(
+                    "-" * (width - 1) + ":" if 0 < col < 4 else "-" * width
+                    for col, width in enumerate(widths)
+                )
+                + " |"
+            )
     for side in SIDES:
         bad = [(i, c) for i, c in enumerate(exit_codes[side]) if c != 0]
         for i, code in bad:
