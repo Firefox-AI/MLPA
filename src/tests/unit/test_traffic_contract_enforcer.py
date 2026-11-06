@@ -46,9 +46,7 @@ async def test_traffic_contract_noops_when_disabled(mocker):
     )
     request = _request_with_state()
 
-    await traffic_contract_enforcer.enforce_traffic_contract(
-        request, SAMPLE_REQUEST.service_type
-    )
+    await traffic_contract_enforcer.enforce_traffic_contract(request, SAMPLE_REQUEST)
 
     assert request.state.traffic_contract_rpm_mode == "N/A"
     check.assert_not_awaited()
@@ -71,9 +69,7 @@ async def test_traffic_contract_checks_feature_rpm_and_tpm_when_enabled(
     )
     request = _request_with_state()
 
-    await traffic_contract_enforcer.enforce_traffic_contract(
-        request, SAMPLE_REQUEST.service_type
-    )
+    await traffic_contract_enforcer.enforce_traffic_contract(request, SAMPLE_REQUEST)
 
     contract = env.traffic_contract_config[SAMPLE_REQUEST.service_type]
     check.assert_awaited_once_with(
@@ -96,6 +92,7 @@ async def test_traffic_contract_records_borrowed_mode_when_feature_is_over_contr
     mocker,
 ):
     mocker.patch.object(env, "ENABLE_TRAFFIC_CONTRACT_ENFORCEMENT", True)
+    mocker.patch.object(env, "TRAFFIC_CONTRACT_429_IF_NOT_ALLOWED", False)
     mocker.patch.object(
         traffic_contract_enforcer.redis_service,
         "check_feature_traffic_contracts",
@@ -118,9 +115,7 @@ async def test_traffic_contract_records_borrowed_mode_when_feature_is_over_contr
     )
     request = _request_with_state()
 
-    await traffic_contract_enforcer.enforce_traffic_contract(
-        request, SAMPLE_REQUEST.service_type
-    )
+    await traffic_contract_enforcer.enforce_traffic_contract(request, SAMPLE_REQUEST)
 
     update_contracts.assert_not_awaited()
     assert request.state.traffic_contract_rpm_mode == "borrowed"
@@ -128,6 +123,7 @@ async def test_traffic_contract_records_borrowed_mode_when_feature_is_over_contr
 
 async def test_traffic_contract_records_rpm_and_tpm_modes(mocker):
     mocker.patch.object(env, "ENABLE_TRAFFIC_CONTRACT_ENFORCEMENT", True)
+    mocker.patch.object(env, "TRAFFIC_CONTRACT_429_IF_NOT_ALLOWED", False)
     mocker.patch.object(
         traffic_contract_enforcer.redis_service,
         "check_feature_traffic_contracts",
@@ -155,9 +151,7 @@ async def test_traffic_contract_records_rpm_and_tpm_modes(mocker):
     )
     request = _request_with_state()
 
-    await traffic_contract_enforcer.enforce_traffic_contract(
-        request, SAMPLE_REQUEST.service_type
-    )
+    await traffic_contract_enforcer.enforce_traffic_contract(request, SAMPLE_REQUEST)
 
     assert request.state.traffic_contract_rpm_mode == "borrowed"
     assert request.state.traffic_contract_tpm_mode == "degraded"
@@ -178,9 +172,7 @@ async def test_traffic_contract_can_fail_open_on_redis_error(mocker):
     )
     request = _request_with_state()
 
-    await traffic_contract_enforcer.enforce_traffic_contract(
-        request, SAMPLE_REQUEST.service_type
-    )
+    await traffic_contract_enforcer.enforce_traffic_contract(request, SAMPLE_REQUEST)
 
     assert request.state.traffic_contract_rpm_mode == "N/A"
     increment.assert_not_awaited()
@@ -198,7 +190,7 @@ async def test_traffic_contract_fails_closed_on_redis_error(mocker):
     request = _request_with_state()
     with pytest.raises(HTTPException) as exc_info:
         await traffic_contract_enforcer.enforce_traffic_contract(
-            request, SAMPLE_REQUEST.service_type
+            request, SAMPLE_REQUEST
         )
 
     assert exc_info.value.status_code == 503
