@@ -114,6 +114,17 @@ async def stream_completion(
     async def _watch_disconnect() -> None:
         task = asyncio.current_task()
         assert task is not None
+        while True:
+            message = await request.receive()
+            if message["type"] == "http.disconnect":
+                disconnect_event.set()
+                return
+
+            logger.debug(
+                "Unexpected ASGI message in disconnect watcher: %s", message["type"]
+            )
+            break
+
         while not await request.is_disconnected():
             # Starlette's AnyIO cancel scope can swallow task cancellation.
             # Honor the pending cancellation before starting another poll.

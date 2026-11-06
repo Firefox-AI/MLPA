@@ -11,6 +11,7 @@ from fastapi.exception_handlers import http_exception_handler
 from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
+from sentry_sdk.integrations.starlette import StarletteIntegration
 
 from mlpa.core.auth.authorize import authorize_chat_request, authorize_search_request
 from mlpa.core.classes import AuthorizedChatRequest, AuthorizedSearchRequest
@@ -121,6 +122,7 @@ sentry_sdk.init(
     before_send=sentry_scrub_sensitive_fields,
     dsn=env.SENTRY_DSN,
     send_default_pii=False,
+    integrations=[StarletteIntegration(middleware_spans=False)],
 )
 
 app = FastAPI(
