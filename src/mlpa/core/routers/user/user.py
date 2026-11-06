@@ -14,7 +14,7 @@ from mlpa.core.config import (
 )
 from mlpa.core.http_client import get_http_client
 from mlpa.core.logger import logger
-from mlpa.core.services.services import app_attest_pg, litellm_pg
+from mlpa.core.services.services import app_attest_pg, litellm_pg, redis_service
 from mlpa.core.utils import raise_and_log
 
 router = APIRouter()
@@ -80,6 +80,27 @@ async def signup_cap_status(
 ):
     """Managed signup capacity for capped service types (MLPA_UI_ACCESS_KEY)."""
     return await app_attest_pg.get_signup_cap_status()
+
+
+@router.post(
+    "/guests/disable", tags=["User Management"], responses=ADMIN_UNAUTHORIZED_RESPONSE
+)
+async def disable_guests(
+    _: Annotated[None, Depends(require_master_key)] = None,
+):
+    """Guest kill switch: stop issuing and accepting guest tokens. Other pods
+    pick it up within GUEST_KILL_SWITCH_CACHE_TTL_SECONDS."""
+    return {"guests_enabled": await redis_service.set_guests_enabled(False)}
+
+
+@router.post(
+    "/guests/enable", tags=["User Management"], responses=ADMIN_UNAUTHORIZED_RESPONSE
+)
+async def enable_guests(
+    _: Annotated[None, Depends(require_master_key)] = None,
+):
+    """Undo /guests/disable. Stays false while MLPA_GUEST_ENABLED is false."""
+    return {"guests_enabled": await redis_service.set_guests_enabled(True)}
 
 
 @router.get("/{user_id}", tags=["User"], responses=USER_NOT_FOUND_RESPONSE)

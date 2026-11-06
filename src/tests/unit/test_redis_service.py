@@ -1,3 +1,4 @@
+import asyncio
 from unittest.mock import call
 
 from mlpa.core.config import env
@@ -269,3 +270,110 @@ async def test_check_feature_traffic_contracts_returns_rpm_and_tpm_decisions(moc
             2,
         ),
     )
+
+
+# Guest kill switch (AIPLAT-1450)
+
+
+class FakeKVRedis:
+    def __init__(self, values=None, error=None):
+        self.values = values or {}
+        self.error = error
+        self.get_calls = 0
+
+    async def get(self, key):
+        self.get_calls += 1
+        if self.error:
+            raise self.error
+        return self.values.get(key)
+
+    async def set(self, key, value):
+        self.values[key] = value
+
+
+def _kill_switch_service(mocker, fake, now=1000.0):
+    mocker.patch.object(env, "MLPA_GUEST_ENABLED", True)
+    mocker.patch.object(env, "GUEST_KILL_SWITCH_CACHE_TTL_SECONDS", 5)
+    clock = mocker.patch(
+        "mlpa.core.services.redis_service.time.monotonic", return_value=now
+    )
+    service = RedisService()
+    service.redis = fake
+    return service, clock
+
+
+async def test_guests_enabled_env_off_skips_redis(mocker):
+    fake = FakeKVRedis()
+    service, _ = _kill_switch_service(mocker, fake)
+    mocker.patch.object(env, "MLPA_GUEST_ENABLED", False)
+    assert await service.guests_enabled() is False
+    assert fake.get_calls == 0
+
+
+async def test_guests_enabled_follows_flag(mocker):
+    fake = FakeKVRedis()
+    service, clock = _kill_switch_service(mocker, fake)
+    assert await service.guests_enabled() is True
+
+    fake.values[env.GUEST_KILL_SWITCH_REDIS_KEY] = "0"
+    clock.return_value += 5
+    assert await service.guests_enabled() is False
+
+
+async def test_guests_enabled_cached_for_ttl(mocker):
+    fake = FakeKVRedis({env.GUEST_KILL_SWITCH_REDIS_KEY: "0"})
+    service, clock = _kill_switch_service(mocker, fake)
+    assert await service.guests_enabled() is False
+    fake.values[env.GUEST_KILL_SWITCH_REDIS_KEY] = "1"
+    clock.return_value += 4.9
+    assert await service.guests_enabled() is False
+    assert fake.get_calls == 1
+    clock.return_value += 0.1
+    assert await service.guests_enabled() is True
+    assert fake.get_calls == 2
+
+
+async def test_set_guests_enabled_applies_on_this_pod_now(mocker):
+    fake = FakeKVRedis()
+    service, _ = _kill_switch_service(mocker, fake)
+    assert await service.guests_enabled() is True
+    assert await service.set_guests_enabled(False) is False
+    assert fake.values[env.GUEST_KILL_SWITCH_REDIS_KEY] == "0"
+    assert await service.guests_enabled() is False
+
+
+async def test_guests_enabled_fail_open_keeps_last_value(mocker):
+    fake = FakeKVRedis({env.GUEST_KILL_SWITCH_REDIS_KEY: "0"})
+    service, clock = _kill_switch_service(mocker, fake)
+    assert await service.guests_enabled() is False
+
+    fake.error = ConnectionError("redis down")
+    clock.return_value += 5
+    assert await service.guests_enabled() is False
+    # The error result is cached too, a dead Redis isn't hit on every request
+    assert await service.guests_enabled() is False
+    assert fake.get_calls == 2
+
+    # No value read yet → enabled (MLPA_GUEST_ENABLED decides)
+    service, _ = _kill_switch_service(mocker, FakeKVRedis(error=ConnectionError()))
+    assert await service.guests_enabled() is True
+
+
+async def test_guests_enabled_fail_closed(mocker):
+    fake = FakeKVRedis(error=ConnectionError("redis down"))
+    service, _ = _kill_switch_service(mocker, fake)
+    mocker.patch.object(env, "GUEST_KILL_SWITCH_FAIL_OPEN_ON_REDIS_ERROR", False)
+    assert await service.guests_enabled() is False
+
+
+async def test_guests_enabled_hung_redis_times_out(mocker):
+    class HungRedis(FakeKVRedis):
+        async def get(self, key):
+            await asyncio.sleep(10)
+
+    # No clock patch here: asyncio's own timers use time.monotonic
+    mocker.patch.object(env, "MLPA_GUEST_ENABLED", True)
+    mocker.patch.object(env, "GUEST_KILL_SWITCH_REDIS_TIMEOUT_SECONDS", 0.01)
+    service = RedisService()
+    service.redis = HungRedis()
+    assert await asyncio.wait_for(service.guests_enabled(), 1) is True

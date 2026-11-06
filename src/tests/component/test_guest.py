@@ -9,8 +9,10 @@ from mlpa.core.routers.guest.guest import (
     GUEST_TOKEN_HEADERS,
     GUEST_TOKEN_ISSUER,
     GUEST_TOKEN_PREFIX,
+    issue_guest_token,
 )
 from mlpa.core.utils import extract_user_from_play_integrity_jwt
+from tests.consts import SAMPLE_REQUEST, TEST_FXA_TOKEN
 
 
 @pytest.fixture(autouse=True)
@@ -122,3 +124,69 @@ def test_guest_observability_metrics(mocked_client_integration, metrics_spy):
     mocked_client_integration.get("/verify/v1/guest", follow_redirects=False)
     assert metrics_spy.value("guest_tokens_issued_total", flow="json") == 1
     assert metrics_spy.value("guest_tokens_issued_total", flow="redirect") == 2
+
+
+# Guest kill switch (AIPLAT-1450)
+
+
+def _guest_completion(client, token):
+    return client.post(
+        "/v1/chat/completions",
+        headers={"authorization": f"Bearer {token}", "service-type": "ai"},
+        json=SAMPLE_REQUEST.model_dump(),
+    )
+
+
+def _fxa_completion(client):
+    return client.post(
+        "/v1/chat/completions",
+        headers={"authorization": f"Bearer {TEST_FXA_TOKEN}", "service-type": "ai"},
+        json=SAMPLE_REQUEST.model_dump(),
+    )
+
+
+def _flip(client, action, key=None):
+    return client.post(
+        f"/user/guests/{action}",
+        headers={"master_key": key or f"Bearer {env.MASTER_KEY}"},
+    )
+
+
+def test_kill_switch_stops_guests_and_keeps_fxa(
+    mocked_client_integration, mocker, fake_redis, metrics_spy
+):
+    mocker.patch.object(env, "MLPA_GUEST_VIRTUAL_KEY", "sk-guest")
+    client = mocked_client_integration
+    token = issue_guest_token()
+    assert _guest_completion(client, token).status_code == 200
+
+    response = _flip(client, "disable")
+    assert response.status_code == 200
+    assert response.json() == {"guests_enabled": False}
+    assert fake_redis.values[env.GUEST_KILL_SWITCH_REDIS_KEY] == "0"
+
+    assert client.get("/verify/v1/guest").status_code == 404
+    response = _guest_completion(client, token)
+    assert response.status_code == 401
+    assert response.json()["detail"] == "Guest access is disabled"
+    assert _fxa_completion(client).status_code == 200
+    client.get("/metrics")
+    assert metrics_spy.value("guest_enabled") == 0
+
+    assert _flip(client, "enable").json() == {"guests_enabled": True}
+    assert _guest_completion(client, token).status_code == 200
+    client.get("/metrics")
+    assert metrics_spy.value("guest_enabled") == 1
+
+
+def test_kill_switch_needs_master_key(mocked_client_integration, fake_redis):
+    response = _flip(mocked_client_integration, "disable", key="Bearer wrong")
+    assert response.status_code == 401
+    assert env.GUEST_KILL_SWITCH_REDIS_KEY not in fake_redis.values
+
+
+def test_kill_switch_enable_cannot_override_env(mocked_client_integration, mocker):
+    mocker.patch.object(env, "MLPA_GUEST_ENABLED", False)
+    assert _flip(mocked_client_integration, "enable").json() == {
+        "guests_enabled": False
+    }

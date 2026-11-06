@@ -45,7 +45,7 @@ from mlpa.core.middleware import register_middleware
 from mlpa.core.middleware.traffic_contract_enforcer import (
     enforce_traffic_contract,
 )
-from mlpa.core.prometheus_metrics import AvailabilityReason
+from mlpa.core.prometheus_metrics import AvailabilityReason, metrics
 from mlpa.core.routers.appattest import appattest_router
 from mlpa.core.routers.filter import filter_router
 from mlpa.core.routers.guest import guest_router
@@ -70,7 +70,8 @@ async def lifespan(app: FastAPI):
         await app_attest_pg.connect()
         app_attest_connected = True
 
-        if env.ENABLE_TRAFFIC_CONTRACT_ENFORCEMENT:
+        # Guest kill switch (AIPLAT-1450) reads its flag from Redis too
+        if env.ENABLE_TRAFFIC_CONTRACT_ENFORCEMENT or env.MLPA_GUEST_ENABLED:
             await redis_service.connect()
             redis_connected = True
 
@@ -139,6 +140,7 @@ register_middleware(app)
 
 @app.get("/metrics", tags=["Metrics"])
 async def get_metrics():
+    metrics.guest_enabled.set(int(await redis_service.guests_enabled()))
     await app_attest_pg.refresh_capacity_gauges()
     return Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)
 

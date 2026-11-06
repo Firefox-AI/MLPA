@@ -345,7 +345,7 @@ def build_metrics(registry: CollectorRegistry = REGISTRY) -> PrometheusMetrics:
         ),
         guest_enabled=Gauge(
             "mlpa_guest_enabled",
-            "Guest kill switch (MLPA_GUEST_ENABLED): 1 when guest tokens are issued and accepted, else 0.",
+            "Guest kill switch (MLPA_GUEST_ENABLED and Redis flag): 1 when guest tokens are issued and accepted, else 0.",
             registry=registry,
         ),
         users_created_total=Counter(

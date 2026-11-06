@@ -364,7 +364,6 @@ class AppAttestPGService(PGService):
         A slow query keeps running in the background (one at a time) and later
         scrapes pick up its values, until then the last values stay.
         """
-        metrics.guest_enabled.set(int(env.MLPA_GUEST_ENABLED))
         if self._capacity_refresh is None or self._capacity_refresh.done():
             self._capacity_refresh = asyncio.create_task(self._refresh_capacity_rows())
         await asyncio.wait(
