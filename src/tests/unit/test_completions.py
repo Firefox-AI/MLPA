@@ -1951,14 +1951,21 @@ async def test_stream_completion_aclose_from_separate_task_does_not_crash(
 
 async def test_response_aclose_called_once_on_disconnect(mocker, mock_request):
     role_chunk = b'data: {"choices":[{"delta":{"role":"assistant"}}]}\n\n'
+    first_chunk_forwarded = asyncio.Event()
 
     async def _aiter_bytes():
         yield role_chunk
+        first_chunk_forwarded.set()
         await asyncio.Event().wait()  # blocks: simulate waiting on next chunk
+
+    async def _receive():
+        # Client disconnects while the stream waits on the next upstream chunk.
+        await first_chunk_forwarded.wait()
+        return {"type": "http.disconnect"}
 
     capture = {}
     _patch_mock_stream_client(mocker, _aiter_bytes, capture)
-    mock_request.is_disconnected = AsyncMock(side_effect=[False, True])
+    mock_request.receive = _receive
 
     received = [c async for c in stream_completion(mock_request, SAMPLE_REQUEST)]
 
@@ -2117,7 +2124,7 @@ async def test_stream_cleanup_finishes_without_client_disconnect(
     )
     mocker.patch.object(env, "DISCONNECT_POLL_INTERVAL_SECONDS", 0.1)
     messages = asyncio.Queue()
-    poll_during_close = asyncio.Event()
+    watcher_in_receive = asyncio.Event()
     closing_upstream = False
     watch_task = None
     sent = []
@@ -2128,9 +2135,12 @@ async def test_stream_cleanup_finishes_without_client_disconnect(
 
     async def receive():
         nonlocal watch_task
-        watch_task = asyncio.current_task()
-        if closing_upstream:
-            poll_during_close.set()
+        task = asyncio.current_task()
+        # Under ASGI 2.3 Starlette's disconnect listener also calls receive();
+        # only count the watcher.
+        if task.get_coro().__name__ == "_watch_disconnect":
+            watch_task = task
+            watcher_in_receive.set()
         return await messages.get()
 
     async def upstream_chunks():
@@ -2140,7 +2150,9 @@ async def test_stream_cleanup_finishes_without_client_disconnect(
     async def close_upstream():
         nonlocal closing_upstream
         closing_upstream = True
-        await poll_during_close.wait()
+        # Close the upstream only once the watcher is blocked in receive(),
+        # so cleanup cancels it there.
+        await watcher_in_receive.wait()
         if not cancel_during_poll:
             # Allow the poll's internal cancellation to finish first.
             await asyncio.sleep(0.005)
