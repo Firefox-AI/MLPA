@@ -13,6 +13,7 @@ from mlpa.core.routers.guest.guest import (
 )
 from mlpa.core.utils import extract_user_from_play_integrity_jwt
 from tests.consts import SAMPLE_REQUEST, TEST_FXA_TOKEN
+from tests.helpers import mlpa_headers
 
 
 @pytest.fixture(autouse=True)
@@ -129,18 +130,10 @@ def test_guest_observability_metrics(mocked_client_integration, metrics_spy):
 # Guest kill switch (AIPLAT-1450)
 
 
-def _guest_completion(client, token):
+def _completion(client, token):
     return client.post(
         "/v1/chat/completions",
-        headers={"authorization": f"Bearer {token}", "service-type": "ai"},
-        json=SAMPLE_REQUEST.model_dump(),
-    )
-
-
-def _fxa_completion(client):
-    return client.post(
-        "/v1/chat/completions",
-        headers={"authorization": f"Bearer {TEST_FXA_TOKEN}", "service-type": "ai"},
+        headers=mlpa_headers(token),
         json=SAMPLE_REQUEST.model_dump(),
     )
 
@@ -158,7 +151,7 @@ def test_kill_switch_stops_guests_and_keeps_fxa(
     mocker.patch.object(env, "MLPA_GUEST_VIRTUAL_KEY", "sk-guest")
     client = mocked_client_integration
     token = issue_guest_token()
-    assert _guest_completion(client, token).status_code == 200
+    assert _completion(client, token).status_code == 200
 
     response = _flip(client, "disable")
     assert response.status_code == 200
@@ -166,15 +159,15 @@ def test_kill_switch_stops_guests_and_keeps_fxa(
     assert fake_redis.values[env.GUEST_KILL_SWITCH_REDIS_KEY] == "0"
 
     assert client.get("/verify/v1/guest").status_code == 404
-    response = _guest_completion(client, token)
+    response = _completion(client, token)
     assert response.status_code == 401
     assert response.json()["detail"] == "Guest access is disabled"
-    assert _fxa_completion(client).status_code == 200
+    assert _completion(client, TEST_FXA_TOKEN).status_code == 200
     client.get("/metrics")
     assert metrics_spy.value("guest_enabled") == 0
 
     assert _flip(client, "enable").json() == {"guests_enabled": True}
-    assert _guest_completion(client, token).status_code == 200
+    assert _completion(client, token).status_code == 200
     client.get("/metrics")
     assert metrics_spy.value("guest_enabled") == 1
 
@@ -190,3 +183,10 @@ def test_kill_switch_enable_cannot_override_env(mocked_client_integration, mocke
     assert _flip(mocked_client_integration, "enable").json() == {
         "guests_enabled": False
     }
+
+
+def test_kill_switch_redis_down_returns_503(mocked_client_integration, fake_redis):
+    fake_redis.error = ConnectionError("redis down")
+    response = _flip(mocked_client_integration, "disable")
+    assert response.status_code == 503
+    assert "this pod only" in response.json()["detail"]["error"]

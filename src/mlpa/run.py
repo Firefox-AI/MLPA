@@ -1,3 +1,4 @@
+import asyncio
 import importlib.metadata
 import json
 from contextlib import asynccontextmanager
@@ -140,8 +141,10 @@ register_middleware(app)
 
 @app.get("/metrics", tags=["Metrics"])
 async def get_metrics():
-    metrics.guest_enabled.set(int(await redis_service.guests_enabled()))
-    await app_attest_pg.refresh_capacity_gauges()
+    guests_enabled, _ = await asyncio.gather(
+        redis_service.guests_enabled(), app_attest_pg.refresh_capacity_gauges()
+    )
+    metrics.guest_enabled.set(int(guests_enabled))
     return Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
 

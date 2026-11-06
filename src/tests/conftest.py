@@ -39,24 +39,12 @@ def _force_mlpa_debug_false():
     monkeypatch.undo()
 
 
-class FakeKVRedis:
-    """Minimal get/set Redis stand-in for the guest kill switch."""
-
-    def __init__(self):
-        self.values = {}
-
-    async def get(self, key):
-        return self.values.get(key)
-
-    async def set(self, key, value):
-        self.values[key] = value
-
-
 @pytest.fixture(autouse=True)
 def fake_redis(monkeypatch):
     # The guest kill switch reads Redis on every guest request. Give each test
     # a clean store and an empty kill switch cache.
     from mlpa.core.services.services import redis_service
+    from tests.mocks import FakeKVRedis
 
     fake = FakeKVRedis()
     monkeypatch.setattr(redis_service, "redis", fake)
