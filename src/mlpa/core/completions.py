@@ -120,8 +120,8 @@ async def stream_completion(
                 disconnect_event.set()
                 return
 
-            logger.debug(
-                "Unexpected ASGI message in disconnect watcher: %s", message["type"]
+            log.debug(
+                "Unexpected ASGI message in disconnect watcher: {}", message["type"]
             )
             break
 
