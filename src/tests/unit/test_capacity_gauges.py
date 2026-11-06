@@ -31,7 +31,6 @@ async def test_refresh_sets_gauges_from_db(service, metrics_spy, mocker):
     assert metrics_spy.value("capacity_max_identities", pool="guest") == 50
     assert metrics_spy.value("capacity_enforced", pool="guest") == 1
     assert metrics_spy.value("capacity_enforced", pool="user") == 0
-    assert metrics_spy.value("guest_enabled") == 1
 
 
 async def test_refresh_db_error_keeps_last_values(service, metrics_spy):

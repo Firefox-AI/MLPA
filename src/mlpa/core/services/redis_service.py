@@ -61,6 +61,65 @@ return {feature_count, basket_count}
 class RedisService:
     def __init__(self):
         self.redis: Any | None = None
+        # Guest kill switch: last known value and when to re-read it from Redis
+        self._guests_enabled = True
+        self._guests_enabled_expires_at = 0.0
+
+    async def guests_enabled(self) -> bool:
+        """MLPA_GUEST_ENABLED and the Redis flag isn't "0". Cached per pod for
+        GUEST_KILL_SWITCH_CACHE_TTL_SECONDS."""
+        if not env.MLPA_GUEST_ENABLED:
+            return False
+        now = time.monotonic()
+        if now < self._guests_enabled_expires_at:
+            return self._guests_enabled
+        expires_at = self._guests_enabled_expires_at
+        try:
+            # Bounded so a hung Redis can't hang guest requests or /metrics
+            value = await asyncio.wait_for(
+                self.get(env.GUEST_KILL_SWITCH_REDIS_KEY),
+                env.GUEST_KILL_SWITCH_REDIS_TIMEOUT_SECONDS,
+            )
+            enabled = value != "0"
+        except Exception as e:
+            logger.error(f"Guest kill switch read failed: {e}")
+            # Fail open keeps the last known value. Either way it's cached for
+            # the TTL, so a dead Redis isn't hit on every request.
+            enabled = (
+                self._guests_enabled
+                if env.GUEST_KILL_SWITCH_FAIL_OPEN_ON_REDIS_ERROR
+                else False
+            )
+        if self._guests_enabled_expires_at != expires_at:
+            # set_guests_enabled (or another read) landed while we waited, our
+            # value may be older than theirs
+            return self._guests_enabled
+        self._guests_enabled = enabled
+        self._guests_enabled_expires_at = now + env.GUEST_KILL_SWITCH_CACHE_TTL_SECONDS
+        return enabled
+
+    async def set_guests_enabled(self, enabled: bool) -> bool:
+        """Applies on this pod first, so it works even when Redis is down. 503
+        if the Redis write fails, other pods didn't get it then."""
+        self._guests_enabled = enabled
+        self._guests_enabled_expires_at = (
+            time.monotonic() + env.GUEST_KILL_SWITCH_CACHE_TTL_SECONDS
+        )
+        try:
+            await asyncio.wait_for(
+                self.set(env.GUEST_KILL_SWITCH_REDIS_KEY, "1" if enabled else "0"),
+                env.GUEST_KILL_SWITCH_REDIS_TIMEOUT_SECONDS,
+            )
+        except Exception as e:
+            # Local import: utils imports services, which imports this module
+            from mlpa.core.utils import raise_and_log
+
+            raise_and_log(
+                e,
+                response_code=503,
+                response_text_prefix="Redis write failed. Applied on this pod only, other pods didn't get it.",
+            )
+        return env.MLPA_GUEST_ENABLED and enabled
 
     async def connect(self):
         self.redis = aioredis.Redis(

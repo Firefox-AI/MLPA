@@ -37,3 +37,24 @@ def _force_mlpa_debug_false():
     env.ADDITIONAL_FXA_SCOPE_3 = ""
     yield
     monkeypatch.undo()
+
+
+@pytest.fixture(autouse=True)
+def fake_redis(monkeypatch):
+    # The guest kill switch reads Redis on every guest request. Give each test
+    # a clean store and an empty kill switch cache.
+    from mlpa.core.services.services import redis_service
+    from tests.mocks import FakeKVRedis
+
+    fake = FakeKVRedis()
+    monkeypatch.setattr(redis_service, "redis", fake)
+
+    async def _noop():
+        pass
+
+    # Lifespan connects when MLPA_GUEST_ENABLED, keep tests off a real Redis
+    monkeypatch.setattr(redis_service, "connect", _noop)
+    monkeypatch.setattr(redis_service, "close", _noop)
+    monkeypatch.setattr(redis_service, "_guests_enabled", True)
+    monkeypatch.setattr(redis_service, "_guests_enabled_expires_at", 0.0)
+    return fake

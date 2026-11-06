@@ -387,3 +387,23 @@ class MockFxAClientForMockRouter:
     def set_api_exception(self, exception):
         """Set an exception that apiclient.get should raise."""
         self.apiclient.get.side_effect = exception
+
+
+class FakeKVRedis:
+    """Minimal get/set Redis stand-in for the guest kill switch."""
+
+    def __init__(self, values=None, error=None):
+        self.values = values or {}
+        self.error = error
+        self.get_calls = 0
+
+    async def get(self, key):
+        self.get_calls += 1
+        if self.error:
+            raise self.error
+        return self.values.get(key)
+
+    async def set(self, key, value):
+        if self.error:
+            raise self.error
+        self.values[key] = value

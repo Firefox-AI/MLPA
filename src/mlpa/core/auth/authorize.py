@@ -31,6 +31,7 @@ from mlpa.core.routers.guest.guest import (
     is_guest_token,
     verify_guest_token,
 )
+from mlpa.core.services.services import redis_service
 from mlpa.core.utils import (
     extract_user_from_play_integrity_jwt,
     get_client_country,
@@ -91,13 +92,15 @@ def _resolve_purpose(service_type_value: str, purpose_header: str | None) -> str
     return ""
 
 
-def _authorize_guest(
+async def _authorize_guest(
     request: Request,
     build_authorized_request: Callable[[str, str], TAuthorizedRequest],
     authorization: str,
     service_type: ServiceType,
     purpose_value: str,
 ) -> TAuthorizedRequest:
+    if not await redis_service.guests_enabled():
+        raise HTTPException(status_code=401, detail="Guest access is disabled")
     with measure("auth_check", request):
         guest_id = verify_guest_token(authorization)
     guest_service_type = f"{service_type.value}-guest"
@@ -157,7 +160,7 @@ async def _authorize_common_request(
             f"{play_user_id}:{service_type.value}", purpose_value
         )
     if is_guest_token(authorization):
-        return _authorize_guest(
+        return await _authorize_guest(
             request,
             build_authorized_request,
             authorization,

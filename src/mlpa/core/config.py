@@ -243,6 +243,13 @@ class Env(BaseSettings):
     TRAFFIC_CONTRACT_FAIL_OPEN_ON_REDIS_ERROR: bool = True
     TRAFFIC_CONTRACT_429_IF_NOT_ALLOWED: bool = False
 
+    # Guest kill switch (AIPLAT-1450). Value "0" turns guests off at runtime,
+    # absent follows MLPA_GUEST_ENABLED. Redis can only turn guests off.
+    GUEST_KILL_SWITCH_REDIS_KEY: str = "mlpa:guests_enabled"
+    GUEST_KILL_SWITCH_CACHE_TTL_SECONDS: float = 5
+    GUEST_KILL_SWITCH_REDIS_TIMEOUT_SECONDS: float = 0.5
+    GUEST_KILL_SWITCH_FAIL_OPEN_ON_REDIS_ERROR: bool = True
+
     # Global RPM/TPM limit (0 means no limit)
     TOTAL_TRAFFIC_CONTRACT_RPM_LIMIT: int = 0
     TOTAL_TRAFFIC_CONTRACT_TPM_LIMIT: int = 0

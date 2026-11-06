@@ -11,6 +11,7 @@ from jwt.utils import base64url_encode
 from mlpa.core.config import env
 from mlpa.core.logger import logger
 from mlpa.core.prometheus_metrics import metrics
+from mlpa.core.services.services import redis_service
 
 router = APIRouter()
 
@@ -56,9 +57,9 @@ def is_guest_token(authorization: str) -> bool:
 
 
 def verify_guest_token(authorization: str) -> str:
-    """Guest id (`sub`) from a guest token issued by issue_guest_token."""
-    if not env.MLPA_GUEST_ENABLED:
-        raise HTTPException(status_code=401, detail="Guest access is disabled")
+    """Guest id (`sub`) from a guest token issued by issue_guest_token.
+
+    Callers check redis_service.guests_enabled() first."""
     token = authorization.removeprefix("Bearer ").strip()
     try:
         payload = jwt.decode(
@@ -98,7 +99,9 @@ NO_STORE_HEADERS = {"Cache-Control": "no-store", "Referrer-Policy": "no-referrer
             "description": "Redirect to `/verify/v1/guest/success#access_token=...&token_type=Bearer[&state=...]`",
             "headers": {"Location": {"schema": {"type": "string"}}},
         },
-        404: {"description": "Guest tokens are disabled (`MLPA_GUEST_ENABLED=false`)."},
+        404: {
+            "description": "Guest tokens are disabled (`MLPA_GUEST_ENABLED=false` or the kill switch is on)."
+        },
     },
 )
 async def get_guest_token(
@@ -119,7 +122,7 @@ async def get_guest_token(
     token in the URL fragment. Watch the tab URL for that path, read the fragment, then
     close the tab. Token expiry is in the JWT `exp` claim.
     """
-    if not env.MLPA_GUEST_ENABLED:
+    if not await redis_service.guests_enabled():
         raise HTTPException(status_code=404, detail="Guest tokens are disabled")
     params = {"access_token": issue_guest_token(), "token_type": "Bearer"}
     if "application/json" in accept:
