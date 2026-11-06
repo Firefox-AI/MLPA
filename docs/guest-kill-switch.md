@@ -45,12 +45,3 @@ curl -X POST http://localhost:4000/key/unblock ... -d '{"key": "<MLPA_GUEST_VIRT
 Guests still get tokens (MLPA doesn't know), but every guest completion fails.
 
 The guest gets a 401 with the generic upstream error. With `MLPA_DEBUG=true` (local only) it's LiteLLM's own text: `Authentication Error, Key is blocked...`.
-
-## Local QA
-
-```bash
-docker compose -f litellm_docker_compose.yaml up -d
-bash scripts/qa_guest_kill_switch.sh            # FXA_TOKEN=<token> to also check a real FxA user
-```
-
-Starts its own MLPA on port 8091 with exported env vars (doesn't touch `.env`) and checks both levers end to end, including time to effect and Redis down. It briefly stops the local `redis` container.
