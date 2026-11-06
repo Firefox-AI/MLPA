@@ -5,6 +5,7 @@ import pytest
 
 from mlpa.core.completions import stream_completion
 from mlpa.core.request_timings import timing_snapshot
+from tests.conftest import receive_until_cancelled
 from tests.consts import SAMPLE_REQUEST
 from tests.unit.test_request_timings import make_request
 
@@ -15,8 +16,7 @@ async def test_stream_handshake_and_first_chunk_boundaries(mocker, metrics_spy, 
     mocker.patch(
         "mlpa.core.request_timings.time.perf_counter", side_effect=lambda: now[0]
     )
-    request = make_request("true")
-    request.is_disconnected = mocker.AsyncMock(return_value=False)
+    request = make_request("true", receive=receive_until_cancelled)
     request.state.debug_timing_start = 1.0
     request.state.debug_spans = []
     closed = []
