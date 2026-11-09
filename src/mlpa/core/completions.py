@@ -119,7 +119,9 @@ async def stream_completion(
             disconnect_event.set()
             return
 
-        log.debug("Unexpected ASGI message in disconnect watcher: {}", message["type"])
+        log.warning(
+            "Unexpected ASGI message in disconnect watcher: {}", message["type"]
+        )
 
         while not await request.is_disconnected():
             # Starlette's AnyIO cancel scope can swallow task cancellation.
