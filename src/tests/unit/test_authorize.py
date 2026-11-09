@@ -361,3 +361,15 @@ async def test_guest_token_on_search_gets_search_guest(guest_enabled):
     assert result.user == f"{sub}:search-guest"
     assert result.service_type == "search-guest"
     assert result.litellm_virtual_key == "sk-guest"
+
+
+async def test_guest_token_on_agent_gets_agent_guest(guest_enabled):
+    from mlpa.core.routers.guest.guest import issue_guest_token
+
+    result = await authorize_module.authorize_chat_request(
+        **_guest_chat_kwargs(
+            f"Bearer {issue_guest_token()}", service_type="agent", purpose="research"
+        )
+    )
+    assert result.service_type == "agent-guest"
+    assert result.litellm_virtual_key == "sk-guest"
