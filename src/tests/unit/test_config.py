@@ -189,7 +189,9 @@ def test_valid_service_types_all_service_types():
     assert "ai-guest" in service_types
     assert "memories-guest" in service_types
     assert "search-guest" in service_types
-    assert len(service_types) == 19
+    assert "agent-guest" in service_types
+    assert "agent-search-guest" in service_types
+    assert len(service_types) == 21
 
 
 def test_valid_service_types_set_matches_ordered_list():
@@ -432,3 +434,13 @@ def test_guest_enabled_refuses_default_signing_secret(monkeypatch):
 def test_search_guest_is_valid_for_exa_search():
     # /v1/search checks the service type after auth rewrites search -> search-guest
     assert Env().valid_service_type_for_model("search-guest", "exa-search")
+
+
+def test_agent_guest_mirrors_agent():
+    env = Env()
+    for st in ("agent", "agent-search"):
+        guest = f"{st}-guest"
+        assert guest in env.MLPA_GUEST_SERVICE_TYPES
+        assert env.service_type_purposes[guest] == env.service_type_purposes[st]
+    assert env.valid_service_type_for_model("agent-search-guest", "exa-search")
+    assert not env.valid_service_type_for_model("agent-guest", "exa-search")
