@@ -1,3 +1,4 @@
+import asyncio
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -14,10 +15,18 @@ def _reset_service_type_virtual_keys():
     env.__dict__.pop("service_type_virtual_keys", None)
 
 
+async def receive_until_cancelled():
+    """ASGI receive for a client that stays connected: blocks until cancelled."""
+    await asyncio.Event().wait()
+
+
 @pytest.fixture
 def mock_request():
     req = MagicMock()
     req.headers = {}
+    # The disconnect watcher awaits receive(). An AsyncMock would return a
+    # non-disconnect message and silently route tests through the polling fallback.
+    req.receive = receive_until_cancelled
     req.is_disconnected = AsyncMock(return_value=False)
     return req
 

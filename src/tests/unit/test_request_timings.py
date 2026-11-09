@@ -6,9 +6,10 @@ from fastapi import Request
 from mlpa.core.request_timings import RequestTimingsMiddleware, measure
 
 
-def make_request(value=None):
+def make_request(value=None, receive=None):
     headers = [] if value is None else [(b"debug-timing", value.encode())]
-    return Request({"type": "http", "method": "POST", "path": "/", "headers": headers})
+    scope = {"type": "http", "method": "POST", "path": "/", "headers": headers}
+    return Request(scope, receive) if receive else Request(scope)
 
 
 @pytest.mark.parametrize("value", [None, "", "false", "0", "1", "yes", "invalid"])
