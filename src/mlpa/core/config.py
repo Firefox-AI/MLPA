@@ -38,7 +38,13 @@ class Env(BaseSettings):
     # guest ones included, and never recounts row 2.
     MLPA_MAX_GUESTS: int = 100000
     MLPA_ENFORCE_GUEST_CAP: bool = False
-    MLPA_GUEST_SERVICE_TYPES: set[str] = {"ai-guest", "memories-guest", "search-guest"}
+    MLPA_GUEST_SERVICE_TYPES: set[str] = {
+        "ai-guest",
+        "memories-guest",
+        "search-guest",
+        "agent-guest",
+        "agent-search-guest",
+    }
     # Kill switch for GET /verify/v1/guest
     MLPA_GUEST_ENABLED: bool = False
 
@@ -221,6 +227,20 @@ class Env(BaseSettings):
     USER_FEATURE_BUDGET_SEARCH_GUEST_MAX_BUDGET: float = 0.01
     USER_FEATURE_BUDGET_SEARCH_GUEST_RPM_LIMIT: int = 5
     USER_FEATURE_BUDGET_SEARCH_GUEST_TPM_LIMIT: int = 2000
+
+    USER_FEATURE_BUDGET_AGENT_GUEST_BUDGET_ID: str = "end-user-budget-agent-guest"
+    USER_FEATURE_BUDGET_AGENT_GUEST_BUDGET_DURATION: str = "7d"
+    USER_FEATURE_BUDGET_AGENT_GUEST_MAX_BUDGET: float = 0.1
+    USER_FEATURE_BUDGET_AGENT_GUEST_RPM_LIMIT: int = 10
+    USER_FEATURE_BUDGET_AGENT_GUEST_TPM_LIMIT: int = 2000
+
+    USER_FEATURE_BUDGET_AGENT_SEARCH_GUEST_BUDGET_ID: str = (
+        "end-user-budget-agent-search-guest"
+    )
+    USER_FEATURE_BUDGET_AGENT_SEARCH_GUEST_BUDGET_DURATION: str = "7d"
+    USER_FEATURE_BUDGET_AGENT_SEARCH_GUEST_MAX_BUDGET: float = 0.1
+    USER_FEATURE_BUDGET_AGENT_SEARCH_GUEST_RPM_LIMIT: int = 10
+    USER_FEATURE_BUDGET_AGENT_SEARCH_GUEST_TPM_LIMIT: int = 2000
 
     USER_FEATURE_BUDGET_MOCHI_DEV_BUDGET_ID: str = "end-user-budget-mochi-dev"
     USER_FEATURE_BUDGET_MOCHI_DEV_BUDGET_DURATION: str = "1d"
@@ -407,6 +427,22 @@ class Env(BaseSettings):
                 "rpm_limit": self.USER_FEATURE_BUDGET_SEARCH_GUEST_RPM_LIMIT,
                 "tpm_limit": self.USER_FEATURE_BUDGET_SEARCH_GUEST_TPM_LIMIT,
             },
+            "agent-guest": {
+                "feature": self.FEATURE_SMART_WINDOW,
+                "budget_id": self.USER_FEATURE_BUDGET_AGENT_GUEST_BUDGET_ID,
+                "budget_duration": self.USER_FEATURE_BUDGET_AGENT_GUEST_BUDGET_DURATION,
+                "max_budget": self.USER_FEATURE_BUDGET_AGENT_GUEST_MAX_BUDGET,
+                "rpm_limit": self.USER_FEATURE_BUDGET_AGENT_GUEST_RPM_LIMIT,
+                "tpm_limit": self.USER_FEATURE_BUDGET_AGENT_GUEST_TPM_LIMIT,
+            },
+            "agent-search-guest": {
+                "feature": self.FEATURE_SMART_WINDOW,
+                "budget_id": self.USER_FEATURE_BUDGET_AGENT_SEARCH_GUEST_BUDGET_ID,
+                "budget_duration": self.USER_FEATURE_BUDGET_AGENT_SEARCH_GUEST_BUDGET_DURATION,
+                "max_budget": self.USER_FEATURE_BUDGET_AGENT_SEARCH_GUEST_MAX_BUDGET,
+                "rpm_limit": self.USER_FEATURE_BUDGET_AGENT_SEARCH_GUEST_RPM_LIMIT,
+                "tpm_limit": self.USER_FEATURE_BUDGET_AGENT_SEARCH_GUEST_TPM_LIMIT,
+            },
             "mochi-dev": {
                 "feature": self.FEATURE_SMART_WINDOW,
                 "budget_id": self.USER_FEATURE_BUDGET_MOCHI_DEV_BUDGET_ID,
@@ -482,6 +518,8 @@ class Env(BaseSettings):
             "ai-guest": self.MLPA_GUEST_VIRTUAL_KEY,
             "memories-guest": self.MLPA_GUEST_VIRTUAL_KEY,
             "search-guest": self.MLPA_GUEST_VIRTUAL_KEY,
+            "agent-guest": self.MLPA_GUEST_VIRTUAL_KEY,
+            "agent-search-guest": self.MLPA_GUEST_VIRTUAL_KEY,
             "mochi-dev": self.MLPA_VIRTUAL_KEY,
             "search-dev": self.MLPA_VIRTUAL_KEY,
         }
@@ -543,6 +581,8 @@ class Env(BaseSettings):
             "telemetry": ["chat"],
             "agent": ["monitor", "research"],
             "agent-search": ["research"],
+            "agent-guest": ["monitor", "research"],
+            "agent-search-guest": ["research"],
         }
 
     def valid_purposes_for_service_type(self, service_type: str) -> list[str]:
@@ -581,7 +621,13 @@ class Env(BaseSettings):
         """
         # Force certain models to use certain service types
         return {
-            "exa-search": ["search", "search-dev", "agent-search", "search-guest"],
+            "exa-search": [
+                "search",
+                "search-dev",
+                "agent-search",
+                "search-guest",
+                "agent-search-guest",
+            ],
             "exa": ["answer", "sw-answer"],
             "liner": ["liner-answer"],
             "deepseek-v4.1-flash": ["widget-generation"],
