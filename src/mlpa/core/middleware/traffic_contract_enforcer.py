@@ -65,6 +65,9 @@ async def enforce_traffic_contract(
                 "Traffic contract enforcement failed for "
                 f"service_type={service_type}: {exc}"
             )
+            record_availability(
+                authorized_request, AvailabilityReason.TRAFFIC_CONTRACT_UNAVAILABLE
+            )
             if env.TRAFFIC_CONTRACT_FAIL_OPEN_ON_REDIS_ERROR:
                 return
             raise HTTPException(

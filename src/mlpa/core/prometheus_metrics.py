@@ -43,6 +43,7 @@ class AvailabilityReason(StrEnum):
     BLOCKED = "blocked"  # excluded
     PROVISIONING_FAILURE = "provisioning_failure"  # failure
     TRAFFIC_CONTRACT_VIOLATION = "traffic_contract_violation"  # excluded
+    TRAFFIC_CONTRACT_UNAVAILABLE = "traffic_contract_unavailable"  # failure
     VIRTUAL_KEY_CONFIG_ERROR = "virtual_key_config_error"  # failure
 
     # --- completion-stage reasons (recorded inside stream_completion / get_completion) ---
@@ -79,6 +80,7 @@ _AVAILABILITY_OUTCOME_BY_REASON: dict[AvailabilityReason, AvailabilityOutcome] =
     AvailabilityReason.BUDGET_EXCEEDED: AvailabilityOutcome.EXCLUDED,
     AvailabilityReason.GLOBAL_BUDGET_EXCEEDED: AvailabilityOutcome.FAILURE,
     AvailabilityReason.TRAFFIC_CONTRACT_VIOLATION: AvailabilityOutcome.EXCLUDED,
+    AvailabilityReason.TRAFFIC_CONTRACT_UNAVAILABLE: AvailabilityOutcome.FAILURE,
     AvailabilityReason.VIRTUAL_KEY_CONFIG_ERROR: AvailabilityOutcome.FAILURE,
     # Guest spend cap or kill switch working as intended, like a personal budget.
     AvailabilityReason.GUEST_BUDGET_EXCEEDED: AvailabilityOutcome.EXCLUDED,
