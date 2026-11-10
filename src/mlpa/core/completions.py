@@ -147,7 +147,10 @@ async def stream_completion(
                 litellm_routing_snapshot = parse_litellm_routing_headers(
                     response.headers
                 )
-                log = log.bind(workload=litellm_routing_snapshot.workload)
+                log = log.bind(
+                    key_alias=litellm_routing_snapshot.key_alias,
+                    workload=litellm_routing_snapshot.workload,
+                )
                 log.bind(
                     upstream_status_code=response.status_code,
                     response_cost_usd=litellm_routing_snapshot.response_cost_usd,
@@ -377,7 +380,9 @@ async def _get_completion(
     """
     Proxies a non-streaming request to LiteLLM.
     """
-    log = logger.bind(**authorized_chat_request.log_fields, workload="unknown")
+    log = logger.bind(
+        **authorized_chat_request.log_fields, key_alias="unknown", workload="unknown"
+    )
     start_time = time.perf_counter()
     record_request_with_tools(authorized_chat_request)
     with measure("request_preparation", request):
@@ -399,7 +404,10 @@ async def _get_completion(
                 json=body,
             )
         litellm_routing_snapshot = parse_litellm_routing_headers(response.headers)
-        log = log.bind(workload=litellm_routing_snapshot.workload)
+        log = log.bind(
+            key_alias=litellm_routing_snapshot.key_alias,
+            workload=litellm_routing_snapshot.workload,
+        )
         log.bind(
             upstream_status_code=response.status_code,
             response_cost_usd=litellm_routing_snapshot.response_cost_usd,

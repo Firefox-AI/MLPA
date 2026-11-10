@@ -238,43 +238,61 @@ def record_litellm_routing_metrics(
     completion_tokens: int,
 ) -> None:
     fallback_used = "true" if snapshot.attempted_fallbacks > 0 else "false"
-    labels_base = {
-        "requested_model": req.model,
-        "backend": snapshot.backend,
-        "service_type": clamp_service_type(req.service_type),
-        "purpose": clamp_purpose(req.purpose),
-        "workload": snapshot.workload,
-    }
-    metrics.litellm_routed_completions.labels(
-        **labels_base,
-        fallback_used=fallback_used,
-    ).inc()
-    metrics.litellm_attempted_fallbacks.labels(**labels_base).observe(
-        snapshot.attempted_fallbacks
-    )
-    metrics.litellm_attempted_retries.labels(**labels_base).observe(
-        snapshot.attempted_retries
-    )
-    if snapshot.response_duration_ms is not None:
-        metrics.litellm_reported_duration_seconds.labels(
-            **labels_base,
-            fallback_used=fallback_used,
-        ).observe(snapshot.response_duration_ms / 1000.0)
-    if snapshot.response_cost_usd is not None:
-        metrics.litellm_reported_cost_usd_total.labels(
-            **labels_base,
-            fallback_used=fallback_used,
-        ).inc(snapshot.response_cost_usd)
-    for token_type, count in (
-        (TokenType.PROMPT, prompt_tokens),
-        (TokenType.COMPLETION, completion_tokens),
+    for dimension, value, completions, fallbacks, retries, duration, cost, tokens in (
+        (
+            "key_alias",
+            snapshot.key_alias,
+            metrics.litellm_routed_completions,
+            metrics.litellm_attempted_fallbacks,
+            metrics.litellm_attempted_retries,
+            metrics.litellm_reported_duration_seconds,
+            metrics.litellm_reported_cost_usd_total,
+            metrics.litellm_routed_tokens,
+        ),
+        (
+            "workload",
+            snapshot.workload,
+            metrics.litellm_workload_routed_completions,
+            metrics.litellm_workload_attempted_fallbacks,
+            metrics.litellm_workload_attempted_retries,
+            metrics.litellm_workload_reported_duration_seconds,
+            metrics.litellm_workload_reported_cost_usd_total,
+            metrics.litellm_workload_routed_tokens,
+        ),
     ):
-        if count > 0:
-            metrics.litellm_routed_tokens.labels(
-                type=token_type,
+        labels_base = {
+            "requested_model": req.model,
+            "backend": snapshot.backend,
+            "service_type": clamp_service_type(req.service_type),
+            "purpose": clamp_purpose(req.purpose),
+            dimension: value,
+        }
+        completions.labels(
+            **labels_base,
+            fallback_used=fallback_used,
+        ).inc()
+        fallbacks.labels(**labels_base).observe(snapshot.attempted_fallbacks)
+        retries.labels(**labels_base).observe(snapshot.attempted_retries)
+        if snapshot.response_duration_ms is not None:
+            duration.labels(
                 **labels_base,
                 fallback_used=fallback_used,
-            ).inc(count)
+            ).observe(snapshot.response_duration_ms / 1000.0)
+        if snapshot.response_cost_usd is not None:
+            cost.labels(
+                **labels_base,
+                fallback_used=fallback_used,
+            ).inc(snapshot.response_cost_usd)
+        for token_type, count in (
+            (TokenType.PROMPT, prompt_tokens),
+            (TokenType.COMPLETION, completion_tokens),
+        ):
+            if count > 0:
+                tokens.labels(
+                    type=token_type,
+                    **labels_base,
+                    fallback_used=fallback_used,
+                ).inc(count)
 
 
 def record_completion_success(

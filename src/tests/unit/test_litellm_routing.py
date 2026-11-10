@@ -4,16 +4,37 @@ import pytest
 from mlpa.core.config import (
     LITELLM_HEADER_ATTEMPTED_FALLBACKS,
     LITELLM_HEADER_ATTEMPTED_RETRIES,
+    LITELLM_HEADER_KEY_ALIAS,
     LITELLM_HEADER_MODEL_API_BASE,
     LITELLM_HEADER_RESPONSE_COST,
     LITELLM_HEADER_RESPONSE_DURATION_MS,
     LITELLM_HEADER_WORKLOAD,
 )
 from mlpa.core.litellm_routing import (
+    litellm_key_alias_from_header,
     litellm_model_api_base_from_header,
     litellm_workload_from_header,
     parse_litellm_routing_headers,
 )
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        (None, "unknown"),
+        ("", "unknown"),
+        ("   ", "unknown"),
+        ("evals-stage", "evals-stage"),
+        ("evals%20%2F%20caf%C3%A9%20100%25", "evals / café 100%"),
+        ("bad%0D%0Aheader", "unknown"),
+        ("%FF", "unknown"),
+        ("x" * 256, "unknown"),
+        ("%61" * 256, "unknown"),
+        ("\ud800", "unknown"),
+    ],
+)
+def test_litellm_key_alias_from_header(raw, expected):
+    assert litellm_key_alias_from_header(raw) == expected
 
 
 @pytest.mark.parametrize(
@@ -74,6 +95,7 @@ def test_parse_litellm_routing_headers_full():
             LITELLM_HEADER_ATTEMPTED_RETRIES: "2",
             LITELLM_HEADER_RESPONSE_DURATION_MS: "123.5",
             LITELLM_HEADER_RESPONSE_COST: "0.00042",
+            LITELLM_HEADER_KEY_ALIAS: "eval-nightly",
             LITELLM_HEADER_WORKLOAD: "eval",
         }
     )
@@ -83,6 +105,7 @@ def test_parse_litellm_routing_headers_full():
     assert snap.attempted_retries == 2
     assert snap.response_duration_ms == 123.5
     assert snap.response_cost_usd == pytest.approx(0.00042)
+    assert snap.key_alias == "eval-nightly"
     assert snap.workload == "eval"
 
 
@@ -93,6 +116,7 @@ def test_parse_litellm_routing_headers_missing():
     assert snap.attempted_retries == 0
     assert snap.response_duration_ms is None
     assert snap.response_cost_usd is None
+    assert snap.key_alias == "unknown"
     assert snap.workload == "unknown"
 
 

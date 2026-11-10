@@ -219,6 +219,14 @@ class PrometheusMetrics:
     litellm_reported_cost_usd_total: Counter
     litellm_routed_tokens: Counter
 
+    # Separate aggregate series; key aliases never split workload totals.
+    litellm_workload_routed_completions: Counter
+    litellm_workload_attempted_fallbacks: Histogram
+    litellm_workload_attempted_retries: Histogram
+    litellm_workload_reported_duration_seconds: Histogram
+    litellm_workload_reported_cost_usd_total: Counter
+    litellm_workload_routed_tokens: Counter
+
 
 def build_metrics(registry: CollectorRegistry = REGISTRY) -> PrometheusMetrics:
     """Construct a fresh `PrometheusMetrics` bound to `registry`.
@@ -495,7 +503,7 @@ def build_metrics(registry: CollectorRegistry = REGISTRY) -> PrometheusMetrics:
                 "backend",
                 "service_type",
                 "purpose",
-                "workload",
+                "key_alias",
                 "fallback_used",
             ],
             registry=registry,
@@ -503,14 +511,14 @@ def build_metrics(registry: CollectorRegistry = REGISTRY) -> PrometheusMetrics:
         litellm_attempted_fallbacks=Histogram(
             "mlpa_litellm_attempted_fallbacks",
             "LiteLLM-reported fallback attempts per successful completion (from x-litellm-attempted-fallbacks).",
-            ["requested_model", "backend", "service_type", "purpose", "workload"],
+            ["requested_model", "backend", "service_type", "purpose", "key_alias"],
             buckets=BUCKETS_LITELLM_ATTEMPTS,
             registry=registry,
         ),
         litellm_attempted_retries=Histogram(
             "mlpa_litellm_attempted_retries",
             "LiteLLM-reported retry attempts per successful completion (from x-litellm-attempted-retries).",
-            ["requested_model", "backend", "service_type", "purpose", "workload"],
+            ["requested_model", "backend", "service_type", "purpose", "key_alias"],
             buckets=BUCKETS_LITELLM_ATTEMPTS,
             registry=registry,
         ),
@@ -522,7 +530,7 @@ def build_metrics(registry: CollectorRegistry = REGISTRY) -> PrometheusMetrics:
                 "backend",
                 "service_type",
                 "purpose",
-                "workload",
+                "key_alias",
                 "fallback_used",
             ],
             buckets=BUCKETS_COMPLETION,
@@ -536,13 +544,81 @@ def build_metrics(registry: CollectorRegistry = REGISTRY) -> PrometheusMetrics:
                 "backend",
                 "service_type",
                 "purpose",
-                "workload",
+                "key_alias",
                 "fallback_used",
             ],
             registry=registry,
         ),
         litellm_routed_tokens=Counter(
             "mlpa_litellm_routed_tokens_total",
+            "Token counts attributed to LiteLLM winning backend (from usage, same completion as routing headers).",
+            [
+                "type",
+                "requested_model",
+                "backend",
+                "service_type",
+                "purpose",
+                "key_alias",
+                "fallback_used",
+            ],
+            registry=registry,
+        ),
+        litellm_workload_routed_completions=Counter(
+            "mlpa_litellm_workload_routed_completions_total",
+            "Successful chat completions with LiteLLM routing labels from response headers.",
+            [
+                "requested_model",
+                "backend",
+                "service_type",
+                "purpose",
+                "workload",
+                "fallback_used",
+            ],
+            registry=registry,
+        ),
+        litellm_workload_attempted_fallbacks=Histogram(
+            "mlpa_litellm_workload_attempted_fallbacks",
+            "LiteLLM-reported fallback attempts per successful completion (from x-litellm-attempted-fallbacks).",
+            ["requested_model", "backend", "service_type", "purpose", "workload"],
+            buckets=BUCKETS_LITELLM_ATTEMPTS,
+            registry=registry,
+        ),
+        litellm_workload_attempted_retries=Histogram(
+            "mlpa_litellm_workload_attempted_retries",
+            "LiteLLM-reported retry attempts per successful completion (from x-litellm-attempted-retries).",
+            ["requested_model", "backend", "service_type", "purpose", "workload"],
+            buckets=BUCKETS_LITELLM_ATTEMPTS,
+            registry=registry,
+        ),
+        litellm_workload_reported_duration_seconds=Histogram(
+            "mlpa_litellm_workload_reported_duration_seconds",
+            "LiteLLM proxy-reported request duration in seconds (x-litellm-response-duration-ms / 1000).",
+            [
+                "requested_model",
+                "backend",
+                "service_type",
+                "purpose",
+                "workload",
+                "fallback_used",
+            ],
+            buckets=BUCKETS_COMPLETION,
+            registry=registry,
+        ),
+        litellm_workload_reported_cost_usd_total=Counter(
+            "mlpa_litellm_workload_reported_cost_usd_total",
+            "Cumulative LiteLLM-reported spend in USD (x-litellm-response-cost); use increase() over a range for windowed sums.",
+            [
+                "requested_model",
+                "backend",
+                "service_type",
+                "purpose",
+                "workload",
+                "fallback_used",
+            ],
+            registry=registry,
+        ),
+        litellm_workload_routed_tokens=Counter(
+            "mlpa_litellm_workload_routed_tokens_total",
             "Token counts attributed to LiteLLM winning backend (from usage, same completion as routing headers).",
             [
                 "type",

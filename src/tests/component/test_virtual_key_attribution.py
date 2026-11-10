@@ -10,6 +10,7 @@ from pytest_httpx import IteratorStream
 from mlpa.core.completions import get_completion
 from mlpa.core.config import (
     LITELLM_COMPLETIONS_URL,
+    LITELLM_HEADER_KEY_ALIAS,
     LITELLM_HEADER_RESPONSE_COST,
     LITELLM_HEADER_WORKLOAD,
     LITELLM_SEARCH_URL,
@@ -36,7 +37,8 @@ def test_chat_attribution_is_from_upstream_and_stays_internal(
     mocker.patch.object(env, "ALLOW_CUSTOM_VIRTUAL_KEY", allow_custom)
     mocker.patch("mlpa.run.get_completion", get_completion)
     workload = registered_workload if allow_custom else "unknown"
-    headers = {LITELLM_HEADER_RESPONSE_COST: "0.012"}
+    alias = "eval-nightly-key-1" if allow_custom else "shared-default"
+    headers = {LITELLM_HEADER_RESPONSE_COST: "0.012", LITELLM_HEADER_KEY_ALIAS: alias}
     if allow_custom:
         headers[LITELLM_HEADER_WORKLOAD] = registered_workload
     payload = (
@@ -82,6 +84,7 @@ def test_chat_attribution_is_from_upstream_and_stays_internal(
                 "purpose": "chat",
                 "litellm-virtual-key": "sk-test-eval-secret",
                 LITELLM_HEADER_WORKLOAD: "client-spoof",
+                LITELLM_HEADER_KEY_ALIAS: "client-spoof",
             },
             json={
                 "model": SAMPLE_REQUEST.model,
@@ -94,6 +97,7 @@ def test_chat_attribution_is_from_upstream_and_stays_internal(
         logger.remove(sink)
 
     assert response.status_code == (200 if stream else status)
+    assert LITELLM_HEADER_KEY_ALIAS not in response.headers
     assert LITELLM_HEADER_WORKLOAD not in response.headers
     assert workload not in response.text
     if status == 200:
@@ -108,27 +112,39 @@ def test_chat_attribution_is_from_upstream_and_stays_internal(
         if allow_custom
         else LITELLM_VIRTUAL_AUTH_HEADERS["Authorization"]
     )
+    assert LITELLM_HEADER_KEY_ALIAS not in outgoing["headers"]
     assert LITELLM_HEADER_WORKLOAD not in outgoing["headers"]
     assert "client-spoof" not in json.dumps(outgoing["json"])
     attribution = [
         r.record for r in records if r.record["message"] == "LiteLLM response received"
     ]
     assert len(attribution) == 1
+    assert attribution[0]["extra"]["key_alias"] == alias
     assert attribution[0]["extra"]["workload"] == workload
     assert attribution[0]["extra"]["upstream_status_code"] == status
     assert "sk-test-eval-secret" not in json.dumps(attribution[0]["extra"])
     costs = [
         sample
-        for sample in metrics_spy.samples("litellm_reported_cost_usd_total")
+        for sample in metrics_spy.samples("litellm_workload_reported_cost_usd_total")
         if sample.name.endswith("_total")
     ]
     if status == 200:
         assert len(costs) == 1
         assert costs[0].labels["workload"] == workload
         assert costs[0].value == pytest.approx(0.012)
+        per_key = [
+            s
+            for s in metrics_spy.samples("litellm_reported_cost_usd_total")
+            if s.name.endswith("_total")
+        ]
+        assert len(per_key) == 1
+        assert per_key[0].labels["key_alias"] == alias
+        assert "workload" not in per_key[0].labels
+        assert "key_alias" not in costs[0].labels
+        assert per_key[0].value == pytest.approx(0.012)
         assert {
             sample.labels["workload"]
-            for sample in metrics_spy.samples("litellm_routed_tokens")
+            for sample in metrics_spy.samples("litellm_workload_routed_tokens")
         } == {workload}
     else:
         assert costs == []
@@ -159,12 +175,14 @@ def test_search_logs_resolved_workload_without_exposing_it(
                 "authorization": f"Bearer {TEST_FXA_TOKEN}",
                 "service-type": "search",
                 LITELLM_HEADER_WORKLOAD: "client-spoof",
+                LITELLM_HEADER_KEY_ALIAS: "client-spoof",
             },
             json={"query": "browser news", "max_results": 5},
         )
     finally:
         logger.remove(sink)
     assert response.status_code == status
+    assert LITELLM_HEADER_KEY_ALIAS not in response.headers
     assert LITELLM_HEADER_WORKLOAD not in response.headers
     assert "eval" not in response.text
     attribution = [

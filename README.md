@@ -115,34 +115,41 @@ deploy the candidate or enable its custom handlers in the test configuration.
 
 The Mozilla LiteLLM gateway supplies `metadata.workload` from the authenticated
 key through the internal `x-mlpa-workload` response header. MLPA adds a bounded
-`workload` label to its `mlpa_litellm_*` routing, cost, token, and duration
-metrics. Existing metric labels are retained. Supported buckets are `eval` and
+`workload` label to separate `mlpa_litellm_workload_*` routing, cost, token, and
+duration metrics. The original `mlpa_litellm_*` series retain their `key_alias`
+labels, supplied by the independent internal `x-mlpa-key-alias` response header. Supported buckets are `eval` and
 `load_test`; all other values, missing metadata, and older gateways produce
 `unknown`. The workload comes from the actual upstream key record, not client
 headers or request metadata. An unclassified shared default key is `unknown`.
 
 Each key keeps its unique `key_alias`. Multiple keys can share the same stored
 workload, for example `eval-nightly-key-1` and `eval-manual-key-2` both using
-`metadata: {"workload": "eval"}`. Key aliases are not metric labels or emitted
-by this attribution path. Adding a bucket requires updating the allowlists in
-both MLPA and the gateway; new key names cannot grow the set of label values.
+`metadata: {"workload": "eval"}`. Per-key metrics remain separate for those keys;
+workload metrics aggregate them without a `key_alias` label. Adding a bucket
+requires updating the allowlists in both MLPA and the gateway. New aliases can
+grow the per-key series but do not grow the workload label set.
 
 Chat and search responses also emit a structured `LiteLLM response received`
-log with `workload` and `upstream_status_code`, including upstream error
+log with `key_alias`, `workload`, and `upstream_status_code`, including upstream error
 responses. Chat logs include `response_cost_usd` when supplied by LiteLLM.
-The header is consumed internally and is not added to public response headers,
+Both headers are consumed internally and are not added to public response headers,
 JSON bodies, or streaming events. Raw credentials and arbitrary key metadata
 are not included in attribution logs or metric labels.
 
-For an operational view of reported chat cost by key:
+For an operational view of reported chat cost by workload:
 
 ```promql
 sum by (workload) (
-  increase(mlpa_litellm_reported_cost_usd_total[24h])
+  increase(mlpa_litellm_workload_reported_cost_usd_total[24h])
 )
 ```
 
-This counter retains its existing semantics: it records successful completions
+For per-key cost, use `sum by (key_alias)
+(increase(mlpa_litellm_reported_cost_usd_total[24h]))`. The two metric families
+represent the same requests at different aggregation levels; do not add them
+together.
+
+Both cost counters retain the same semantics: they record successful completions
 only when LiteLLM supplies a valid response-cost header. Streaming responses may
 not have their final cost available in headers, and interrupted or failed calls
 can still incur provider cost. Use LiteLLM's persisted spend logs, joined to its

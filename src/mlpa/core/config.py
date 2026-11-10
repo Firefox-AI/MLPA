@@ -763,6 +763,7 @@ LITELLM_HEADER_ATTEMPTED_RETRIES = "x-litellm-attempted-retries"
 LITELLM_HEADER_RESPONSE_DURATION_MS = "x-litellm-response-duration-ms"
 LITELLM_HEADER_RESPONSE_COST = "x-litellm-response-cost"
 # Private gateway-to-MLPA attribution; never forwarded to API clients.
+LITELLM_HEADER_KEY_ALIAS = "x-mlpa-key-alias"
 LITELLM_HEADER_WORKLOAD = "x-mlpa-workload"
 
 # Privacy Filter

@@ -209,7 +209,7 @@ def _litellm_routing_label_base():
         "backend": "https://api.together.xyz/v1",
         "service_type": SAMPLE_REQUEST.service_type,
         "purpose": SAMPLE_REQUEST.purpose,
-        "workload": "unknown",
+        "key_alias": "unknown",
     }
 
 
@@ -250,11 +250,17 @@ async def test_get_completion_success(mocker, metrics_spy):
             "chat_tokens_per_request",
             "chat_completion_latency",
             "litellm_routed_completions",
+            "litellm_workload_routed_completions",
             "litellm_attempted_fallbacks",
+            "litellm_workload_attempted_fallbacks",
             "litellm_attempted_retries",
+            "litellm_workload_attempted_retries",
             "litellm_reported_duration_seconds",
+            "litellm_workload_reported_duration_seconds",
             "litellm_reported_cost_usd_total",
+            "litellm_workload_reported_cost_usd_total",
             "litellm_routed_tokens",
+            "litellm_workload_routed_tokens",
         )
     )
 
@@ -286,13 +292,17 @@ async def test_get_completion_success(mocker, metrics_spy):
     routing = _litellm_routing_label_base()
     assert (
         metrics_spy.value(
-            "litellm_routed_completions", **routing, fallback_used="false"
+            "litellm_routed_completions",
+            **routing,
+            fallback_used="false",
         )
         == 1
     )
     assert (
         metrics_spy.value(
-            "litellm_reported_cost_usd_total", **routing, fallback_used="false"
+            "litellm_reported_cost_usd_total",
+            **routing,
+            fallback_used="false",
         )
         == 0.001
     )
@@ -300,7 +310,9 @@ async def test_get_completion_success(mocker, metrics_spy):
     assert metrics_spy.histogram_sum("litellm_attempted_retries", **routing) == 0.0
     assert (
         metrics_spy.histogram_sum(
-            "litellm_reported_duration_seconds", **routing, fallback_used="false"
+            "litellm_reported_duration_seconds",
+            **routing,
+            fallback_used="false",
         )
         == 2.0
     )
@@ -337,7 +349,7 @@ async def test_get_completion_litellm_routing_with_fallback(mocker, metrics_spy)
         "backend": "https://us-central1-aiplatform.googleapis.com/v1/projects/p/locations/us-central1/publishers/google/models/gemini-pro:predict",
         "service_type": SAMPLE_REQUEST.service_type,
         "purpose": SAMPLE_REQUEST.purpose,
-        "workload": "unknown",
+        "key_alias": "unknown",
     }
     assert (
         metrics_spy.value("litellm_routed_completions", **routing, fallback_used="true")
@@ -485,11 +497,17 @@ async def test_stream_completion_success(
             "chat_tokens_per_request",
             "chat_completion_latency",
             "litellm_routed_completions",
+            "litellm_workload_routed_completions",
             "litellm_attempted_fallbacks",
+            "litellm_workload_attempted_fallbacks",
             "litellm_attempted_retries",
+            "litellm_workload_attempted_retries",
             "litellm_reported_duration_seconds",
+            "litellm_workload_reported_duration_seconds",
             "litellm_reported_cost_usd_total",
+            "litellm_workload_reported_cost_usd_total",
             "litellm_routed_tokens",
+            "litellm_workload_routed_tokens",
         )
     )
 
@@ -520,19 +538,25 @@ async def test_stream_completion_success(
     routing = _litellm_routing_label_base()
     assert (
         metrics_spy.value(
-            "litellm_routed_completions", **routing, fallback_used="false"
+            "litellm_routed_completions",
+            **routing,
+            fallback_used="false",
         )
         == 1
     )
     assert (
         metrics_spy.value(
-            "litellm_reported_cost_usd_total", **routing, fallback_used="false"
+            "litellm_reported_cost_usd_total",
+            **routing,
+            fallback_used="false",
         )
         == 0.001
     )
     assert (
         metrics_spy.histogram_sum(
-            "litellm_reported_duration_seconds", **routing, fallback_used="false"
+            "litellm_reported_duration_seconds",
+            **routing,
+            fallback_used="false",
         )
         == 2.0
     )

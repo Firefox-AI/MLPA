@@ -1,8 +1,9 @@
-from mlpa.core.classes import AuthorizedChatRequest
+from mlpa.core.classes import AuthorizedChatRequest, LitellmRoutingSnapshot
 from mlpa.core.metrics import (
     record_chat_availability,
     record_chat_request_rejection,
     record_completion_latency,
+    record_litellm_routing_metrics,
     record_request_country,
     record_request_with_tools,
     record_tool_metrics,
@@ -14,6 +15,61 @@ from mlpa.core.prometheus_metrics import (
     PrometheusResult,
 )
 from mlpa.core.utils import clamp_model
+
+
+def test_key_series_stay_distinct_while_workload_series_aggregate(metrics_spy):
+    req = _chat_request()
+    for alias, workload in (
+        ("eval-nightly", "eval"),
+        ("eval-manual", "eval"),
+        ("performance", "load_test"),
+        ("legacy-key", "unknown"),
+    ):
+        record_litellm_routing_metrics(
+            req,
+            LitellmRoutingSnapshot(
+                backend="test-backend",
+                attempted_fallbacks=1,
+                attempted_retries=2,
+                response_duration_ms=500,
+                response_cost_usd=0.125,
+                key_alias=alias,
+                workload=workload,
+            ),
+            prompt_tokens=10,
+            completion_tokens=2,
+        )
+
+    for suffix, sample_suffix, per_request in (
+        ("routed_completions", "_total", 1),
+        ("attempted_fallbacks", "_sum", 1),
+        ("attempted_retries", "_sum", 2),
+        ("reported_duration_seconds", "_sum", 0.5),
+        ("reported_cost_usd_total", "_total", 0.125),
+        ("routed_tokens", "_total", 10),
+    ):
+
+        def samples(prefix):
+            return [
+                s
+                for s in metrics_spy.samples(prefix + suffix)
+                if s.name.endswith(sample_suffix)
+                and s.labels.get("type", "prompt") == "prompt"
+            ]
+
+        per_key = samples("litellm_")
+        by_workload = samples("litellm_workload_")
+        assert {s.labels["key_alias"]: s.value for s in per_key} == {
+            alias: per_request
+            for alias in ("eval-nightly", "eval-manual", "performance", "legacy-key")
+        }
+        assert {s.labels["workload"]: s.value for s in by_workload} == {
+            "eval": 2 * per_request,
+            "load_test": per_request,
+            "unknown": per_request,
+        }
+        assert all("workload" not in s.labels for s in per_key)
+        assert all("key_alias" not in s.labels for s in by_workload)
 
 
 def _chat_request(
