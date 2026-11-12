@@ -234,7 +234,8 @@ async def get_or_create_user(user_id: str):
                 headers=LITELLM_MASTER_AUTH_HEADERS,
             )
 
-            created_user = await litellm_pg.get_user(user_id)
+            # fresh: don't join a lookup that started before the user existed.
+            created_user = await litellm_pg.get_user(user_id, fresh=True)
             if created_user is None:
                 # Admission may have succeeded but LiteLLM user creation did not.
                 # Release the reserved slot to avoid claim/cap drift.

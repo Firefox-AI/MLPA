@@ -92,6 +92,12 @@ def availability_outcome_for(reason: AvailabilityReason) -> AvailabilityOutcome:
     return _AVAILABILITY_OUTCOME_BY_REASON[reason]
 
 
+class CacheResult(StrEnum):
+    HIT = "hit"
+    MISS = "miss"  # this lookup ran the loader
+    COALESCED = "coalesced"  # waited on another lookup's in-flight load
+
+
 class TokenType(StrEnum):
     PROMPT = "prompt"
     COMPLETION = "completion"
@@ -218,6 +224,9 @@ class PrometheusMetrics:
     litellm_reported_duration_seconds: Histogram
     litellm_reported_cost_usd_total: Counter
     litellm_routed_tokens: Counter
+
+    # in-process caches
+    cache_lookups_total: Counter
 
 
 def build_metrics(registry: CollectorRegistry = REGISTRY) -> PrometheusMetrics:
@@ -531,6 +540,13 @@ def build_metrics(registry: CollectorRegistry = REGISTRY) -> PrometheusMetrics:
                 "purpose",
                 "fallback_used",
             ],
+            registry=registry,
+        ),
+        cache_lookups_total=Counter(
+            "mlpa_cache_lookups_total",
+            "In-process cache lookups, by cache name and result (hit|miss|coalesced). "
+            "Misses are the lookups that reached the backing store.",
+            ["cache", "result"],
             registry=registry,
         ),
     )

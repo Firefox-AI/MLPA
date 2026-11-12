@@ -741,6 +741,12 @@ class Env(BaseSettings):
     # LOCAL budgets above, this one isn't relaxed by them, so keep it above
     # PG_MAINTENANCE_STATEMENT_TIMEOUT_MS or it'll cancel those queries.
     PG_COMMAND_TIMEOUT_S: float | None = None
+    # Per-pod cache of existing LiteLLM end users read on every inference request
+    # (0 = off). A block/unblock takes up to this long to reach other pods.
+    GET_USER_CACHE_TTL_S: float = 30.0
+    GET_USER_CACHE_MAX_SIZE: int = 10000
+    # Per-pod cache of the admin dashboard's full-scan user counts (0 = off).
+    USER_COUNTS_CACHE_TTL_S: float = 60.0
 
     # Redis
     REDIS_HOST: str = "localhost"

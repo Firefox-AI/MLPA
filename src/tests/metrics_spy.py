@@ -18,6 +18,7 @@ _METRICS_REFS = (
     "mlpa.core.middleware.instrumentation.metrics",
     "mlpa.core.routers.guest.guest.metrics",
     "mlpa.core.services.app_attest_pg_service.metrics",
+    "mlpa.core.ttl_cache.metrics",
 )
 
 
