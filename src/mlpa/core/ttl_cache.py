@@ -7,18 +7,11 @@ from mlpa.core.prometheus_metrics import CacheResult, metrics
 
 
 class AsyncTTLCache[K: Hashable, V]:
-    """Per-process TTL + LRU cache for async loaders.
+    """Per-pod TTL + LRU cache for async loaders.
 
-    - Concurrent misses for a key share one load (single-flight). The load runs
-      in its own task, so a cancelled caller doesn't cancel it for the others.
-    - A loader result of None is returned but not cached; exceptions propagate
-      and are not cached either.
-    - invalidate() drops the entry and detaches any in-flight load, so a load
-      that read the old value can't store it afterwards.
-    - ttl_s <= 0 disables caching and every call runs the loader.
-
-    Entries are per pod: invalidate() only affects this process, other pods
-    keep their copy until it expires.
+    Concurrent misses for a key share one load. None results and exceptions
+    are not cached. invalidate() also drops an in-flight load, so a read that
+    started before a write can't store its stale result. ttl_s <= 0 disables it.
     """
 
     def __init__(
@@ -35,9 +28,6 @@ class AsyncTTLCache[K: Hashable, V]:
         self._entries: OrderedDict[K, tuple[float, V]] = OrderedDict()
         self._inflight: dict[K, asyncio.Task[V | None]] = {}
 
-    def __len__(self) -> int:
-        return len(self._entries)
-
     async def get(self, key: K, loader: Callable[[], Awaitable[V | None]]) -> V | None:
         if self._ttl_s <= 0:
             return await loader()
@@ -53,23 +43,18 @@ class AsyncTTLCache[K: Hashable, V]:
 
         task = self._inflight.get(key)
         if task is None:
+            # Own task + shield: a cancelled caller doesn't cancel the shared load.
             task = asyncio.create_task(self._load(key, loader))
-            # Consume the exception if every waiter was cancelled, so asyncio
-            # doesn't log "Task exception was never retrieved".
             task.add_done_callback(_consume_exception)
             self._inflight[key] = task
             self._record(CacheResult.MISS)
         else:
-            self._record(CacheResult.COALESCED)
+            self._record(CacheResult.HIT)
         return await asyncio.shield(task)
 
     def invalidate(self, key: K) -> None:
         self._entries.pop(key, None)
         self._inflight.pop(key, None)
-
-    def clear(self) -> None:
-        self._entries.clear()
-        self._inflight.clear()
 
     async def _load(
         self, key: K, loader: Callable[[], Awaitable[V | None]]
@@ -79,8 +64,7 @@ class AsyncTTLCache[K: Hashable, V]:
             value = await loader()
             if value is not None and self._inflight.get(key) is current:
                 self._entries[key] = (self._timer() + self._ttl_s, value)
-                self._entries.move_to_end(key)
-                while len(self._entries) > self._maxsize:
+                if len(self._entries) > self._maxsize:
                     self._entries.popitem(last=False)
             return value
         finally:
@@ -92,5 +76,6 @@ class AsyncTTLCache[K: Hashable, V]:
 
 
 def _consume_exception(task: asyncio.Task) -> None:
+    # Avoids "Task exception was never retrieved" when every waiter was cancelled.
     if not task.cancelled():
         task.exception()

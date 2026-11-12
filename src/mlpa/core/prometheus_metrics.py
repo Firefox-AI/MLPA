@@ -94,8 +94,7 @@ def availability_outcome_for(reason: AvailabilityReason) -> AvailabilityOutcome:
 
 class CacheResult(StrEnum):
     HIT = "hit"
-    MISS = "miss"  # this lookup ran the loader
-    COALESCED = "coalesced"  # waited on another lookup's in-flight load
+    MISS = "miss"
 
 
 class TokenType(StrEnum):
@@ -544,8 +543,7 @@ def build_metrics(registry: CollectorRegistry = REGISTRY) -> PrometheusMetrics:
         ),
         cache_lookups_total=Counter(
             "mlpa_cache_lookups_total",
-            "In-process cache lookups, by cache name and result (hit|miss|coalesced). "
-            "Misses are the lookups that reached the backing store.",
+            "In-process cache lookups by cache and result (hit|miss). Misses are the ones that reached the DB.",
             ["cache", "result"],
             registry=registry,
         ),

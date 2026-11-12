@@ -148,26 +148,18 @@ instead.
 
 ## In-process caches
 
-`LiteLLMPGService` keeps two small per-pod caches (`src/mlpa/core/ttl_cache.py`)
-so hot or expensive reads don't hit Postgres on every call:
+Two per-pod caches (`src/mlpa/core/ttl_cache.py`). Set a TTL to 0 to turn one off.
 
 | Cache | Setting | Default | What |
 |-------|---------|---------|------|
-| `get_user` | `GET_USER_CACHE_TTL_S`, `GET_USER_CACHE_MAX_SIZE` | 30s, 10,000 entries | the end-user row read on every inference request |
+| `get_user` | `GET_USER_CACHE_TTL_S`, `GET_USER_CACHE_MAX_SIZE` | 30s, 10,000 users | the user row read on every inference request |
 | `user_counts_by_service_type` | `USER_COUNTS_CACHE_TTL_S` | 60s | the admin dashboard's full-scan counts |
 
-Set a TTL to 0 to turn a cache off.
-
-- Only existing users are cached. A lookup that finds no row always goes to the
-  DB, so a user created moments ago (on any pod) is seen straight away and the
-  create/capacity flow in `get_or_create_user` is unchanged.
-- Concurrent misses for the same key share one query. Errors are never cached.
-- `block_user` and `update_user_budget` invalidate the entry on the pod that
-  handled the call. Other pods keep their copy until it expires, so a
-  block/unblock can take up to `GET_USER_CACHE_TTL_S` to apply everywhere.
-  Budgets themselves are enforced by LiteLLM, not by this cached row.
-- `mlpa_cache_lookups_total{cache, result}` counts `hit`, `miss` (reached the
-  DB) and `coalesced` lookups. The `get_user` miss rate is the DB query rate.
+- Only existing users are cached, so a new user is always found straight away.
+- A block, unblock or budget change clears the cache on the pod that handled
+  it. Other pods can take up to `GET_USER_CACHE_TTL_S` to see it.
+- `mlpa_cache_lookups_total{cache, result}` counts hits and misses. Misses are
+  the queries that reached the DB.
 
 ### Cross-pool read ordering
 
