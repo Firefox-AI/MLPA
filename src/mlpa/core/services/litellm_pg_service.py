@@ -3,6 +3,7 @@ from fastapi import HTTPException
 from mlpa.core.config import env
 from mlpa.core.logger import logger
 from mlpa.core.services.pg_service import PGService
+from mlpa.core.ttl_cache import AsyncTTLCache
 
 
 class LiteLLMPGService(PGService):
@@ -12,8 +13,31 @@ class LiteLLMPGService(PGService):
 
     def __init__(self):
         super().__init__(env.LITELLM_DB_NAME)
+        # Only existing users are cached: a miss must reach the DB so a user
+        # created moments ago (here or on another pod) is seen straight away.
+        self._user_cache: AsyncTTLCache[str, dict] = AsyncTTLCache(
+            "get_user",
+            ttl_s=env.GET_USER_CACHE_TTL_S,
+            maxsize=env.GET_USER_CACHE_MAX_SIZE,
+        )
+        self._user_counts_cache: AsyncTTLCache[str, dict] = AsyncTTLCache(
+            "user_counts_by_service_type",
+            ttl_s=env.USER_COUNTS_CACHE_TTL_S,
+            maxsize=1,
+        )
 
-    async def get_user(self, user_id: str):
+    async def get_user(self, user_id: str, *, fresh: bool = False) -> dict | None:
+        """
+        fresh=True skips any cached row and any in-flight lookup that may have
+        started before a write (e.g. re-reading right after creating the user).
+        """
+        if fresh:
+            self._user_cache.invalidate(user_id)
+        user = await self._user_cache.get(user_id, lambda: self._fetch_user(user_id))
+        # Copy so callers can't mutate the cached row.
+        return dict(user) if user else None
+
+    async def _fetch_user(self, user_id: str) -> dict | None:
         user = await self.pool.fetchrow(
             'SELECT * FROM "LiteLLM_EndUserTable" WHERE user_id = $1',
             user_id,
@@ -46,6 +70,9 @@ class LiteLLMPGService(PGService):
             raise HTTPException(
                 status_code=500, detail={"error": "Error updating user budget"}
             )
+        finally:
+            # Runs after the transaction has committed or rolled back.
+            self._user_cache.invalidate(user_id)
 
     async def block_user(self, user_id: str, blocked: bool = True) -> dict:
         try:
@@ -74,6 +101,9 @@ class LiteLLMPGService(PGService):
             raise HTTPException(
                 status_code=500, detail={"error": "Error updating user"}
             )
+        finally:
+            # Runs after the transaction has committed or rolled back.
+            self._user_cache.invalidate(user_id)
 
     async def list_users(self, limit: int = 50, offset: int = 0) -> dict:
         try:
@@ -106,7 +136,17 @@ class LiteLLMPGService(PGService):
 
         LiteLLM stores users by `user_id` which is formatted as:
         `{base_user_id}:{service_type}`.
+
+        Cached per pod for USER_COUNTS_CACHE_TTL_S, since exact counts always
+        scan the whole table.
         """
+        counts = await self._user_counts_cache.get(
+            "all", self._count_users_by_service_type
+        )
+        assert counts is not None
+        return counts
+
+    async def _count_users_by_service_type(self) -> dict:
         try:
             # GROUP BY split_part(...) is unindexable, so always a full scan: use
             # the admin-read budget.
@@ -170,25 +210,24 @@ class LiteLLMPGService(PGService):
         """
         Return True if the base identity has any cap-managed LiteLLM end-user rows.
         """
-        # Unindexable predicate, so a no-match EXISTS full-scans the table. Use
-        # the admin-read budget: killing a slow scan at 3s would leak a capacity
-        # claim on the release path.
-        async with self.statement_timeout(env.PG_ADMIN_READ_TIMEOUT_MS) as conn:
-            return bool(
-                await conn.fetchval(
-                    """
-                    SELECT EXISTS(
-                        SELECT 1
-                        FROM "LiteLLM_EndUserTable"
-                        WHERE position(':' in user_id) > 0
-                          AND split_part(user_id, ':', 1) = $1
-                          AND split_part(user_id, ':', 2) = ANY($2::text[])
-                    )
-                    """,
-                    base_identity,
-                    managed_service_types,
+        # Rows are always "{base_identity}:{service_type}" (get_or_create_user
+        # rejects anything else), so the candidate ids can be built up front and
+        # matched on the primary key instead of scanning with split_part.
+        user_ids = [
+            f"{base_identity}:{service_type}" for service_type in managed_service_types
+        ]
+        return bool(
+            await self.pool.fetchval(
+                """
+                SELECT EXISTS(
+                    SELECT 1
+                    FROM "LiteLLM_EndUserTable"
+                    WHERE user_id = ANY($1::text[])
                 )
+                """,
+                user_ids,
             )
+        )
 
     async def create_budget(self):
         """

@@ -12,7 +12,7 @@ of them and which query uses which).
 | `app_attest` (`APP_ATTEST_DB_NAME`) | MLPA (via Alembic) | App Attest challenges + keys, and the signup capacity state. |
 
 Each DB gets its own asyncpg pool, wrapped in a `PGService`
-(`src/mlpa/core/pg_services/`):
+(`src/mlpa/core/services/`):
 
 - `LiteLLMPGService` → `litellm`
 - `AppAttestPGService` → `app_attest` (also holds a reference to the litellm
@@ -25,7 +25,9 @@ Each DB gets its own asyncpg pool, wrapped in a `PGService`
 **`LiteLLM_EndUserTable`** - one row per end user.
 
 - `user_id` is `{base_identity}:{service_type}`, e.g. `fxa_uid:ai`. The colon is
-  load-bearing, we `split_part(user_id, ':', ...)` all over the place.
+  load-bearing: queries either `split_part(user_id, ':', ...)` it (full scan) or,
+  when the base identity is known, build the exact ids and match on the primary
+  key (`has_managed_user_rows`).
 - MLPA uses: `user_id`, `budget_id` (which tier the user is on), `blocked`.
 - Touched by: `get_user`, `list_users`, `update_user_budget`, `block_user`,
   `count_users_by_service_type`, `list_managed_base_identities`,
@@ -133,8 +135,8 @@ Two ways:
 
 | Budget | Queries |
 |--------|---------|
-| default 3s | challenge + key CRUD, `get_user`, `update_user_budget`, `block_user`, `create_budget` upsert |
-| admin-read 15s | `list_users` (COUNT(*) + deep OFFSET), `count_users_by_service_type` (GROUP BY `split_part`), `has_managed_user_rows` (EXISTS) |
+| default 3s | challenge + key CRUD, `get_user`, `update_user_budget`, `block_user`, `create_budget` upsert, `has_managed_user_rows` (PK lookup) |
+| admin-read 15s | `list_users` (COUNT(*) + deep OFFSET), `count_users_by_service_type` (GROUP BY `split_part`) |
 | maintenance 30s | `list_managed_base_identities` (DISTINCT scan), `_reconcile_capacity_claims` (bulk DELETE + INSERT) |
 | admission 8s | `admit_managed_base_identity`, `maybe_release_managed_base_identity_if_no_managed_users` |
 
@@ -143,6 +145,21 @@ The admin-read and maintenance ones all hit the same problem: the `user_id` is
 `split_part`/`position`, which is unindexable. That means a full-table scan that
 grows with the user base and can blow past 3s. So they get a bigger budget
 instead.
+
+## In-process caches
+
+Two per-pod caches (`src/mlpa/core/ttl_cache.py`). Set a TTL to 0 to turn one off.
+
+| Cache | Setting | Default | What |
+|-------|---------|---------|------|
+| `get_user` | `GET_USER_CACHE_TTL_S`, `GET_USER_CACHE_MAX_SIZE` | 30s, 10,000 users | the user row read on every inference request |
+| `user_counts_by_service_type` | `USER_COUNTS_CACHE_TTL_S` | 60s | the admin dashboard's full-scan counts |
+
+- Only existing users are cached, so a new user is always found straight away.
+- A block, unblock or budget change clears the cache on the pod that handled
+  it. Other pods can take up to `GET_USER_CACHE_TTL_S` to see it.
+- `mlpa_cache_lookups_total{cache, result}` counts hits and misses. Misses are
+  the queries that reached the DB.
 
 ### Cross-pool read ordering
 

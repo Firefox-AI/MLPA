@@ -252,7 +252,7 @@ class MockLiteLLMPGService:
     async def ping(self, timeout_s=None) -> bool:
         return self.connected
 
-    async def get_user(self, user_id: str):
+    async def get_user(self, user_id: str, *, fresh: bool = False):
         logger.debug(
             f"mock get_user called with user_id: {user_id}",
         )

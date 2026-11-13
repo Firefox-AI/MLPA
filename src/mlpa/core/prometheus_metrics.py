@@ -92,6 +92,11 @@ def availability_outcome_for(reason: AvailabilityReason) -> AvailabilityOutcome:
     return _AVAILABILITY_OUTCOME_BY_REASON[reason]
 
 
+class CacheResult(StrEnum):
+    HIT = "hit"
+    MISS = "miss"
+
+
 class TokenType(StrEnum):
     PROMPT = "prompt"
     COMPLETION = "completion"
@@ -218,6 +223,9 @@ class PrometheusMetrics:
     litellm_reported_duration_seconds: Histogram
     litellm_reported_cost_usd_total: Counter
     litellm_routed_tokens: Counter
+
+    # in-process caches
+    cache_lookups_total: Counter
 
 
 def build_metrics(registry: CollectorRegistry = REGISTRY) -> PrometheusMetrics:
@@ -531,6 +539,12 @@ def build_metrics(registry: CollectorRegistry = REGISTRY) -> PrometheusMetrics:
                 "purpose",
                 "fallback_used",
             ],
+            registry=registry,
+        ),
+        cache_lookups_total=Counter(
+            "mlpa_cache_lookups_total",
+            "In-process cache lookups by cache and result (hit|miss). Misses are the ones that reached the DB.",
+            ["cache", "result"],
             registry=registry,
         ),
     )
