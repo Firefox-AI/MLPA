@@ -36,7 +36,7 @@ It is keyed by service type for request lookup, but Redis stores counts by
 
 | Feature, with default name | Service types | Contract settings |
 | --- | --- | --- |
-| `smart-window` | `ai`, `memories`, `search`, `answer`, `sw-answer`, `liner-answer`, `telemetry`, `agent`, `agent-search`, `ai-dev`, `memories-dev`, `mochi-dev`, `search-dev` | `SMART_WINDOW_TRAFFIC_CONTRACT_RPM_LIMIT`, `SMART_WINDOW_TRAFFIC_CONTRACT_TPM_LIMIT` |
+| `smart-window` | `ai`, `memories`, `search`, `answer`, `sw-answer`, `liner-answer`, `telemetry`, `convo-starters`, `agent`, `agent-search`, `ai-dev`, `memories-dev`, `convo-starters-dev`, `mochi-dev`, `search-dev` | `SMART_WINDOW_TRAFFIC_CONTRACT_RPM_LIMIT`, `SMART_WINDOW_TRAFFIC_CONTRACT_TPM_LIMIT` |
 | `s2s` | `s2s` | `S2S_TRAFFIC_CONTRACT_RPM_LIMIT`, `S2S_TRAFFIC_CONTRACT_TPM_LIMIT` |
 | `s2s-android` | `s2s-android` | `S2S_ANDROID_TRAFFIC_CONTRACT_RPM_LIMIT`, `S2S_ANDROID_TRAFFIC_CONTRACT_TPM_LIMIT` |
 | `widget-generation` | `widget-generation` | `WIDGET_GENERATION_TRAFFIC_CONTRACT_RPM_LIMIT`, `WIDGET_GENERATION_TRAFFIC_CONTRACT_TPM_LIMIT` |

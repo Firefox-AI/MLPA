@@ -179,6 +179,7 @@ def test_valid_service_types_all_service_types():
     assert "sw-answer" in service_types
     assert "liner-answer" in service_types
     assert "telemetry" in service_types
+    assert "convo-starters" in service_types
     assert "agent" in service_types
     assert "agent-search" in service_types
     assert "widget-generation" in service_types
@@ -191,7 +192,7 @@ def test_valid_service_types_all_service_types():
     assert "search-guest" in service_types
     assert "agent-guest" in service_types
     assert "agent-search-guest" in service_types
-    assert len(service_types) == 21
+    assert len(service_types) == 24
 
 
 def test_valid_service_types_set_matches_ordered_list():
@@ -217,6 +218,7 @@ def test_service_type_purposes():
     assert purposes["ai"] == ai_purposes
     assert purposes["memories"] == ["memory-generation"]
     assert purposes["telemetry"] == ["chat"]
+    assert purposes["convo-starters"] == ["convo-starters-sidebar"]
     assert purposes["ai-dev"] == ai_purposes
     assert purposes["mochi-dev"] == ai_purposes
     assert purposes["memories-dev"] == ["memory-generation"]
@@ -250,6 +252,7 @@ def test_service_type_requires_purpose():
     assert env.service_type_requires_purpose("sw-answer") is False
     assert env.service_type_requires_purpose("liner-answer") is False
     assert env.service_type_requires_purpose("telemetry") is True
+    assert env.service_type_requires_purpose("convo-starters") is True
     assert env.service_type_requires_purpose("ai-dev") is True
     assert env.service_type_requires_purpose("mochi-dev") is True
     assert env.service_type_requires_purpose("memories-dev") is True
@@ -277,6 +280,9 @@ def test_valid_purposes_for_service_type():
     assert env.valid_purposes_for_service_type("sw-answer") == []
     assert env.valid_purposes_for_service_type("liner-answer") == []
     assert env.valid_purposes_for_service_type("telemetry") == ["chat"]
+    assert env.valid_purposes_for_service_type("convo-starters") == [
+        "convo-starters-sidebar"
+    ]
 
 
 def test_valid_purposes_is_bounded_global_metric_allowlist():
@@ -317,6 +323,7 @@ def test_user_feature_budget_structure_consistency():
         "sw-answer",
         "liner-answer",
         "telemetry",
+        "convo-starters",
         "agent",
         "agent-search",
         "ai-dev",
@@ -434,6 +441,19 @@ def test_guest_enabled_refuses_default_signing_secret(monkeypatch):
 def test_search_guest_is_valid_for_exa_search():
     # /v1/search checks the service type after auth rewrites search -> search-guest
     assert Env().valid_service_type_for_model("search-guest", "exa-search")
+
+
+def test_convo_starters_variants_mirror_base():
+    env = Env()
+    assert "convo-starters" in env.MLPA_CAPPED_SERVICE_TYPES
+    assert "convo-starters-guest" in env.MLPA_GUEST_SERVICE_TYPES
+    for st in ("convo-starters", "convo-starters-dev", "convo-starters-guest"):
+        assert st in env.valid_service_types_set
+        assert env.service_type_purposes[st] == ["convo-starters-sidebar"]
+        assert env.service_type_requires_purpose(st) is True
+    assert "convo-starters-guest" not in env.client_service_types
+    # ai keeps the purpose so old Firefox clients keep working
+    assert "convo-starters-sidebar" in env.service_type_purposes["ai"]
 
 
 def test_agent_guest_mirrors_agent():
