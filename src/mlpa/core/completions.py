@@ -93,6 +93,9 @@ async def stream_completion(
                 authorized_chat_request.litellm_virtual_key,
             )
         except VirtualKeyConfigurationError as exc:
+            record_chat_availability(
+                authorized_chat_request, AvailabilityReason.VIRTUAL_KEY_CONFIG_ERROR
+            )
             raise HTTPException(status_code=503, detail={"error": str(exc)}) from exc
         body = _build_litellm_body(authorized_chat_request, stream=True)
     result = PrometheusResult.ERROR
@@ -467,6 +470,7 @@ async def _get_completion(
 
         return data
     except VirtualKeyConfigurationError as exc:
+        availability_reason = AvailabilityReason.VIRTUAL_KEY_CONFIG_ERROR
         raise HTTPException(status_code=503, detail={"error": str(exc)}) from exc
     except HTTPException:
         raise

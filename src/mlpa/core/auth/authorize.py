@@ -270,6 +270,13 @@ async def authorize_chat_request(
             resolve_litellm_virtual_key(authorized.service_type)
         return authorized
     except VirtualKeyConfigurationError as exc:
+        record_chat_availability_for(
+            AvailabilityReason.VIRTUAL_KEY_CONFIG_ERROR,
+            model=chat_request.model,
+            service_type=getattr(request.state, "service_type", service_type.value),
+            purpose=(purpose or "").strip(),
+            client_country=client_country,
+        )
         raise HTTPException(status_code=503, detail={"error": str(exc)}) from exc
     except HTTPException as exc:
         # Only record terminal HTTP failures from the shared auth call:
@@ -341,6 +348,12 @@ async def authorize_search_request(
             resolve_litellm_virtual_key(authorized.service_type)
         return authorized
     except VirtualKeyConfigurationError as exc:
+        record_search_availability_for(
+            AvailabilityReason.VIRTUAL_KEY_CONFIG_ERROR,
+            service_type=getattr(request.state, "service_type", service_type.value),
+            purpose=(purpose or "").strip(),
+            client_country=client_country,
+        )
         raise HTTPException(status_code=503, detail={"error": str(exc)}) from exc
     except HTTPException as exc:
         # As for chat, normalized 401s are excluded, including backend failures

@@ -124,6 +124,7 @@ async def _get_search(
         availability_reason = AvailabilityReason.CLIENT_DISCONNECT
         raise
     except VirtualKeyConfigurationError as exc:
+        availability_reason = AvailabilityReason.VIRTUAL_KEY_CONFIG_ERROR
         raise HTTPException(status_code=503, detail={"error": str(exc)}) from exc
     except HTTPException:
         raise

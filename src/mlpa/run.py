@@ -178,7 +178,7 @@ async def chat_completion(
         service_type=authorized_chat_request.service_type,
         model=authorized_chat_request.model,
     )
-    await enforce_traffic_contract(request, authorized_chat_request.service_type)
+    await enforce_traffic_contract(request, authorized_chat_request)
     user_id = authorized_chat_request.user
     if not user_id:
         record_chat_availability(
@@ -231,7 +231,7 @@ async def search(
             status_code=400,
             detail=f"service-type header must be one of {env.forced_model_service_type_pairs.get(SEARCH_MODEL)}",
         )
-    await enforce_traffic_contract(request, authorized_search_request.service_type)
+    await enforce_traffic_contract(request, authorized_search_request)
     user_id = authorized_search_request.user
     if not user_id:
         record_search_availability(

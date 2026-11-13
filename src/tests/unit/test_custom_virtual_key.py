@@ -353,6 +353,29 @@ async def test_guest_authorization_uses_guest_key_and_ignores_custom_header(
     assert authorized.litellm_virtual_key == "sk-search-guest"
 
 
+def _assert_key_config_error_recorded_once(metrics_spy, endpoint, service_type):
+    metric = "search_availability" if endpoint == "search" else "chat_availability"
+    samples = [s for s in metrics_spy.samples(metric) if s.name.endswith("_total")]
+    assert len(samples) == 1
+    assert samples[0].value == 1
+    assert samples[0].labels["reason"] == "virtual_key_config_error"
+    assert samples[0].labels["outcome"] == "failure"
+    assert samples[0].labels["service_type"] == service_type
+    country_samples = [
+        s
+        for s in metrics_spy.samples(f"{metric}_by_country")
+        if s.name.endswith("_total")
+    ]
+    assert len(country_samples) == 1
+    assert country_samples[0].value == 1
+    assert country_samples[0].labels["outcome"] == "failure"
+    assert country_samples[0].labels["service_type"] == service_type
+    other_metric = (
+        "chat_availability" if endpoint == "search" else "search_availability"
+    )
+    assert not metrics_spy.samples(other_metric)
+
+
 @pytest.mark.parametrize("endpoint", ["chat", "stream", "search"])
 async def test_proxy_translates_missing_key_to_503(
     mocker, mock_request, metrics_spy, endpoint
@@ -381,12 +404,15 @@ async def test_proxy_translates_missing_key_to_503(
     assert exc.value.detail == {"error": "Service access is not configured."}
     upstream.post.assert_not_called()
     upstream.stream.assert_not_called()
+    _assert_key_config_error_recorded_once(
+        metrics_spy, endpoint, "search" if endpoint == "search" else "ai"
+    )
 
 
 @pytest.mark.parametrize("guest", [False, True])
 @pytest.mark.parametrize("endpoint", ["chat", "search"])
 async def test_authorization_translates_missing_key_before_proxying(
-    mocker, guest, endpoint
+    mocker, metrics_spy, guest, endpoint
 ):
     from mlpa.core.routers.guest.guest import issue_guest_token
 
@@ -419,6 +445,10 @@ async def test_authorization_translates_missing_key_before_proxying(
         if guest
         else "Service access is not configured."
     }
+    service_type = "search" if endpoint == "search" else "ai"
+    if guest:
+        service_type += "-guest"
+    _assert_key_config_error_recorded_once(metrics_spy, endpoint, service_type)
 
 
 # --- the key must not leak ------------------------------------------------
