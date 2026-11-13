@@ -168,7 +168,7 @@ async def _authorize_common_request(
         if x_dev_authorization is None:
             raise HTTPException(
                 status_code=401,
-                detail="x-dev-authorization required for dev service types (ai-dev, memories-dev, mochi-dev)",
+                detail="x-dev-authorization required for dev service types (ai-dev, memories-dev, mochi-dev, convo-starters-dev)",
             )
         with measure("auth_check", request):
             fxa_profile = await auth_with_key(x_dev_authorization, authorization)

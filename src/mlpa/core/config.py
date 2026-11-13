@@ -26,7 +26,7 @@ class Env(BaseSettings):
     MLPA_ENFORCE_SIGNIN_CAP: bool = False
     # Service types that share admission capacity.
     # Example: `ai` and `memories` are coupled; `s2s`/`s2s-android` can bypass.
-    MLPA_CAPPED_SERVICE_TYPES: set[str] = {"ai", "memories"}
+    MLPA_CAPPED_SERVICE_TYPES: set[str] = {"ai", "memories", "convo-starters"}
     MLPA_ADMISSION_LOCK_TIMEOUT_MS: int = 5000
 
     # Guest capacity gate (AIPLAT-1447): same admission as above, own counter
@@ -41,6 +41,7 @@ class Env(BaseSettings):
     MLPA_GUEST_SERVICE_TYPES: set[str] = {
         "ai-guest",
         "memories-guest",
+        "convo-starters-guest",
         "search-guest",
         "agent-guest",
         "agent-search-guest",
@@ -176,6 +177,12 @@ class Env(BaseSettings):
     USER_FEATURE_BUDGET_TELEMETRY_RPM_LIMIT: int = 10
     USER_FEATURE_BUDGET_TELEMETRY_TPM_LIMIT: int = 2000
 
+    USER_FEATURE_BUDGET_CONVO_STARTERS_BUDGET_ID: str = "end-user-budget-convo-starters"
+    USER_FEATURE_BUDGET_CONVO_STARTERS_BUDGET_DURATION: str = "1d"
+    USER_FEATURE_BUDGET_CONVO_STARTERS_MAX_BUDGET: float = 0.25
+    USER_FEATURE_BUDGET_CONVO_STARTERS_RPM_LIMIT: int = 30
+    USER_FEATURE_BUDGET_CONVO_STARTERS_TPM_LIMIT: int = 60000
+
     USER_FEATURE_BUDGET_AGENT_BUDGET_ID: str = "end-user-budget-agent"
     USER_FEATURE_BUDGET_AGENT_BUDGET_DURATION: str = "7d"
     USER_FEATURE_BUDGET_AGENT_MAX_BUDGET: float = 0.1
@@ -203,6 +210,14 @@ class Env(BaseSettings):
     USER_FEATURE_BUDGET_AI_DEV_RPM_LIMIT: int = 200
     USER_FEATURE_BUDGET_AI_DEV_TPM_LIMIT: int = 10000
 
+    USER_FEATURE_BUDGET_CONVO_STARTERS_DEV_BUDGET_ID: str = (
+        "end-user-budget-convo-starters-dev"
+    )
+    USER_FEATURE_BUDGET_CONVO_STARTERS_DEV_BUDGET_DURATION: str = "1d"
+    USER_FEATURE_BUDGET_CONVO_STARTERS_DEV_MAX_BUDGET: float = 1.0
+    USER_FEATURE_BUDGET_CONVO_STARTERS_DEV_RPM_LIMIT: int = 200
+    USER_FEATURE_BUDGET_CONVO_STARTERS_DEV_TPM_LIMIT: int = 100000
+
     USER_FEATURE_BUDGET_MEMORIES_DEV_BUDGET_ID: str = "end-user-budget-memories-dev"
     USER_FEATURE_BUDGET_MEMORIES_DEV_BUDGET_DURATION: str = "1d"
     USER_FEATURE_BUDGET_MEMORIES_DEV_MAX_BUDGET: float = 1.0
@@ -215,6 +230,14 @@ class Env(BaseSettings):
     USER_FEATURE_BUDGET_AI_GUEST_MAX_BUDGET: float = 0.05
     USER_FEATURE_BUDGET_AI_GUEST_RPM_LIMIT: int = 20
     USER_FEATURE_BUDGET_AI_GUEST_TPM_LIMIT: int = 2000
+
+    USER_FEATURE_BUDGET_CONVO_STARTERS_GUEST_BUDGET_ID: str = (
+        "end-user-budget-convo-starters-guest"
+    )
+    USER_FEATURE_BUDGET_CONVO_STARTERS_GUEST_BUDGET_DURATION: str = "1d"
+    USER_FEATURE_BUDGET_CONVO_STARTERS_GUEST_MAX_BUDGET: float = 0.25
+    USER_FEATURE_BUDGET_CONVO_STARTERS_GUEST_RPM_LIMIT: int = 30
+    USER_FEATURE_BUDGET_CONVO_STARTERS_GUEST_TPM_LIMIT: int = 60000
 
     USER_FEATURE_BUDGET_MEMORIES_GUEST_BUDGET_ID: str = "end-user-budget-memories-guest"
     USER_FEATURE_BUDGET_MEMORIES_GUEST_BUDGET_DURATION: str = "1d"
@@ -363,6 +386,14 @@ class Env(BaseSettings):
                 "rpm_limit": self.USER_FEATURE_BUDGET_TELEMETRY_RPM_LIMIT,
                 "tpm_limit": self.USER_FEATURE_BUDGET_TELEMETRY_TPM_LIMIT,
             },
+            "convo-starters": {
+                "feature": self.FEATURE_SMART_WINDOW,
+                "budget_id": self.USER_FEATURE_BUDGET_CONVO_STARTERS_BUDGET_ID,
+                "budget_duration": self.USER_FEATURE_BUDGET_CONVO_STARTERS_BUDGET_DURATION,
+                "max_budget": self.USER_FEATURE_BUDGET_CONVO_STARTERS_MAX_BUDGET,
+                "rpm_limit": self.USER_FEATURE_BUDGET_CONVO_STARTERS_RPM_LIMIT,
+                "tpm_limit": self.USER_FEATURE_BUDGET_CONVO_STARTERS_TPM_LIMIT,
+            },
             "agent": {
                 "feature": self.FEATURE_SMART_WINDOW,
                 "budget_id": self.USER_FEATURE_BUDGET_AGENT_BUDGET_ID,
@@ -395,6 +426,14 @@ class Env(BaseSettings):
                 "rpm_limit": self.USER_FEATURE_BUDGET_AI_DEV_RPM_LIMIT,
                 "tpm_limit": self.USER_FEATURE_BUDGET_AI_DEV_TPM_LIMIT,
             },
+            "convo-starters-dev": {
+                "feature": self.FEATURE_SMART_WINDOW,
+                "budget_id": self.USER_FEATURE_BUDGET_CONVO_STARTERS_DEV_BUDGET_ID,
+                "budget_duration": self.USER_FEATURE_BUDGET_CONVO_STARTERS_DEV_BUDGET_DURATION,
+                "max_budget": self.USER_FEATURE_BUDGET_CONVO_STARTERS_DEV_MAX_BUDGET,
+                "rpm_limit": self.USER_FEATURE_BUDGET_CONVO_STARTERS_DEV_RPM_LIMIT,
+                "tpm_limit": self.USER_FEATURE_BUDGET_CONVO_STARTERS_DEV_TPM_LIMIT,
+            },
             "memories-dev": {
                 "feature": self.FEATURE_SMART_WINDOW,
                 "budget_id": self.USER_FEATURE_BUDGET_MEMORIES_DEV_BUDGET_ID,
@@ -410,6 +449,14 @@ class Env(BaseSettings):
                 "max_budget": self.USER_FEATURE_BUDGET_AI_GUEST_MAX_BUDGET,
                 "rpm_limit": self.USER_FEATURE_BUDGET_AI_GUEST_RPM_LIMIT,
                 "tpm_limit": self.USER_FEATURE_BUDGET_AI_GUEST_TPM_LIMIT,
+            },
+            "convo-starters-guest": {
+                "feature": self.FEATURE_SMART_WINDOW,
+                "budget_id": self.USER_FEATURE_BUDGET_CONVO_STARTERS_GUEST_BUDGET_ID,
+                "budget_duration": self.USER_FEATURE_BUDGET_CONVO_STARTERS_GUEST_BUDGET_DURATION,
+                "max_budget": self.USER_FEATURE_BUDGET_CONVO_STARTERS_GUEST_MAX_BUDGET,
+                "rpm_limit": self.USER_FEATURE_BUDGET_CONVO_STARTERS_GUEST_RPM_LIMIT,
+                "tpm_limit": self.USER_FEATURE_BUDGET_CONVO_STARTERS_GUEST_TPM_LIMIT,
             },
             "memories-guest": {
                 "feature": self.FEATURE_SMART_WINDOW,
@@ -510,13 +557,16 @@ class Env(BaseSettings):
             "sw-answer": self.MLPA_VIRTUAL_KEY,
             "liner-answer": self.MLPA_VIRTUAL_KEY,
             "telemetry": self.MLPA_VIRTUAL_KEY,
+            "convo-starters": self.MLPA_VIRTUAL_KEY,
             "agent": self.MLPA_VIRTUAL_KEY,
             "agent-search": self.MLPA_VIRTUAL_KEY,
             "widget-generation": self.MLPA_WIDGET_GENERATION_VIRTUAL_KEY,
             "ai-dev": self.MLPA_VIRTUAL_KEY,
             "memories-dev": self.MLPA_VIRTUAL_KEY,
+            "convo-starters-dev": self.MLPA_VIRTUAL_KEY,
             "ai-guest": self.MLPA_GUEST_VIRTUAL_KEY,
             "memories-guest": self.MLPA_GUEST_VIRTUAL_KEY,
+            "convo-starters-guest": self.MLPA_GUEST_VIRTUAL_KEY,
             "search-guest": self.MLPA_GUEST_VIRTUAL_KEY,
             "agent-guest": self.MLPA_GUEST_VIRTUAL_KEY,
             "agent-search-guest": self.MLPA_GUEST_VIRTUAL_KEY,
@@ -560,6 +610,7 @@ class Env(BaseSettings):
             "auto-tab-grouping",
         ]
         memories_purposes = ["memory-generation"]
+        convo_starters_purposes = ["convo-starters-sidebar"]
         pass_butter = []
         return {
             "ai": ai_purposes,
@@ -569,6 +620,9 @@ class Env(BaseSettings):
             "memories-dev": memories_purposes,
             "ai-guest": ai_purposes,
             "memories-guest": memories_purposes,
+            "convo-starters": convo_starters_purposes,
+            "convo-starters-dev": convo_starters_purposes,
+            "convo-starters-guest": convo_starters_purposes,
             "search-guest": pass_butter,
             "s2s": pass_butter,
             "s2s-android": pass_butter,
