@@ -719,6 +719,7 @@ class Env(BaseSettings):
             "mistral-small-2603",
             "moz-summarization",
             "qwen3-235b-a22b-instruct-2507-maas",
+            "qwen38-flash-next",
             "vertex_ai/mistral-small-2503",
             "deepseek-v4.1-flash",
             "deepseek-v4.1-flash-1017",
