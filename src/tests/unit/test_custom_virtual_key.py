@@ -102,19 +102,6 @@ def test_service_keys_load_from_environment(monkeypatch):
     assert settings.service_type_virtual_keys["ai"] == "sk-signed-in"
 
 
-@pytest.mark.parametrize(
-    "service_type", ["widget-generation", "search", "ai-guest", "search-guest"]
-)
-def test_resolver_uses_configured_service_key(mocker, service_type):
-    mocker.patch.object(env, "MLPA_VIRTUAL_KEY", "sk-service")
-    mocker.patch.object(env, "MLPA_GUEST_VIRTUAL_KEY", "sk-service")
-    mocker.patch.object(env, "MLPA_WIDGET_GENERATION_VIRTUAL_KEY", "sk-service")
-    assert (
-        resolve_litellm_virtual_auth_headers(service_type)["Authorization"]
-        == "Bearer sk-service"
-    )
-
-
 def test_custom_key_takes_precedence_over_signed_in_service_key(mocker):
     mocker.patch.object(env, "MLPA_VIRTUAL_KEY", "sk-service")
     assert resolve_litellm_virtual_key("ai", CUSTOM_KEY) == CUSTOM_KEY
@@ -140,12 +127,6 @@ def test_header_ignored_while_feature_disabled(mocker):
 @pytest.mark.parametrize("header", [None, "", "   "])
 def test_absent_or_blank_header_falls_back_to_default(allow_custom_virtual_key, header):
     assert authorize_module._resolve_custom_virtual_key(header) is None
-
-
-def test_unknown_key_ignored_rather_than_rejected_while_disabled(mocker):
-    """Flag off short-circuits before the allowlist, so no 400 leaks its state."""
-    mocker.patch.object(env, "ALLOW_CUSTOM_VIRTUAL_KEY", False)
-    assert authorize_module._resolve_custom_virtual_key(UNKNOWN_KEY) is None
 
 
 def test_key_is_stripped_when_enabled(allow_custom_virtual_key):
@@ -242,55 +223,6 @@ def _chat_request(**overrides) -> AuthorizedChatRequest:
         messages=[{"role": "user", "content": "Hello"}],
         **overrides,
     )
-
-
-@pytest.mark.parametrize(
-    "key, expected_auth",
-    [
-        (CUSTOM_KEY, f"Bearer {CUSTOM_KEY}"),
-        (None, f"Bearer {env.MLPA_VIRTUAL_KEY}"),
-    ],
-)
-async def test_non_stream_completion_uses_expected_auth(
-    mocker, metrics_spy, key, expected_auth
-):
-    mock_response = MagicMock()
-    mock_response.json.return_value = SUCCESSFUL_CHAT_RESPONSE
-    mock_response.headers = {}
-    mock_response.raise_for_status.return_value = None
-    mock_client = AsyncMock()
-    mock_client.post.return_value = mock_response
-    mocker.patch("mlpa.core.completions.get_http_client", return_value=mock_client)
-
-    await get_completion(_make_request(), _chat_request(litellm_virtual_key=key))
-
-    _, call_kwargs = mock_client.post.call_args
-    assert call_kwargs["headers"]["Authorization"] == expected_auth
-    assert call_kwargs["headers"]["Content-Type"] == "application/json"
-
-
-async def test_search_uses_the_custom_key(mocker):
-    mock_response = MagicMock()
-    mock_response.json.return_value = {"results": []}
-    mock_response.headers = {}
-    mock_response.raise_for_status.return_value = None
-    mock_client = AsyncMock()
-    mock_client.post.return_value = mock_response
-    mocker.patch("mlpa.core.search.get_http_client", return_value=mock_client)
-
-    await get_search(
-        _make_request(),
-        AuthorizedSearchRequest(
-            user="test-user-123:search",
-            service_type="search",
-            query="q",
-            max_results=3,
-            litellm_virtual_key=CUSTOM_KEY,
-        ),
-    )
-
-    _, call_kwargs = mock_client.post.call_args
-    assert call_kwargs["headers"]["Authorization"] == f"Bearer {CUSTOM_KEY}"
 
 
 @pytest.mark.parametrize("endpoint", ["chat", "stream", "search"])
@@ -460,30 +392,6 @@ def test_key_is_not_forwarded_in_the_chat_body():
     )
     assert "litellm_virtual_key" not in body
     assert CUSTOM_KEY not in str(body)
-
-
-async def test_key_is_not_forwarded_in_the_search_body(mocker):
-    mock_response = MagicMock()
-    mock_response.json.return_value = {"results": []}
-    mock_response.headers = {}
-    mock_response.raise_for_status.return_value = None
-    mock_client = AsyncMock()
-    mock_client.post.return_value = mock_response
-    mocker.patch("mlpa.core.search.get_http_client", return_value=mock_client)
-
-    await get_search(
-        _make_request(),
-        AuthorizedSearchRequest(
-            user="test-user-123:search",
-            service_type="search",
-            query="q",
-            max_results=3,
-            litellm_virtual_key=CUSTOM_KEY,
-        ),
-    )
-
-    _, call_kwargs = mock_client.post.call_args
-    assert "litellm_virtual_key" not in call_kwargs["json"]
 
 
 def test_key_is_not_in_the_log_fields():

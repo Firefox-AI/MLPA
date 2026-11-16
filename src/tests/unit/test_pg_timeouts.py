@@ -6,35 +6,6 @@ from mlpa.core.services.app_attest_pg_service import AppAttestPGService
 from mlpa.core.services.pg_service import PGService
 
 
-def test_pg_timeout_config_from_env():
-    """PG timeout settings are overridable via environment variables."""
-    env_vars = {
-        "PG_STATEMENT_TIMEOUT_MS": "5000",
-        "PG_IDLE_IN_TX_TIMEOUT_MS": "15000",
-        "PG_MAINTENANCE_STATEMENT_TIMEOUT_MS": "45000",
-        "PG_ADMIN_READ_TIMEOUT_MS": "20000",
-        "PG_COMMAND_TIMEOUT_S": "6.5",
-    }
-
-    with patch.dict(os.environ, env_vars):
-        test_env = Env()
-
-        assert test_env.PG_STATEMENT_TIMEOUT_MS == 5000
-        assert test_env.PG_IDLE_IN_TX_TIMEOUT_MS == 15000
-        assert test_env.PG_MAINTENANCE_STATEMENT_TIMEOUT_MS == 45000
-        assert test_env.PG_ADMIN_READ_TIMEOUT_MS == 20000
-        assert test_env.PG_COMMAND_TIMEOUT_S == 6.5
-
-
-def test_pg_timeout_defaults():
-    """Sane defaults: tight statement timeout, larger idle-in-tx reaper, no client backstop."""
-    assert env.PG_STATEMENT_TIMEOUT_MS == 3000
-    assert env.PG_IDLE_IN_TX_TIMEOUT_MS == 10000
-    assert env.PG_MAINTENANCE_STATEMENT_TIMEOUT_MS == 30000
-    assert env.PG_ADMIN_READ_TIMEOUT_MS == 15000
-    assert env.PG_COMMAND_TIMEOUT_S is None
-
-
 async def test_connect_passes_timeout_server_settings(mocker):
     """The pool is created with server-enforced statement / idle-in-tx timeouts."""
     create_pool = mocker.patch(

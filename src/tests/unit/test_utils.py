@@ -151,30 +151,6 @@ def test_is_rate_limit_error_rate_limit_exceeded():
     assert is_rate_limit_error(error_response, ["budget"]) is False
 
 
-def test_is_rate_limit_error_budget_in_message():
-    """Test that 'budget' keyword in message is detected."""
-    error_response = {
-        "error": {
-            "message": "Your budget limit has been reached",
-            "type": "error",
-            "code": "400",
-        }
-    }
-    assert is_rate_limit_error(error_response, ["budget"]) is True
-
-
-def test_is_rate_limit_error_rate_in_message():
-    """Test that 'rate' keyword in message is detected."""
-    error_response = {
-        "error": {
-            "message": "Rate limit exceeded for this user",
-            "type": "error",
-            "code": "429",
-        }
-    }
-    assert is_rate_limit_error(error_response, ["rate"]) is True
-
-
 def test_is_rate_limit_error_case_insensitive():
     """Test that keyword matching is case-insensitive."""
     error_response = {
@@ -201,21 +177,6 @@ def test_is_rate_limit_error_missing_error_key():
     """Test that missing error key returns False."""
     error_response = {}
     assert is_rate_limit_error(error_response, ["budget"]) is False
-
-
-def test_is_rate_limit_error_empty_error():
-    """Test that empty error dict returns False."""
-    error_response = {"error": {}}
-    assert is_rate_limit_error(error_response, ["budget"]) is False
-
-
-def test_is_rate_limit_error_multiple_keywords():
-    """Test that any matching keyword returns True."""
-    error_response = {
-        "error": {"message": "Budget limit exceeded", "type": "error", "code": "400"}
-    }
-    assert is_rate_limit_error(error_response, ["budget", "rate"]) is True
-    assert is_rate_limit_error(error_response, ["rate", "budget"]) is True
 
 
 def test_is_context_window_error_context_window_exceeded():

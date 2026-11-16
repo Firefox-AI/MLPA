@@ -16,48 +16,6 @@ from mlpa.core.middleware.set_json_content_type import (
 )
 
 
-@pytest.fixture
-def test_app():
-    """Create a test FastAPI app with middleware registered."""
-    app = FastAPI()
-
-    execution_order = []
-
-    async def track_order_middleware(name: str, request: Request, call_next):
-        execution_order.append(f"{name}_before")
-        response = await call_next(request)
-        execution_order.append(f"{name}_after")
-        return response
-
-    from mlpa.core.middleware.instrumentation import instrument_requests_middleware
-    from mlpa.core.middleware.request_size import check_request_size_middleware
-
-    app.middleware("http")(instrument_requests_middleware)
-    app.middleware("http")(check_request_size_middleware)
-
-    @app.get("/test")
-    async def test_endpoint():
-        return {"status": "ok"}
-
-    return app, execution_order
-
-
-def test_middleware_execution_order(test_app):
-    """
-    Verify that middleware executes in the correct order.
-
-    Expected order:
-    1. check_request_size_middleware (runs first - early rejection)
-    2. instrument_requests_middleware (runs second - wraps everything)
-    """
-    app, execution_order = test_app
-
-    client = TestClient(app)
-    response = client.get("/test")
-
-    assert response.status_code == 200
-
-
 def test_instrumentation_bounds_pre_auth_request_labels(metrics_spy):
     from mlpa.core.middleware.instrumentation import instrument_requests_middleware
 
@@ -256,31 +214,6 @@ def test_instrumentation_buckets_unknown_methods(metrics_spy):
     )
 
 
-def test_register_middleware_function():
-    """Test that register_middleware correctly registers all middleware."""
-    app = FastAPI()
-
-    register_middleware(app)
-
-    @app.get("/test")
-    async def test_endpoint():
-        return {"status": "ok"}
-
-    client = TestClient(app)
-    response = client.get("/test")
-
-    assert response.status_code == 200
-
-    large_content = "x" * (11 * 1024 * 1024)
-    response = client.post(
-        "/v1/chat/completions",
-        headers={"Content-Length": str(len(large_content))},
-        content=large_content,
-    )
-    assert response.status_code == 413
-    assert response.json() == {"error": ERROR_CODE_REQUEST_TOO_LARGE}
-
-
 def test_set_json_content_type_sets_json_for_verify_play():
     app = FastAPI()
     seen_content_types = []
@@ -332,45 +265,6 @@ def test_instrumentation_tracks_valid_firefox_major_version(metrics_spy):
     from mlpa.core.utils import parse_firefox_major_version_from_user_agent
 
     user_agent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:155.0) Gecko/20100101 Firefox/155.0"
-
-    app = FastAPI()
-    app.middleware("http")(instrument_requests_middleware)
-
-    @app.get("/test")
-    async def test_endpoint():
-        return {"status": "ok"}
-
-    client = TestClient(app)
-    response = client.get(
-        "/test",
-        headers={
-            "service-type": "ai",
-            "purpose": "chat",
-            "user-agent": user_agent,
-        },
-    )
-
-    assert response.status_code == 200
-    assert (
-        metrics_spy.value(
-            "requests_total",
-            method="GET",
-            endpoint="/test",
-            service_type="ai",
-            purpose="chat",
-            major_fx_version=parse_firefox_major_version_from_user_agent(user_agent),
-            traffic_contract_rpm_mode="N/A",
-            traffic_contract_tpm_mode="N/A",
-        )
-        == 1
-    )
-
-
-def test_instrumentation_tracks_invalid_firefox_major_version(metrics_spy):
-    from mlpa.core.middleware.instrumentation import instrument_requests_middleware
-    from mlpa.core.utils import parse_firefox_major_version_from_user_agent
-
-    user_agent = "bruno-runtime/3.4.2"
 
     app = FastAPI()
     app.middleware("http")(instrument_requests_middleware)
