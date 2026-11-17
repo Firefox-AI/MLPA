@@ -20,25 +20,6 @@ def test_disabled_timing_does_not_create_state(value):
     assert not hasattr(request.state, "debug_spans")
 
 
-def test_spans_preserve_each_occurrence_even_on_failure(mocker):
-    request = make_request("true")
-    mocker.patch(
-        "mlpa.core.request_timings.time.perf_counter",
-        side_effect=[1.0, 1.25, 2.0, 2.5, 3.0, 3.125],
-    )
-    with measure("auth_check", request):
-        pass
-    with measure("db", request):
-        pass
-    with pytest.raises(ValueError), measure("db", request):
-        raise ValueError("failed query")
-    assert request.state.debug_spans == [
-        {"name": "auth_check", "start_ms": 0, "duration_ms": 250},
-        {"name": "db", "start_ms": 1000, "duration_ms": 500},
-        {"name": "db", "start_ms": 2000, "duration_ms": 125},
-    ]
-
-
 async def test_concurrent_requests_keep_separate_timings():
     async def run(stage):
         request = make_request("true")

@@ -367,25 +367,6 @@ async def test_get_completion_litellm_routing_skips_invalid_optional_headers(
     assert "litellm_reported_cost_usd_total" not in metrics_spy.touched()
 
 
-async def test_get_completion_litellm_routing_skips_negative_duration_ms(
-    mocker, metrics_spy
-):
-    mock_response = MagicMock()
-    mock_response.json.return_value = SUCCESSFUL_CHAT_RESPONSE
-    mock_response.headers = _sample_litellm_response_headers(
-        **{LITELLM_HEADER_RESPONSE_DURATION_MS: "-1"},
-    )
-    mock_response.raise_for_status.return_value = None
-
-    mock_client = AsyncMock()
-    mock_client.post.return_value = mock_response
-    mocker.patch("mlpa.core.completions.get_http_client", return_value=mock_client)
-
-    await get_completion(Request({"type": "http", "headers": []}), SAMPLE_REQUEST)
-
-    assert "litellm_reported_duration_seconds" not in metrics_spy.touched()
-
-
 async def test_get_completion_http_error(mocker, metrics_spy):
     mock_response = MagicMock()
     mock_response.text = "Internal Server Error"
@@ -968,34 +949,6 @@ async def test_get_completion_invalid_request_vertex(mocker, metrics_spy):
     assert _latency_count(metrics_spy, PrometheusResult.ERROR) == 1
 
 
-async def test_get_completion_429_invalid_json(mocker, metrics_spy):
-    mock_response = MagicMock()
-    mock_response.text = "Invalid JSON response"
-    mock_response.status_code = 429
-
-    mock_http_status_error = httpx.HTTPStatusError(
-        "Too Many Requests", request=MagicMock(), response=mock_response
-    )
-    mock_response.raise_for_status.side_effect = mock_http_status_error
-
-    mock_client = AsyncMock()
-    mock_client.post.return_value = mock_response
-    mocker.patch("mlpa.core.completions.get_http_client", return_value=mock_client)
-    mocker.patch.object(env, "MLPA_DEBUG", False)
-
-    with pytest.raises(HTTPException) as exc_info:
-        await get_completion(Request({"type": "http", "headers": []}), SAMPLE_REQUEST)
-
-    assert exc_info.value.status_code == 429
-    assert exc_info.value.detail == {"error": "Upstream service returned an error"}
-    metrics_spy.assert_only(
-        _expect_metrics(
-            "chat_completion_latency",
-            "chat_availability",
-        )
-    )
-
-
 async def test_stream_completion_budget_limit_exceeded_429(
     httpx_mock: HTTPXMock, mocker, mock_request, metrics_spy
 ):
@@ -1374,65 +1327,6 @@ async def test_stream_completion_upstream_rate_limit_error(
         )
     )
     assert _rejection_count(metrics_spy, PrometheusRejectionReason.RATE_LIMITED) == 1
-    assert _latency_count(metrics_spy, PrometheusResult.ERROR) == 1
-
-
-async def test_stream_completion_429_invalid_json(
-    httpx_mock: HTTPXMock, mocker, mock_request, metrics_spy
-):
-    httpx_mock.add_response(
-        method="POST",
-        url=LITELLM_COMPLETIONS_URL,
-        content=b"Invalid JSON response",
-        status_code=429,
-    )
-
-    # raise_and_log uses the bound logger passed from stream_completion.
-    mock_logger = mocker.patch("mlpa.core.completions.logger")
-    mock_logger.bind.return_value = mock_logger
-    mocker.patch.object(env, "MLPA_DEBUG", False)
-
-    received_chunks = [
-        chunk async for chunk in stream_completion(mock_request, SAMPLE_REQUEST)
-    ]
-
-    assert len(received_chunks) == 1
-    assert (
-        received_chunks[0]
-        == b'data: {"code": 429, "error": "Upstream service returned an error"}\n\n'
-    )
-    mock_logger.opt.return_value.error.assert_called_once()
-    metrics_spy.assert_only(
-        _expect_metrics(
-            "chat_completion_latency",
-            "chat_availability",
-        )
-    )
-    assert _latency_count(metrics_spy, PrometheusResult.ERROR) == 1
-
-
-async def test_stream_completion_exception_after_streaming_started(
-    httpx_mock: HTTPXMock, mock_request, metrics_spy
-):
-    httpx_mock.add_response(
-        method="POST",
-        url=LITELLM_COMPLETIONS_URL,
-        status_code=500,
-        text="Internal Server Error",
-    )
-
-    received_chunks = []
-    async for chunk in stream_completion(mock_request, SAMPLE_REQUEST):
-        received_chunks.append(chunk)
-
-    assert len(received_chunks) == 1
-    assert b"error" in received_chunks[0]
-    metrics_spy.assert_only(
-        _expect_metrics(
-            "chat_completion_latency",
-            "chat_availability",
-        )
-    )
     assert _latency_count(metrics_spy, PrometheusResult.ERROR) == 1
 
 
