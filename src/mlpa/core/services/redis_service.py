@@ -2,12 +2,15 @@ import asyncio
 import time
 from typing import Any
 
-import redis.asyncio as aioredis
-
 from mlpa.core.classes import TrafficContractCounters, TrafficContractDecision
 from mlpa.core.config import env
 from mlpa.core.consts import TrafficContractKeyType, TrafficContractMode
 from mlpa.core.logger import logger
+from mlpa.core.services.metrics import (
+    MonitoredRedis,
+    MonitoredRedisConnection,
+    MonitoredRedisPool,
+)
 
 TRAFFIC_CONTRACT_BASKET_FIELD = "__basket__"
 
@@ -61,13 +64,16 @@ return {feature_count, basket_count}
 class RedisService:
     def __init__(self):
         self.redis: Any | None = None
+        MonitoredRedis.initialize_metrics()
 
     async def connect(self):
-        self.redis = aioredis.Redis(
+        pool = MonitoredRedisPool(
+            connection_class=MonitoredRedisConnection,
             host=env.REDIS_HOST,
             port=env.REDIS_PORT,
             decode_responses=True,
         )
+        self.redis = MonitoredRedis.from_pool(pool)
         await self.redis.ping()
         logger.info(f"Connected to Redis at {env.REDIS_HOST}:{env.REDIS_PORT}")
 
