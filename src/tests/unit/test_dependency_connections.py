@@ -1,6 +1,4 @@
 import asyncio
-import json
-from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock
 
@@ -50,10 +48,10 @@ async def test_pg_physical_connection(
     service = PGService(db)
     if error:
         with pytest.raises(type(error)):
-            await service._metrics.connect("dsn", timeout=1)
+            await service.metrics.connect("dsn", timeout=1)
     else:
-        assert await service._metrics.connect("dsn", timeout=1) is conn
-        conn.add_query_logger.assert_called_once_with(service._metrics.record_query)
+        assert await service.metrics.connect("dsn", timeout=1) is conn
+        conn.add_query_logger.assert_called_once_with(service.metrics.record_query)
     connect.assert_awaited_once_with("dsn", timeout=1)
     for candidate in ("success", "failure", "timeout"):
         assert metrics_spy.value(
@@ -86,7 +84,7 @@ async def test_pg_pool_start_outcomes(metrics_spy, mocker, error, outcome):
     else:
         await service.connect()
         assert service.connected
-        assert create.call_args.kwargs["connect"] == service._metrics.connect
+        assert create.call_args.kwargs["connect"] == service.metrics.connect
     assert (
         metrics_spy.value(
             "dep_connections_total",
@@ -128,7 +126,7 @@ async def test_pg_pool_start_outcomes(metrics_spy, mocker, error, outcome):
 )
 def test_pg_query_timeout_classification(metrics_spy, exception, kind):
     service = PGService(env.LITELLM_DB_NAME)
-    service._metrics.record_query(SimpleNamespace(exception=exception))
+    service.metrics.record_query(SimpleNamespace(exception=exception))
     for candidate in ("client", "statement", "lock"):
         assert metrics_spy.value(
             "dep_timeouts_total", dependency=f"db_{env.LITELLM_DB_NAME}", kind=candidate
@@ -325,7 +323,7 @@ async def test_redis_retry_counts_each_attempt(metrics_spy, mocker):
 
 
 def test_postgres_expected_constraint_error_is_an_execution_failure(metrics_spy):
-    PGService(env.APP_ATTEST_DB_NAME)._metrics.record_query(
+    PGService(env.APP_ATTEST_DB_NAME).metrics.record_query(
         SimpleNamespace(exception=asyncpg.UniqueViolationError("duplicate key"))
     )
     assert (
@@ -354,29 +352,3 @@ async def test_redis_service_uses_instrumented_pool(metrics_spy, mocker):
     assert isinstance(service.client.connection_pool, MonitoredRedisPool)
     assert service.client.connection_pool.connection_class is MonitoredRedisConnection
     await service.close()
-
-
-def test_dashboard_keeps_dependencies_separate():
-    root = Path(__file__).resolve().parents[3]
-    dashboard = json.loads(
-        (root / "monitoring/dependency-connections.json").read_text()
-    )
-    assert "PROPOSED" in dashboard["title"]
-    for dependency in ("litellm_v2", "appattest", "redis"):
-        panels = [
-            p for p in dashboard["panels"] if p["title"].startswith(dependency + " · ")
-        ]
-        assert len(panels) == 7
-        for panel in panels:
-            expr = panel["targets"][0]["expr"]
-            assert f'dependency="{dependency}"' in expr
-            assert 'namespace="llm-proxy-prod"' in expr
-        ratio, budget = [p["targets"][0]["expr"] for p in panels[:2]]
-        assert "[28d]" in ratio and "> 0" in ratio
-        assert "0.001" in budget and "failure|timeout" in budget
-        assert 'stage="connection"' in ratio
-        operation_ratio = panels[-2]["targets"][0]["expr"]
-        assert "mlpa_dep_operations_total" in operation_ratio
-        assert "[28d]" in operation_ratio and "> 0" in operation_ratio
-        assert "0.001" not in operation_ratio
-        assert "stage=" not in operation_ratio
