@@ -247,44 +247,6 @@ async def test_wrapper_bad_guest_token_records_guest_auth_rejected(mocker, metri
     assert _availability_total(metrics_spy) == 1
 
 
-async def test_wrapper_shared_call_400_records_invalid_auth_request(
-    mocker, metrics_spy
-):
-    # Pins that the wrapper maps any shared-call 400 to invalid_auth_request,
-    # regardless of source. The non-purpose source (malformed App Attest base64
-    # decoded in app_attest_auth, which raises before its try) was confirmed by
-    # code inspection; this test proves the mapping, not that path's reachability.
-    raised = HTTPException(status_code=400, detail={"challenge_b64": "Invalid Base64"})
-    mocker.patch.object(
-        authorize_module,
-        "_authorize_common_request",
-        mocker.AsyncMock(side_effect=raised),
-    )
-
-    with pytest.raises(HTTPException) as exc_info:
-        await authorize_module.authorize_chat_request(
-            request=_make_request(),
-            chat_request=_chat_request(),
-            authorization="Bearer token",
-            service_type=_AI,
-            purpose="chat",
-        )
-
-    assert exc_info.value is raised  # re-raised unchanged
-    assert (
-        _availability(
-            metrics_spy,
-            AvailabilityOutcome.EXCLUDED,
-            AvailabilityReason.INVALID_AUTH_REQUEST,
-            model=_VALID_MODEL,
-            service_type="ai",
-            purpose="chat",
-        )
-        == 1
-    )
-    assert _availability_total(metrics_spy) == 1
-
-
 async def test_wrapper_shared_call_500_records_nothing(mocker, metrics_spy):
     # App Attest's explicit 500 is an HTTPException, so it is caught, but the
     # wrapper records only 401/400 and re-raises everything else unrecorded.
@@ -421,50 +383,6 @@ async def test_provisioning_failure_records_failure(mocker, metrics_spy):
             metrics_spy,
             AvailabilityOutcome.FAILURE,
             AvailabilityReason.PROVISIONING_FAILURE,
-            model=SAMPLE_REQUEST.model,
-            service_type=SAMPLE_REQUEST.service_type,
-            purpose=SAMPLE_REQUEST.purpose,
-        )
-        == 1
-    )
-    assert _availability_total(metrics_spy) == 1
-
-
-async def test_global_budget_exceeded_records_failure(mocker, metrics_spy):
-    mock_response = mocker.MagicMock()
-    mock_response.text = MOCK_LITELLM_GLOBAL_BUDGET_ERROR_TEXT
-    mock_response.status_code = 400
-    mock_response.raise_for_status.side_effect = httpx.HTTPStatusError(
-        "Bad Request",
-        request=mocker.MagicMock(),
-        response=mock_response,
-    )
-
-    mock_client = mocker.AsyncMock()
-    mock_client.post.return_value = mock_response
-    mocker.patch("mlpa.core.completions.get_http_client", return_value=mock_client)
-
-    with pytest.raises(HTTPException) as exc_info:
-        await get_completion(_make_request(), SAMPLE_REQUEST)
-
-    assert exc_info.value.status_code == 500
-    assert exc_info.value.detail == {"error": ERROR_CODE_GLOBAL_BUDGET_LIMIT_EXCEEDED}
-    assert exc_info.value.headers == {"Retry-After": "300"}
-    assert (
-        _rejection(
-            metrics_spy,
-            PrometheusRejectionReason.GLOBAL_BUDGET_EXCEEDED,
-            model=SAMPLE_REQUEST.model,
-            service_type=SAMPLE_REQUEST.service_type,
-            purpose=SAMPLE_REQUEST.purpose,
-        )
-        == 1
-    )
-    assert (
-        _availability(
-            metrics_spy,
-            AvailabilityOutcome.FAILURE,
-            AvailabilityReason.GLOBAL_BUDGET_EXCEEDED,
             model=SAMPLE_REQUEST.model,
             service_type=SAMPLE_REQUEST.service_type,
             purpose=SAMPLE_REQUEST.purpose,

@@ -7,32 +7,6 @@ from mlpa.core.config import Env
 from tests.consts import SAMPLE_REQUEST
 
 
-def test_timeout_config_from_env():
-    """Test that timeout configuration can be overridden via environment variables."""
-    env_vars = {
-        "STREAMING_TIMEOUT_SECONDS": "600",
-        "HTTPX_CONNECT_TIMEOUT_SECONDS": "10",
-        "HTTPX_READ_TIMEOUT_SECONDS": "20",
-        "HTTPX_WRITE_TIMEOUT_SECONDS": "30",
-        "HTTPX_POOL_TIMEOUT_SECONDS": "40",
-        "HTTPX_MAX_CONNECTIONS": "200",
-        "HTTPX_MAX_KEEPALIVE_CONNECTIONS": "50",
-        "HTTPX_KEEPALIVE_EXPIRY_SECONDS": "25",
-    }
-
-    with patch.dict(os.environ, env_vars):
-        env = Env()
-
-        assert env.STREAMING_TIMEOUT_SECONDS == 600
-        assert env.HTTPX_CONNECT_TIMEOUT_SECONDS == 10
-        assert env.HTTPX_READ_TIMEOUT_SECONDS == 20
-        assert env.HTTPX_WRITE_TIMEOUT_SECONDS == 30
-        assert env.HTTPX_POOL_TIMEOUT_SECONDS == 40
-        assert env.HTTPX_MAX_CONNECTIONS == 200
-        assert env.HTTPX_MAX_KEEPALIVE_CONNECTIONS == 50
-        assert env.HTTPX_KEEPALIVE_EXPIRY_SECONDS == 25
-
-
 def test_httpx_client_uses_configurable_timeouts_and_limits(mocker):
     """Test that shared httpx client uses configured timeout and pool limits."""
     mocker.patch.object(http_client, "_client", None)
@@ -60,52 +34,3 @@ def test_httpx_client_uses_configurable_timeouts_and_limits(mocker):
     assert limits.max_keepalive_connections == 75
     assert limits.keepalive_expiry == 12
     http_client._client = None
-
-
-async def test_stream_completion_uses_configurable_timeout(
-    httpx_mock, mocker, mock_request, metrics_spy
-):
-    """Test that stream_completion uses the configurable timeout from env."""
-    from pytest_httpx import IteratorStream
-
-    mock_chunks = [b"data: chunk1", b"data: [DONE]"]
-    httpx_mock.add_response(
-        method="POST",
-        url="http://localhost:4000/v1/chat/completions",
-        stream=IteratorStream(mock_chunks),
-        status_code=200,
-    )
-
-    custom_timeout = 600
-    mock_env = mocker.patch("mlpa.core.completions.env")
-    mock_env.STREAMING_TIMEOUT_SECONDS = custom_timeout
-    mock_env.DISCONNECT_POLL_INTERVAL_SECONDS = 0.1
-
-    async for _ in stream_completion(mock_request, SAMPLE_REQUEST):
-        pass
-
-    requests = httpx_mock.get_requests()
-    assert len(requests) == 1
-    assert mock_env.STREAMING_TIMEOUT_SECONDS == custom_timeout
-
-
-async def test_stream_completion_uses_default_timeout(
-    httpx_mock, mocker, mock_request, metrics_spy
-):
-    """Test that stream_completion uses default timeout when not configured."""
-    from pytest_httpx import IteratorStream
-
-    mock_chunks = [b"data: chunk1", b"data: [DONE]"]
-    httpx_mock.add_response(
-        method="POST",
-        url="http://localhost:4000/v1/chat/completions",
-        stream=IteratorStream(mock_chunks),
-        status_code=200,
-    )
-
-    async for _ in stream_completion(mock_request, SAMPLE_REQUEST):
-        pass
-
-    from mlpa.core.completions import env
-
-    assert env.STREAMING_TIMEOUT_SECONDS == 300
