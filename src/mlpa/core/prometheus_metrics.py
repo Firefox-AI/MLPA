@@ -233,6 +233,12 @@ class PrometheusMetrics:
     # in-process caches
     cache_lookups_total: Counter
 
+    # Redis & DB
+    dep_connections_total: Counter
+    dep_operations_total: Counter
+    dep_timeouts_total: Counter
+    dep_pool_exhaustions_total: Counter
+
 
 def build_metrics(registry: CollectorRegistry = REGISTRY) -> PrometheusMetrics:
     """Construct a fresh `PrometheusMetrics` bound to `registry`.
@@ -551,6 +557,30 @@ def build_metrics(registry: CollectorRegistry = REGISTRY) -> PrometheusMetrics:
             "mlpa_cache_lookups_total",
             "In-process cache lookups by cache and result (hit|miss). Misses are the ones that reached the DB.",
             ["cache", "result"],
+            registry=registry,
+        ),
+        dep_connections_total=Counter(
+            "mlpa_dep_connections_total",
+            "Completed connection attempts, not pool reuse.",
+            ["dependency", "stage", "outcome"],
+            registry=registry,
+        ),
+        dep_operations_total=Counter(
+            "mlpa_dep_operations_total",
+            "Completed Postgres query and Redis command attempts, including pool reuse; retries count separately.",
+            ["dependency", "outcome"],
+            registry=registry,
+        ),
+        dep_timeouts_total=Counter(
+            "mlpa_dep_timeouts_total",
+            "Timeouts, separate from connection outcomes.",
+            ["dependency", "kind"],
+            registry=registry,
+        ),
+        dep_pool_exhaustions_total=Counter(
+            "mlpa_dep_pool_exhaustions_total",
+            "Redis pool acquisitions rejected because the connection limit was reached.",
+            ["dependency"],
             registry=registry,
         ),
     )
