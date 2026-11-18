@@ -88,9 +88,8 @@ _RATE_LIMIT_REJECTION: dict[int, tuple[int, PrometheusRejectionReason, str, str]
 }
 
 
-# LiteLLM's budget reset job runs about every 10 min, so the reset lands a few
-# minutes after midnight. Without the buffer a client retrying at 00:00 gets
-# another 429 and is told to wait a full day.
+# Adding a little buffer for reset-after time to allow all liteLLM pods to sync on the budget reset
+# default TTL is 10 mins
 _BUDGET_RESET_BUFFER_S = 20 * 60
 
 
