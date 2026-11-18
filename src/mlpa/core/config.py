@@ -83,9 +83,13 @@ class Env(BaseSettings):
     # crash the app on startup for the intuitive comma-separated format.
     MLPA_LAUNCH_COUNTRIES: Annotated[set[str], NoDecode] = {"US", "CA", "FR", "DE"}
 
-    @field_validator("MLPA_LAUNCH_COUNTRIES", mode="before")
+    @field_validator(
+        "MLPA_LAUNCH_COUNTRIES",
+        "WILDCARD_MODEL_PREFIXES",
+        mode="before",
+    )
     @classmethod
-    def _parse_launch_countries(cls, raw: str | set[str]) -> set[str]:
+    def _parse_comma_separated_set(cls, raw: str | set[str]) -> set[str]:
         if isinstance(raw, str):
             return {code.strip() for code in raw.split(",") if code.strip()}
         return raw
@@ -95,6 +99,14 @@ class Env(BaseSettings):
     # when true, the `purpose` header becomes mandatory for service types that
     # have a non-empty configured purpose allowlist.
     MLPA_REQUIRE_PURPOSE_HEADER: bool = False
+
+    # Must match the LiteLLM wildcard routes (`together/*`, `openrouter/*`).
+    # "<prefix><org>/<model>" keeps its full name as the metric label (see
+    # utils.clamp_model).
+    WILDCARD_MODEL_PREFIXES: Annotated[set[str], NoDecode] = {
+        "together/",
+        "openrouter/",
+    }
 
     # LiteLLM
     MASTER_KEY: str = "sk-default"  # Bypasses LiteLLM.max_budget, use MLPA_VIRTUAL_KEY (virtual key) for completion requests
@@ -719,6 +731,7 @@ class Env(BaseSettings):
             "mistral-small-2603",
             "moz-summarization",
             "qwen3-235b-a22b-instruct-2507-maas",
+            "qwen38-flash-next",
             "vertex_ai/mistral-small-2503",
             "deepseek-v4.1-flash",
             "deepseek-v4.1-flash-1017",
