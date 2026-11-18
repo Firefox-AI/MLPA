@@ -256,3 +256,9 @@ def test_agent_guest_mirrors_agent():
         assert env.service_type_purposes[guest] == env.service_type_purposes[st]
     assert env.valid_service_type_for_model("agent-search-guest", "exa-search")
     assert not env.valid_service_type_for_model("agent-guest", "exa-search")
+
+
+def test_unknown_litellm_timezone_fails_at_startup():
+    with patch.dict(os.environ, {"LITELLM_TIMEZONE": "US/Easternn"}):
+        with pytest.raises(ValueError, match="Unknown LITELLM_TIMEZONE"):
+            Env()
