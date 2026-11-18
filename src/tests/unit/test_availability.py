@@ -1,4 +1,6 @@
 import json
+from datetime import datetime, timezone
+from zoneinfo import ZoneInfo
 
 import pytest
 
@@ -11,8 +13,13 @@ from mlpa.core.config import (
     ERROR_CODE_RATE_LIMIT_EXCEEDED,
     ERROR_CODE_REQUEST_TOO_LARGE,
     ERROR_CODE_UPSTREAM_RATE_LIMIT_EXCEEDED,
+    env,
 )
-from mlpa.core.errors import RejectionMatch, classify_upstream_error
+from mlpa.core.errors import (
+    RejectionMatch,
+    classify_upstream_error,
+    seconds_until_budget_reset,
+)
 from mlpa.core.prometheus_metrics import (
     AvailabilityOutcome,
     AvailabilityReason,
@@ -137,9 +144,9 @@ _END_USER_BUDGET = (
         # guest key ran out → shared guest pool exhausted
         ("abc:ai-guest", _KEY_BUDGET, ERROR_CODE_GUEST_BUDGET_LIMIT_EXCEEDED, "3600"),
         # guest hit their own budget → stays code 1
-        ("abc:ai-guest", _END_USER_BUDGET, ERROR_CODE_BUDGET_LIMIT_EXCEEDED, "86400"),
+        ("abc:ai-guest", _END_USER_BUDGET, ERROR_CODE_BUDGET_LIMIT_EXCEEDED, None),
         # FxA user on MLPA_VIRTUAL_KEY → unchanged behavior
-        ("abc:ai", _KEY_BUDGET, ERROR_CODE_BUDGET_LIMIT_EXCEEDED, "86400"),
+        ("abc:ai", _KEY_BUDGET, ERROR_CODE_BUDGET_LIMIT_EXCEEDED, None),
     ],
 )
 def test_classify_guest_key_budget(user, message, error_code, retry_after):
@@ -149,4 +156,28 @@ def test_classify_guest_key_budget(user, message, error_code, retry_after):
     assert match is not None
     assert match.error_code == error_code
     assert match.http_status == 429
-    assert match.retry_after == retry_after
+    if retry_after is None:  # budget: seconds until midnight in LITELLM_TIMEZONE
+        assert 0 < int(match.retry_after) <= 90000
+    else:
+        assert match.retry_after == retry_after
+
+
+_ET = ZoneInfo("US/Eastern")
+
+
+@pytest.mark.parametrize(
+    ("now", "expected"),
+    [
+        (datetime(2026, 11, 17, 23, 59, 30, tzinfo=_ET), "30"),
+        (datetime(2026, 11, 17, 0, 0, 0, tzinfo=_ET), "86400"),
+        # 13:00 UTC = 08:00 EST → 16h to midnight ET
+        (datetime(2026, 11, 17, 13, 0, 0, tzinfo=timezone.utc), "57600"),
+        # DST ends 2026-11-01: that day is 25h long
+        (datetime(2026, 11, 1, 0, 0, 0, tzinfo=_ET), "90000"),
+        # DST starts 2026-03-08: that day is 23h long
+        (datetime(2026, 3, 8, 0, 0, 0, tzinfo=_ET), "82800"),
+    ],
+)
+def test_seconds_until_budget_reset(mocker, now, expected):
+    mocker.patch.object(env, "LITELLM_TIMEZONE", "US/Eastern")
+    assert seconds_until_budget_reset(now) == expected

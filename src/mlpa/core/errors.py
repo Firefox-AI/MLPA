@@ -1,5 +1,7 @@
 import json
 from dataclasses import dataclass
+from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
 
 from mlpa.core.config import (
     ERROR_CODE_BUDGET_LIMIT_EXCEEDED,
@@ -10,6 +12,7 @@ from mlpa.core.config import (
     ERROR_CODE_RATE_LIMIT_EXCEEDED,
     ERROR_CODE_REQUEST_TOO_LARGE,
     ERROR_CODE_UPSTREAM_RATE_LIMIT_EXCEEDED,
+    env,
 )
 from mlpa.core.prometheus_metrics import AvailabilityReason, PrometheusRejectionReason
 from mlpa.core.utils import (
@@ -84,6 +87,20 @@ _RATE_LIMIT_REJECTION: dict[int, tuple[int, PrometheusRejectionReason, str, str]
     ),
 }
 
+
+def seconds_until_budget_reset(now: datetime | None = None) -> str:
+    """Seconds until next midnight in LiteLLM's timezone, when 1d budgets reset.
+
+    Note: 7d budgets reset on their own schedule, so they get told
+    "tomorrow" too and a retry just gets a fresh 429.
+    """
+    tz = ZoneInfo(env.LITELLM_TIMEZONE)
+    now = (now or datetime.now(tz)).astimezone(tz)
+    midnight = datetime.combine(now.date() + timedelta(days=1), datetime.min.time(), tz)
+    # timestamp() diff, not datetime diff: same-tzinfo subtraction ignores DST.
+    return str(max(int(midnight.timestamp() - now.timestamp()), 1))
+
+
 _LITELLM_GLOBAL_BUDGET_ERROR = "ExceededBudget: User=default_user_id over budget"
 # LiteLLM's virtual key max_budget error. Team/tag budgets add "Team="/"Tag="
 # after the "!", end-user budgets say "ExceededBudget: End User=".
@@ -130,6 +147,8 @@ def classify_upstream_error(
             http_status, reason, retry_after, log_prefix = _RATE_LIMIT_REJECTION[
                 error_code
             ]
+            if error_code == ERROR_CODE_BUDGET_LIMIT_EXCEEDED:
+                retry_after = seconds_until_budget_reset()
             return RejectionMatch(
                 reason=reason,
                 error_code=error_code,

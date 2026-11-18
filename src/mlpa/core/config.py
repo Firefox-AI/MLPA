@@ -102,6 +102,9 @@ class Env(BaseSettings):
     EXA_API_KEY: str = "sk-add-your-key"  # for local LiteLLM testing
     LINER_API_KEY: str = "sk-add-your-key"  # for local LiteLLM testing
     LITELLM_API_BASE: str = "http://localhost:4000"
+    # Must match LiteLLM's litellm_settings.timezone: 1d budgets reset at
+    # midnight there, and the budget 429 Retry-After counts down to it.
+    LITELLM_TIMEZONE: str = "US/Eastern"
     CHALLENGE_EXPIRY_SECONDS: int = 300  # 5 minutes
     # Custom virtual key passthrough: when true, a request may carry a
     # `litellm-virtual-key` header, which MLPA forwards as the upstream Bearer
@@ -988,7 +991,7 @@ ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
                     "budget_exceeded": {
                         "summary": "Budget limit exceeded",
                         "value": {"error": ERROR_CODE_BUDGET_LIMIT_EXCEEDED},
-                        "description": "Budget limit exceeded. Check Retry-After header (86400 seconds = 1 day).",
+                        "description": "Budget limit exceeded. Retry-After is the number of seconds until the next midnight in LITELLM_TIMEZONE, when daily budgets reset.",
                     },
                     "rate_limit_exceeded": {
                         "summary": "Rate limit exceeded",
