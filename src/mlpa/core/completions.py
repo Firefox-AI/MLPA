@@ -43,10 +43,94 @@ from mlpa.core.utils import (
     raise_and_log,
 )
 
+# Fields a dev client may send exactly as it would to LiteLLM directly.
+# extra_body is LiteLLM's standard passthrough to the provider (OpenRouter
+# provider/reasoning/preset, Together chat_template_kwargs, ...).
+CLIENT_OVERRIDE_FIELDS = frozenset({"extra_body", "reasoning_effort"})
+# A request extra_body replaces the deployment's, so these are re-applied to
+# OpenRouter overrides while OPENROUTER_FORCED_PROVIDER_ZDR_SETTINGS is on.
+OPENROUTER_FORCED_PROVIDER_SETTINGS = {"zdr": True, "data_collection": "deny"}
+
+
+def _supplied_overrides(req: AuthorizedChatRequest) -> list[str]:
+    return sorted(
+        field
+        for field in CLIENT_OVERRIDE_FIELDS & req.model_fields_set
+        if getattr(req, field) is not None
+    )
+
+
+def _override_drop_reason(req: AuthorizedChatRequest) -> str | None:
+    if not env.ALLOW_CLIENT_REQUEST_OVERRIDES:
+        return "flag_off"
+    if not req.service_type.endswith("-dev"):
+        return "non_dev_service_type"
+    if req.extra_body is not None and not isinstance(req.extra_body, dict):
+        return "invalid_value"
+    return None
+
+
+def client_override_log_fields(req: AuthorizedChatRequest) -> dict[str, str]:
+    """Mark every log line of a request whose overrides are forwarded.
+
+    Bound alongside ``log_fields`` so upstream errors (e.g. OpenRouter finding no
+    provider for a client max_price) are attributable to the client's settings
+    rather than the deployed LiteLLM config. Lists the key paths the client sent,
+    e.g. ``provider.max_price,provider.sort,reasoning_effort``.
+    """
+    if _override_drop_reason(req) or not _supplied_overrides(req):
+        return {}
+    paths = ["reasoning_effort"] if req.reasoning_effort is not None else []
+    if isinstance(req.extra_body, dict):
+        for key, value in req.extra_body.items():
+            if isinstance(value, dict) and value:
+                paths += [f"{key}.{sub_key}" for sub_key in value]
+            else:
+                paths.append(key)
+    return {"client_overrides": ",".join(sorted(paths))}
+
+
+def _apply_client_overrides(req: AuthorizedChatRequest, body: dict) -> None:
+    supplied = _supplied_overrides(req)
+    if not supplied:
+        return
+
+    log = logger.bind(model=req.model, service_type=req.service_type)
+    if reason := _override_drop_reason(req):
+        log.bind(overrides=supplied, reason=reason).info(
+            "Client request overrides dropped"
+        )
+        return
+
+    if req.reasoning_effort is not None:
+        body["reasoning_effort"] = req.reasoning_effort
+    provider_sent = None
+    if isinstance(req.extra_body, dict):
+        extra_body = dict(req.extra_body)
+        if env.OPENROUTER_FORCED_PROVIDER_ZDR_SETTINGS and req.model.startswith(
+            "openrouter/"
+        ):
+            provider = extra_body.get("provider")
+            extra_body["provider"] = {
+                **(provider if isinstance(provider, dict) else {}),
+                **OPENROUTER_FORCED_PROVIDER_SETTINGS,
+            }
+        body["extra_body"] = extra_body
+        provider_sent = extra_body.get("provider")
+    # Key names only, since extra_body may carry prompt-like content. The
+    # OpenRouter provider block is routing/cost settings, so its final values
+    # are logged to explain "no endpoints" style upstream errors.
+    log.bind(
+        overrides=supplied,
+        extra_body_keys=sorted(body.get("extra_body", {})),
+        provider=provider_sent,
+    ).info("Client request overrides applied")
+
 
 def _build_litellm_body(req: AuthorizedChatRequest, *, stream: bool) -> dict:
     body = req.model_dump(
         exclude={
+            *CLIENT_OVERRIDE_FIELDS,
             "max_completion_tokens",
             "service_type",
             "purpose",
@@ -57,6 +141,7 @@ def _build_litellm_body(req: AuthorizedChatRequest, *, stream: bool) -> dict:
     )
     body["max_tokens"] = req.max_completion_tokens
     body["stream"] = stream
+    _apply_client_overrides(req, body)
     if stream:
         body["stream_options"] = {"include_usage": True}
     # tags would be litellm-native but spend-by-tag reporting is Enterprise-only
@@ -83,7 +168,10 @@ async def stream_completion(
     and a contextvar token reset in that foreign Context raises ValueError.
     ``bind`` has no token to reset.
     """
-    log = logger.bind(**authorized_chat_request.log_fields)
+    log = logger.bind(
+        **authorized_chat_request.log_fields,
+        **client_override_log_fields(authorized_chat_request),
+    )
     start_time = time.perf_counter()
     record_request_with_tools(authorized_chat_request)
     with measure("request_preparation", request):
@@ -379,7 +467,10 @@ async def get_completion(
     authorized_chat_request: AuthorizedChatRequest,
 ):
     """Bind request log fields onto the loguru contextvar, then proxy."""
-    with logger.contextualize(**authorized_chat_request.log_fields):
+    with logger.contextualize(
+        **authorized_chat_request.log_fields,
+        **client_override_log_fields(authorized_chat_request),
+    ):
         return await _get_completion(request, authorized_chat_request)
 
 

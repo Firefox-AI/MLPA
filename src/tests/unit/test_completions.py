@@ -13,6 +13,7 @@ from starlette.responses import StreamingResponse
 from mlpa.core.classes import AuthorizedChatRequest
 from mlpa.core.completions import (
     _build_litellm_body,
+    client_override_log_fields,
     get_completion,
     stream_completion,
 )
@@ -2088,3 +2089,483 @@ async def test_stream_cleanup_finishes_without_client_disconnect(
             task.cancel()
         with contextlib.suppress(asyncio.CancelledError):
             await task
+
+
+# AIPLAT-1683: dev clients may send extra_body / reasoning_effort exactly as they
+# would to LiteLLM; MLPA forwards them verbatim apart from forced privacy.
+PRIVACY = {"zdr": True, "data_collection": "deny"}
+
+
+@pytest.fixture
+def overrides_enabled(mocker):
+    mocker.patch.object(env, "ALLOW_CLIENT_REQUEST_OVERRIDES", True)
+
+
+def _override_req(service_type="ai-dev", model="openrouter/qwen/qwen3.8-27b", **kw):
+    return AuthorizedChatRequest(
+        user=f"test-user-123:{service_type}",
+        service_type=service_type,
+        purpose="test",
+        model=model,
+        messages=[{"role": "user", "content": "hi"}],
+        max_completion_tokens=10,
+        **kw,
+    )
+
+
+async def _upstream_body(httpx_mock: HTTPXMock, req: AuthorizedChatRequest) -> dict:
+    """Run the request through get_completion and return the JSON sent to LiteLLM."""
+    httpx_mock.add_response(
+        method="POST",
+        url=LITELLM_COMPLETIONS_URL,
+        json=SUCCESSFUL_CHAT_RESPONSE,
+        headers=_sample_litellm_response_headers(),
+    )
+    await get_completion(Request({"type": "http", "headers": []}), req)
+    return json.loads(httpx_mock.get_requests()[-1].content)
+
+
+@pytest.mark.parametrize(
+    "model,overrides,expected",
+    [
+        pytest.param(
+            "openrouter/qwen/qwen3.8-27b",
+            {"extra_body": {"reasoning": {"enabled": False}}},
+            {"extra_body": {"reasoning": {"enabled": False}, "provider": PRIVACY}},
+            id="openrouter-thinking-off",
+        ),
+        pytest.param(
+            "openrouter/qwen/qwen3.8-27b",
+            {"extra_body": {"reasoning": {"enabled": True, "effort": "high"}}},
+            {
+                "extra_body": {
+                    "reasoning": {"enabled": True, "effort": "high"},
+                    "provider": PRIVACY,
+                }
+            },
+            id="openrouter-thinking-on",
+        ),
+        pytest.param(
+            "together/qwen/qwen3.5-9b",
+            {"extra_body": {"chat_template_kwargs": {"enable_thinking": False}}},
+            {"extra_body": {"chat_template_kwargs": {"enable_thinking": False}}},
+            id="together-thinking-off",
+        ),
+        pytest.param(
+            "together/qwen/qwen3.5-9b",
+            {"extra_body": {"chat_template_kwargs": {"enable_thinking": True}}},
+            {"extra_body": {"chat_template_kwargs": {"enable_thinking": True}}},
+            id="together-thinking-on",
+        ),
+        pytest.param(
+            "gemini-3.1-flash-lite",
+            {"reasoning_effort": "none"},
+            {"reasoning_effort": "none"},
+            id="standard-reasoning-effort",
+        ),
+        pytest.param(
+            "openrouter/qwen/qwen3.8-27b",
+            {"extra_body": {"preset": "@preset/fp8-cheap"}},
+            {"extra_body": {"preset": "@preset/fp8-cheap", "provider": PRIVACY}},
+            id="preset-a",
+        ),
+        pytest.param(
+            "openrouter/qwen/qwen3.8-27b",
+            {"extra_body": {"preset": "@preset/fast-throughput"}},
+            {"extra_body": {"preset": "@preset/fast-throughput", "provider": PRIVACY}},
+            id="preset-b",
+        ),
+        pytest.param(
+            "openrouter/qwen/qwen3.8-27b",
+            {
+                "extra_body": {
+                    "provider": {"sort": "price", "max_price": {"completion": 1}}
+                }
+            },
+            {
+                "extra_body": {
+                    "provider": {
+                        "sort": "price",
+                        "max_price": {"completion": 1},
+                        **PRIVACY,
+                    }
+                }
+            },
+            id="cheap-completion-cap",
+        ),
+        pytest.param(
+            "openrouter/qwen/qwen3.8-27b",
+            {
+                "extra_body": {
+                    "provider": {
+                        "sort": "price",
+                        "preferred_min_throughput": {"p90": 20},
+                        "quantizations": ["fp8"],
+                    }
+                }
+            },
+            {
+                "extra_body": {
+                    "provider": {
+                        "sort": "price",
+                        "preferred_min_throughput": {"p90": 20},
+                        "quantizations": ["fp8"],
+                        **PRIVACY,
+                    }
+                }
+            },
+            id="cheapest-above-20-tps",
+        ),
+        pytest.param(
+            "openrouter/qwen/qwen3.8-27b",
+            {
+                "extra_body": {
+                    "provider": {
+                        "sort": "throughput",
+                        "preferred_min_throughput": {"p50": 100},
+                    }
+                }
+            },
+            {
+                "extra_body": {
+                    "provider": {
+                        "sort": "throughput",
+                        "preferred_min_throughput": {"p50": 100},
+                        **PRIVACY,
+                    }
+                }
+            },
+            id="fastest-above-100-tps",
+        ),
+        pytest.param(
+            "openrouter/qwen/qwen3.8-27b",
+            {
+                "extra_body": {
+                    "preset": "@preset/fp8-cheap",
+                    "provider": {"max_price": {"completion": 2}},
+                    "reasoning": {"enabled": True},
+                }
+            },
+            {
+                "extra_body": {
+                    "preset": "@preset/fp8-cheap",
+                    "provider": {"max_price": {"completion": 2}, **PRIVACY},
+                    "reasoning": {"enabled": True},
+                }
+            },
+            id="preset-plus-routing-plus-thinking",
+        ),
+    ],
+)
+@pytest.mark.usefixtures("overrides_enabled")
+async def test_use_case_overrides_forwarded_verbatim(
+    httpx_mock: HTTPXMock, model, overrides, expected
+):
+    body = await _upstream_body(httpx_mock, _override_req(model=model, **overrides))
+
+    assert {k: body[k] for k in ("extra_body", "reasoning_effort") if k in body} == (
+        expected
+    )
+
+
+@pytest.mark.parametrize("provider", [{"zdr": False, "data_collection": "allow"}, "x"])
+@pytest.mark.usefixtures("overrides_enabled")
+def test_openrouter_override_cannot_weaken_privacy(provider):
+    req = _override_req(extra_body={"provider": provider})
+
+    body = _build_litellm_body(req, stream=False)
+
+    assert body["extra_body"]["provider"] == PRIVACY
+    assert req.extra_body == {"provider": provider}
+
+
+@pytest.mark.usefixtures("overrides_enabled")
+def test_override_rejects_non_object_extra_body():
+    body = _build_litellm_body(
+        _override_req(extra_body=["x"], reasoning_effort="low"), stream=False
+    )
+
+    assert "extra_body" not in body
+    assert "reasoning_effort" not in body
+
+
+NON_DEV_SERVICE_TYPES = sorted(
+    st for st in env.client_service_types if not st.endswith("-dev")
+)
+
+
+@pytest.mark.parametrize("service_type", NON_DEV_SERVICE_TYPES)
+@pytest.mark.usefixtures("overrides_enabled")
+def test_overrides_dropped_for_every_non_dev_service_type(mocker, service_type):
+    log = mocker.patch("mlpa.core.completions.logger").bind.return_value
+    req = _override_req(
+        service_type,
+        extra_body={"provider": {"sort": "price"}},
+        reasoning_effort="high",
+    )
+
+    body = _build_litellm_body(req, stream=False)
+
+    assert "extra_body" not in body
+    assert "reasoning_effort" not in body
+    log.bind.assert_called_once_with(
+        overrides=["extra_body", "reasoning_effort"], reason="non_dev_service_type"
+    )
+
+
+async def test_use_case_same_request_is_ignored_when_flag_off(httpx_mock: HTTPXMock):
+    req = _override_req(
+        extra_body={
+            "preset": "@preset/fp8-cheap",
+            "provider": {"max_price": {"completion": 0.0001}},
+        },
+        reasoning_effort="high",
+    )
+
+    body = await _upstream_body(httpx_mock, req)
+
+    assert "extra_body" not in body
+    assert "reasoning_effort" not in body
+
+
+@pytest.mark.usefixtures("overrides_enabled")
+def test_override_logging_records_keys_not_values(mocker):
+    log = mocker.patch("mlpa.core.completions.logger").bind.return_value
+    req = _override_req(extra_body={"preset": "@preset/secret", "reasoning": {}})
+
+    _build_litellm_body(req, stream=False)
+
+    log.bind.assert_called_once_with(
+        overrides=["extra_body"],
+        extra_body_keys=["preset", "provider", "reasoning"],
+        provider=PRIVACY,
+    )
+
+
+@pytest.mark.usefixtures("overrides_enabled")
+def test_client_override_log_fields_lists_client_key_paths():
+    req = _override_req(
+        extra_body={
+            "provider": {"max_price": {"completion": 1}, "sort": "price"},
+            "preset": "@preset/fp8-cheap",
+            "reasoning": {},
+        },
+        reasoning_effort="low",
+    )
+
+    assert client_override_log_fields(req) == {
+        "client_overrides": "preset,provider.max_price,provider.sort,reasoning,"
+        "reasoning_effort"
+    }
+
+
+@pytest.mark.parametrize(
+    "allow_overrides,service_type,extra_body",
+    [
+        (False, "ai-dev", {"provider": {"sort": "price"}}),
+        (True, "ai", {"provider": {"sort": "price"}}),
+        (True, "ai-dev", ["not", "an", "object"]),
+        (True, "ai-dev", None),
+    ],
+)
+def test_client_override_log_fields_empty_when_nothing_forwarded(
+    mocker, allow_overrides, service_type, extra_body
+):
+    mocker.patch.object(env, "ALLOW_CLIENT_REQUEST_OVERRIDES", allow_overrides)
+    kw = {} if extra_body is None else {"extra_body": extra_body}
+
+    assert client_override_log_fields(_override_req(service_type, **kw)) == {}
+
+
+NO_ENDPOINTS_ERROR = {
+    "error": {
+        "message": "No endpoints found that can handle the requested parameters.",
+        "code": 404,
+    }
+}
+
+
+def _request_records(records):
+    """Records emitted while serving the request (those carrying request fields)."""
+    return [item.record for item in records if "user" in item.record["extra"]]
+
+
+@pytest.mark.parametrize("stream", [False, True])
+@pytest.mark.usefixtures("overrides_enabled")
+async def test_upstream_error_logs_are_tagged_with_client_overrides(
+    httpx_mock: HTTPXMock, mock_request, stream
+):
+    """An OpenRouter "no endpoints" error caused by a client max_price must be
+    distinguishable from a problem with the deployed default settings."""
+    httpx_mock.add_response(
+        method="POST",
+        url=LITELLM_COMPLETIONS_URL,
+        status_code=404,
+        json=NO_ENDPOINTS_ERROR,
+    )
+    req = _override_req(extra_body={"provider": {"max_price": {"completion": 0.0001}}})
+
+    with _capture_logs() as records:
+        if stream:
+            [chunk async for chunk in stream_completion(mock_request, req)]
+        else:
+            with pytest.raises(HTTPException):
+                await get_completion(mock_request, req)
+
+    request_records = _request_records(records)
+    assert any(r["level"].no >= 30 for r in request_records)
+    for record in request_records:
+        assert record["extra"]["client_overrides"] == "provider.max_price"
+
+
+@pytest.mark.parametrize("stream", [False, True])
+async def test_upstream_error_logs_untagged_for_default_settings(
+    httpx_mock: HTTPXMock, mock_request, stream
+):
+    httpx_mock.add_response(
+        method="POST",
+        url=LITELLM_COMPLETIONS_URL,
+        status_code=404,
+        json=NO_ENDPOINTS_ERROR,
+    )
+    req = _override_req()
+
+    with _capture_logs() as records:
+        if stream:
+            [chunk async for chunk in stream_completion(mock_request, req)]
+        else:
+            with pytest.raises(HTTPException):
+                await get_completion(mock_request, req)
+
+    request_records = _request_records(records)
+    assert request_records
+    for record in request_records:
+        assert "client_overrides" not in record["extra"]
+
+
+@pytest.mark.usefixtures("overrides_enabled")
+def test_openrouter_provider_passes_through_when_zdr_forcing_off(mocker):
+    mocker.patch.object(env, "OPENROUTER_FORCED_PROVIDER_ZDR_SETTINGS", False)
+    req = _override_req(extra_body={"provider": {"zdr": False, "sort": "price"}})
+
+    body = _build_litellm_body(req, stream=False)
+
+    assert body["extra_body"] == {"provider": {"zdr": False, "sort": "price"}}
+
+
+def test_openrouter_zdr_forcing_defaults_on():
+    assert type(env).model_fields["OPENROUTER_FORCED_PROVIDER_ZDR_SETTINGS"].default
+
+
+# --- Override flag interaction (AIPLAT-1683) -----------------------------------
+#
+# Two settings control what a client may send through to LiteLLM:
+#
+#   ALLOW_CLIENT_REQUEST_OVERRIDES           default False
+#       Forward the client's extra_body and reasoning_effort to LiteLLM as-is.
+#       Only ever applies to -dev service types (which require
+#       x-dev-authorization); for any other service type both fields are dropped.
+#
+#   OPENROUTER_FORCED_PROVIDER_ZDR_SETTINGS  default True
+#       For openrouter/* models, overwrite extra_body.provider.zdr = true and
+#       .data_collection = "deny" on a forwarded override. Needed because a
+#       request extra_body REPLACES the LiteLLM config's extra_body, which is
+#       where the deployed zdr/data_collection defaults live. Has no effect when
+#       nothing is forwarded, and never touches non-OpenRouter models.
+#
+# Every case below sends the same hostile request: it tries to switch ZDR off
+# and allow data collection, alongside a normal routing key and thinking on.
+#
+#   client extra_body = {"provider": {"zdr": false, "data_collection": "allow",
+#                                     "sort": "price"},
+#                        "reasoning": {"enabled": true}}
+#   client reasoning_effort = "low"
+#
+# What reaches LiteLLM:
+#
+#   | ALLOW_CLIENT_ | OPENROUTER_FORCED_ | service | model       | extra_body sent      | reasoning_ |
+#   | REQUEST_      | PROVIDER_ZDR_      | type    |             | to LiteLLM           | effort     |
+#   | OVERRIDES     | SETTINGS           |         |             |                      |            |
+#   |---------------|--------------------|---------|-------------|----------------------|------------|
+#   | False         | any                | any     | any         | none (config default)| none       |
+#   | True          | any                | ai      | any         | none (config default)| none       |
+#   | True          | True               | ai-dev  | openrouter/ | MATRIX_FORCED        | "low"      |
+#   | True          | False              | ai-dev  | openrouter/ | MATRIX_EXTRA_BODY    | "low"      |
+#   | True          | any                | ai-dev  | together/   | MATRIX_EXTRA_BODY    | "low"      |
+#
+#   MATRIX_FORCED     = client body with zdr=true, data_collection="deny" forced
+#                       and the client's other provider keys (sort) kept.
+#   MATRIX_EXTRA_BODY = client body unchanged, i.e. zdr really is false. Only
+#                       reachable by setting OPENROUTER_FORCED_PROVIDER_ZDR_SETTINGS
+#                       to false on purpose (or for Together, where ZDR is an
+#                       account setting and not part of the request).
+#
+# "none (config default)" means MLPA sends no extra_body, so LiteLLM applies the
+# route's configured extra_body (including zdr: true for openrouter/*). This is
+# what prod always gets.
+#
+# The parametrize list spells out all 16 combinations instead of deriving them,
+# so changing either flag's semantics means editing these rows on purpose. If
+# you add a flag or a provider, extend this table and the rows together.
+# Non-dev coverage here uses "ai"; test_overrides_dropped_for_every_non_dev_service_type
+# covers the remaining non-dev service types.
+MATRIX_EXTRA_BODY = {
+    "provider": {"zdr": False, "data_collection": "allow", "sort": "price"},
+    "reasoning": {"enabled": True},
+}
+MATRIX_FORCED = {
+    "provider": {"sort": "price", **PRIVACY},
+    "reasoning": {"enabled": True},
+}
+OR, TG = "openrouter/qwen/qwen3.8-27b", "together/qwen/qwen3.5-9b"
+
+
+@pytest.mark.parametrize(
+    "allow_overrides,force_zdr,service_type,model,expected",
+    [
+        # overrides off: nothing forwarded, whatever the ZDR flag says
+        (False, True, "ai-dev", OR, None),
+        (False, False, "ai-dev", OR, None),
+        (False, True, "ai-dev", TG, None),
+        (False, False, "ai-dev", TG, None),
+        (False, True, "ai", OR, None),
+        (False, False, "ai", OR, None),
+        (False, True, "ai", TG, None),
+        (False, False, "ai", TG, None),
+        # overrides on, non-dev: still nothing forwarded
+        (True, True, "ai", OR, None),
+        (True, False, "ai", OR, None),
+        (True, True, "ai", TG, None),
+        (True, False, "ai", TG, None),
+        # overrides on, dev: OpenRouter privacy depends on the ZDR flag
+        (True, True, "ai-dev", OR, MATRIX_FORCED),
+        (True, False, "ai-dev", OR, MATRIX_EXTRA_BODY),
+        # Together is never rewritten
+        (True, True, "ai-dev", TG, MATRIX_EXTRA_BODY),
+        (True, False, "ai-dev", TG, MATRIX_EXTRA_BODY),
+    ],
+)
+async def test_override_flags_interaction(
+    httpx_mock: HTTPXMock,
+    mocker,
+    allow_overrides,
+    force_zdr,
+    service_type,
+    model,
+    expected,
+):
+    mocker.patch.object(env, "ALLOW_CLIENT_REQUEST_OVERRIDES", allow_overrides)
+    mocker.patch.object(env, "OPENROUTER_FORCED_PROVIDER_ZDR_SETTINGS", force_zdr)
+    req = _override_req(
+        service_type,
+        model,
+        extra_body=MATRIX_EXTRA_BODY,
+        reasoning_effort="low",
+    )
+
+    body = await _upstream_body(httpx_mock, req)
+
+    assert body.get("extra_body") == expected
+    assert body.get("reasoning_effort") == ("low" if expected else None)
+    # The client's object is never mutated, so retries/logging see what was sent.
+    assert req.extra_body == MATRIX_EXTRA_BODY

@@ -838,6 +838,11 @@ class Env(BaseSettings):
     MAX_COMPLETION_TOKENS: int = 8192
     TOP_P: float = 0.01
     MAX_REQUEST_SIZE_BYTES: int = 3 * 1024 * 1024  # 3 MB default
+    # Forward client extra_body / reasoning_effort to LiteLLM for dev service types.
+    ALLOW_CLIENT_REQUEST_OVERRIDES: bool = False
+    # Re-apply zdr: true / data_collection: deny to OpenRouter overrides, since a
+    # request extra_body replaces the LiteLLM config's. Defaults on (fails closed).
+    OPENROUTER_FORCED_PROVIDER_ZDR_SETTINGS: bool = True
 
     # Request Timeouts (in seconds)
     STREAMING_TIMEOUT_SECONDS: int = 300

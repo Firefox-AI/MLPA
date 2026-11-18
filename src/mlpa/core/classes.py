@@ -2,7 +2,7 @@ import enum
 from dataclasses import dataclass
 from typing import Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, JsonValue
 
 from mlpa.core.config import env
 from mlpa.core.consts import TrafficContractMode
@@ -36,6 +36,9 @@ class ChatRequest(BaseModel):
     top_logprobs: Optional[int] = None
     # exa search params
     text: Optional[bool] = None
+    # Forwarded to LiteLLM as-is only when overrides are enabled for -dev service types.
+    reasoning_effort: JsonValue = None
+    extra_body: JsonValue = None
 
 
 class UserUpdatePayload(BaseModel):
