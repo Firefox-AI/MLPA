@@ -78,7 +78,7 @@ def client_override_log_fields(req: AuthorizedChatRequest) -> dict[str, str]:
     rather than the deployed LiteLLM config. Lists the key paths the client sent,
     e.g. ``provider.max_price,provider.sort,reasoning_effort``.
     """
-    if not _supplied_overrides(req) or _override_drop_reason(req):
+    if _override_drop_reason(req) or not _supplied_overrides(req):
         return {}
     paths = ["reasoning_effort"] if req.reasoning_effort is not None else []
     if isinstance(req.extra_body, dict):
