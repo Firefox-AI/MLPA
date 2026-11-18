@@ -1,5 +1,6 @@
 from functools import cached_property
 from typing import Annotated, Any, TypedDict
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
@@ -94,6 +95,16 @@ class Env(BaseSettings):
             return {code.strip() for code in raw.split(",") if code.strip()}
         return raw
 
+    @field_validator("LITELLM_TIMEZONE")
+    @classmethod
+    def _validate_timezone(cls, tz: str) -> str:
+        # Fail at startup, not as a 500 on the first budget 429.
+        try:
+            ZoneInfo(tz)
+        except (ZoneInfoNotFoundError, ValueError) as e:
+            raise ValueError(f"Unknown LITELLM_TIMEZONE {tz!r}") from e
+        return tz
+
     # Purpose header enforcement/backwards-compatibility:
     # when false (default), the `purpose` header is optional for all service types.
     # when true, the `purpose` header becomes mandatory for service types that
@@ -114,6 +125,9 @@ class Env(BaseSettings):
     EXA_API_KEY: str = "sk-add-your-key"  # for local LiteLLM testing
     LINER_API_KEY: str = "sk-add-your-key"  # for local LiteLLM testing
     LITELLM_API_BASE: str = "http://localhost:4000"
+    # Must match LiteLLM's litellm_settings.timezone: 1d budgets reset at
+    # midnight there, and the budget 429 Retry-After counts down to it.
+    LITELLM_TIMEZONE: str = "US/Eastern"
     CHALLENGE_EXPIRY_SECONDS: int = 300  # 5 minutes
     # Custom virtual key passthrough: when true, a request may carry a
     # `litellm-virtual-key` header, which MLPA forwards as the upstream Bearer
@@ -1000,7 +1014,7 @@ ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
                     "budget_exceeded": {
                         "summary": "Budget limit exceeded",
                         "value": {"error": ERROR_CODE_BUDGET_LIMIT_EXCEEDED},
-                        "description": "Budget limit exceeded. Check Retry-After header (86400 seconds = 1 day).",
+                        "description": "Budget limit exceeded. Retry-After is the number of seconds until 00:20 in LITELLM_TIMEZONE: daily budgets reset at midnight, plus a 20 min buffer for LiteLLM's reset job.",
                     },
                     "rate_limit_exceeded": {
                         "summary": "Rate limit exceeded",
