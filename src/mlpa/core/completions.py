@@ -48,7 +48,7 @@ from mlpa.core.utils import (
 # provider/reasoning/preset, Together chat_template_kwargs, ...).
 CLIENT_OVERRIDE_FIELDS = frozenset({"extra_body", "reasoning_effort"})
 # A request extra_body replaces the deployment's, so these are re-applied to
-# OpenRouter overrides so an override can never weaken the LiteLLM config.
+# OpenRouter overrides while OPENROUTER_FORCED_PROVIDER_ZDR_SETTINGS is on.
 OPENROUTER_FORCED_PROVIDER_SETTINGS = {"zdr": True, "data_collection": "deny"}
 
 
@@ -79,7 +79,9 @@ def _apply_client_overrides(req: AuthorizedChatRequest, body: dict) -> None:
         body["reasoning_effort"] = req.reasoning_effort
     if isinstance(req.extra_body, dict):
         extra_body = dict(req.extra_body)
-        if req.model.startswith("openrouter/"):
+        if env.OPENROUTER_FORCED_PROVIDER_ZDR_SETTINGS and req.model.startswith(
+            "openrouter/"
+        ):
             provider = extra_body.get("provider")
             extra_body["provider"] = {
                 **(provider if isinstance(provider, dict) else {}),

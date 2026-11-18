@@ -2337,3 +2337,17 @@ def test_override_logging_records_keys_not_values(mocker):
     log.bind.assert_called_once_with(
         overrides=["extra_body"], extra_body_keys=["preset", "provider", "reasoning"]
     )
+
+
+@pytest.mark.usefixtures("overrides_enabled")
+def test_openrouter_provider_passes_through_when_zdr_forcing_off(mocker):
+    mocker.patch.object(env, "OPENROUTER_FORCED_PROVIDER_ZDR_SETTINGS", False)
+    req = _override_req(extra_body={"provider": {"zdr": False, "sort": "price"}})
+
+    body = _build_litellm_body(req, stream=False)
+
+    assert body["extra_body"] == {"provider": {"zdr": False, "sort": "price"}}
+
+
+def test_openrouter_zdr_forcing_defaults_on():
+    assert type(env).model_fields["OPENROUTER_FORCED_PROVIDER_ZDR_SETTINGS"].default

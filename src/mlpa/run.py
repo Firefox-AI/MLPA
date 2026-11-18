@@ -60,9 +60,10 @@ from mlpa.core.services.services import app_attest_pg, litellm_pg, redis_service
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    logger.bind(allow_client_request_overrides=env.ALLOW_CLIENT_REQUEST_OVERRIDES).info(
-        "Client request override configuration"
-    )
+    logger.bind(
+        allow_client_request_overrides=env.ALLOW_CLIENT_REQUEST_OVERRIDES,
+        openrouter_forced_provider_zdr_settings=env.OPENROUTER_FORCED_PROVIDER_ZDR_SETTINGS,
+    ).info("Client request override configuration")
     litellm_connected = False
     app_attest_connected = False
     redis_connected = False
