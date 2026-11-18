@@ -1,5 +1,6 @@
 from unittest.mock import AsyncMock, patch
 
+from mlpa.core.config import Env
 from mlpa.core.metrics import SEARCH_MODEL
 from mlpa.core.utils import clamp_model
 from tests.consts import SAMPLE_REQUEST, TEST_FXA_TOKEN
@@ -133,6 +134,49 @@ def test_chat_unknown_model_country_uses_invalid_model_bucket(
             metrics_spy,
             service_type="ai",
             model="invalid",
+            client_country="CA",
+        )
+        == 1.0
+    )
+
+
+def test_clamp_model_wildcard_prefixes():
+    assert clamp_model("together/some/other-model") == "together/some/other-model"
+    assert clamp_model("openrouter/openai/gpt-4o") == "openrouter/openai/gpt-4o"
+    assert clamp_model("together/some/other/model/foo/bar") == "invalid"
+    assert clamp_model("together/no-org") == "invalid"
+    assert clamp_model("together//model") == "invalid"
+    assert clamp_model("together/org/") == "invalid"
+    assert clamp_model("together/Org/Model") == "invalid"
+    assert clamp_model("together/org/" + "x" * 100) == "invalid"
+    assert clamp_model("not-a-configured-model") == "invalid"
+    assert clamp_model("xtogether/foo") == "invalid"
+
+
+def test_wildcard_model_prefixes_comma_separated_env(monkeypatch):
+    monkeypatch.setenv("WILDCARD_MODEL_PREFIXES", "together/, fireworks/")
+    assert Env().WILDCARD_MODEL_PREFIXES == {"together/", "fireworks/"}
+
+
+def test_chat_wildcard_model_country_keeps_model_name(
+    mocked_client_integration, metrics_spy
+):
+    mocked_client_integration.post(
+        "/v1/chat/completions",
+        headers={
+            "authorization": f"Bearer {TEST_FXA_TOKEN}",
+            "service-type": "ai",
+            "purpose": "chat",
+            "X-Geo-Country": "CA",
+        },
+        json=_chat_payload("together/some/other-model"),
+    )
+
+    assert (
+        _country_count(
+            metrics_spy,
+            service_type="ai",
+            model="together/some/other-model",
             client_country="CA",
         )
         == 1.0

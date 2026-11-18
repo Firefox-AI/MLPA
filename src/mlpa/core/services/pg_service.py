@@ -7,6 +7,7 @@ import asyncpg
 
 from mlpa.core.config import env
 from mlpa.core.logger import logger
+from mlpa.core.services.metrics import PGMetrics
 
 
 class PGService:
@@ -14,6 +15,7 @@ class PGService:
 
     def __init__(self, db_name: str, statement_timeout_ms: int | None = None):
         self.db_name = db_name
+        self.dependency = f"db_{db_name}"
         self.db_url = f"{cast(str, env.PG_DB_URL).rstrip('/')}/{db_name}"
         self.statement_timeout_ms = (
             statement_timeout_ms
@@ -22,6 +24,7 @@ class PGService:
         )
         self.connected = False
         self.pg = None
+        self.metrics = PGMetrics(self.dependency)
 
     @property
     def pool(self) -> asyncpg.Pool:
@@ -43,10 +46,13 @@ class PGService:
                 statement_cache_size=env.PG_PREPARED_STMT_CACHE_MAX_SIZE,
                 server_settings=server_settings,
                 command_timeout=env.PG_COMMAND_TIMEOUT_S,
+                connect=self.metrics.connect,
             )
             self.connected = True
+            self.metrics.record_pool_start()
             logger.info(f"Connected to /{self.db_name}")
         except Exception as e:
+            self.metrics.record_pool_start(e)
             sys.exit(
                 f"Couldn't connect to a database {self.db_name}, URL: {self.db_url}, error: {e}"
             )
