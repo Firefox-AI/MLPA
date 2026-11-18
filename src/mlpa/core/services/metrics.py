@@ -132,6 +132,8 @@ class MonitoredRedis(aioredis.Redis):
 
     async def _send_command_parse_response(self, conn, command_name, *args, **options):
         # Inside redis-py's retry loop: count each command attempt, including reuse.
+        # Pipelines (including transactions) bypass this hook via send_packed_command
+        # and are not counted; instrument that path if pipeline usage is added.
         outcome = None
         try:
             result = await super()._send_command_parse_response(
