@@ -2088,3 +2088,252 @@ async def test_stream_cleanup_finishes_without_client_disconnect(
             task.cancel()
         with contextlib.suppress(asyncio.CancelledError):
             await task
+
+
+# AIPLAT-1683: dev clients may send extra_body / reasoning_effort exactly as they
+# would to LiteLLM; MLPA forwards them verbatim apart from forced privacy.
+PRIVACY = {"zdr": True, "data_collection": "deny"}
+
+
+@pytest.fixture
+def overrides_enabled(mocker):
+    mocker.patch.object(env, "ALLOW_CLIENT_REQUEST_OVERRIDES", True)
+
+
+def _override_req(service_type="ai-dev", model="openrouter/qwen/qwen3.8-27b", **kw):
+    return AuthorizedChatRequest(
+        user=f"test-user-123:{service_type}",
+        service_type=service_type,
+        purpose="test",
+        model=model,
+        messages=[{"role": "user", "content": "hi"}],
+        max_completion_tokens=10,
+        **kw,
+    )
+
+
+async def _upstream_body(httpx_mock: HTTPXMock, req: AuthorizedChatRequest) -> dict:
+    """Run the request through get_completion and return the JSON sent to LiteLLM."""
+    httpx_mock.add_response(
+        method="POST",
+        url=LITELLM_COMPLETIONS_URL,
+        json=SUCCESSFUL_CHAT_RESPONSE,
+        headers=_sample_litellm_response_headers(),
+    )
+    await get_completion(Request({"type": "http", "headers": []}), req)
+    return json.loads(httpx_mock.get_requests()[-1].content)
+
+
+@pytest.mark.parametrize(
+    "model,overrides,expected",
+    [
+        pytest.param(
+            "openrouter/qwen/qwen3.8-27b",
+            {"extra_body": {"reasoning": {"enabled": False}}},
+            {"extra_body": {"reasoning": {"enabled": False}, "provider": PRIVACY}},
+            id="openrouter-thinking-off",
+        ),
+        pytest.param(
+            "openrouter/qwen/qwen3.8-27b",
+            {"extra_body": {"reasoning": {"enabled": True, "effort": "high"}}},
+            {
+                "extra_body": {
+                    "reasoning": {"enabled": True, "effort": "high"},
+                    "provider": PRIVACY,
+                }
+            },
+            id="openrouter-thinking-on",
+        ),
+        pytest.param(
+            "together/qwen/qwen3.5-9b",
+            {"extra_body": {"chat_template_kwargs": {"enable_thinking": False}}},
+            {"extra_body": {"chat_template_kwargs": {"enable_thinking": False}}},
+            id="together-thinking-off",
+        ),
+        pytest.param(
+            "together/qwen/qwen3.5-9b",
+            {"extra_body": {"chat_template_kwargs": {"enable_thinking": True}}},
+            {"extra_body": {"chat_template_kwargs": {"enable_thinking": True}}},
+            id="together-thinking-on",
+        ),
+        pytest.param(
+            "gemini-3.1-flash-lite",
+            {"reasoning_effort": "none"},
+            {"reasoning_effort": "none"},
+            id="standard-reasoning-effort",
+        ),
+        pytest.param(
+            "openrouter/qwen/qwen3.8-27b",
+            {"extra_body": {"preset": "@preset/fp8-cheap"}},
+            {"extra_body": {"preset": "@preset/fp8-cheap", "provider": PRIVACY}},
+            id="preset-a",
+        ),
+        pytest.param(
+            "openrouter/qwen/qwen3.8-27b",
+            {"extra_body": {"preset": "@preset/fast-throughput"}},
+            {"extra_body": {"preset": "@preset/fast-throughput", "provider": PRIVACY}},
+            id="preset-b",
+        ),
+        pytest.param(
+            "openrouter/qwen/qwen3.8-27b",
+            {
+                "extra_body": {
+                    "provider": {"sort": "price", "max_price": {"completion": 1}}
+                }
+            },
+            {
+                "extra_body": {
+                    "provider": {
+                        "sort": "price",
+                        "max_price": {"completion": 1},
+                        **PRIVACY,
+                    }
+                }
+            },
+            id="cheap-completion-cap",
+        ),
+        pytest.param(
+            "openrouter/qwen/qwen3.8-27b",
+            {
+                "extra_body": {
+                    "provider": {
+                        "sort": "price",
+                        "preferred_min_throughput": {"p90": 20},
+                        "quantizations": ["fp8"],
+                    }
+                }
+            },
+            {
+                "extra_body": {
+                    "provider": {
+                        "sort": "price",
+                        "preferred_min_throughput": {"p90": 20},
+                        "quantizations": ["fp8"],
+                        **PRIVACY,
+                    }
+                }
+            },
+            id="cheapest-above-20-tps",
+        ),
+        pytest.param(
+            "openrouter/qwen/qwen3.8-27b",
+            {
+                "extra_body": {
+                    "provider": {
+                        "sort": "throughput",
+                        "preferred_min_throughput": {"p50": 100},
+                    }
+                }
+            },
+            {
+                "extra_body": {
+                    "provider": {
+                        "sort": "throughput",
+                        "preferred_min_throughput": {"p50": 100},
+                        **PRIVACY,
+                    }
+                }
+            },
+            id="fastest-above-100-tps",
+        ),
+        pytest.param(
+            "openrouter/qwen/qwen3.8-27b",
+            {
+                "extra_body": {
+                    "preset": "@preset/fp8-cheap",
+                    "provider": {"max_price": {"completion": 2}},
+                    "reasoning": {"enabled": True},
+                }
+            },
+            {
+                "extra_body": {
+                    "preset": "@preset/fp8-cheap",
+                    "provider": {"max_price": {"completion": 2}, **PRIVACY},
+                    "reasoning": {"enabled": True},
+                }
+            },
+            id="preset-plus-routing-plus-thinking",
+        ),
+    ],
+)
+@pytest.mark.usefixtures("overrides_enabled")
+async def test_use_case_overrides_forwarded_verbatim(
+    httpx_mock: HTTPXMock, model, overrides, expected
+):
+    body = await _upstream_body(httpx_mock, _override_req(model=model, **overrides))
+
+    assert {k: body[k] for k in ("extra_body", "reasoning_effort") if k in body} == (
+        expected
+    )
+
+
+@pytest.mark.parametrize("provider", [{"zdr": False, "data_collection": "allow"}, "x"])
+@pytest.mark.usefixtures("overrides_enabled")
+def test_openrouter_override_cannot_weaken_privacy(provider):
+    req = _override_req(extra_body={"provider": provider})
+
+    body = _build_litellm_body(req, stream=False)
+
+    assert body["extra_body"]["provider"] == PRIVACY
+    assert req.extra_body == {"provider": provider}
+
+
+@pytest.mark.usefixtures("overrides_enabled")
+def test_override_rejects_non_object_extra_body():
+    body = _build_litellm_body(
+        _override_req(extra_body=["x"], reasoning_effort="low"), stream=False
+    )
+
+    assert "extra_body" not in body
+    assert "reasoning_effort" not in body
+
+
+NON_DEV_SERVICE_TYPES = sorted(
+    st for st in env.client_service_types if not st.endswith("-dev")
+)
+
+
+@pytest.mark.parametrize("service_type", NON_DEV_SERVICE_TYPES)
+@pytest.mark.usefixtures("overrides_enabled")
+def test_overrides_dropped_for_every_non_dev_service_type(mocker, service_type):
+    log = mocker.patch("mlpa.core.completions.logger").bind.return_value
+    req = _override_req(
+        service_type,
+        extra_body={"provider": {"sort": "price"}},
+        reasoning_effort="high",
+    )
+
+    body = _build_litellm_body(req, stream=False)
+
+    assert "extra_body" not in body
+    assert "reasoning_effort" not in body
+    log.bind.assert_called_once_with(
+        overrides=["extra_body", "reasoning_effort"], reason="non_dev_service_type"
+    )
+
+
+async def test_use_case_same_request_is_ignored_when_flag_off(httpx_mock: HTTPXMock):
+    req = _override_req(
+        extra_body={
+            "preset": "@preset/fp8-cheap",
+            "provider": {"max_price": {"completion": 0.0001}},
+        },
+        reasoning_effort="high",
+    )
+
+    body = await _upstream_body(httpx_mock, req)
+
+    assert "extra_body" not in body
+    assert "reasoning_effort" not in body
+
+
+@pytest.mark.usefixtures("overrides_enabled")
+def test_override_logging_records_keys_not_values(mocker):
+    log = mocker.patch("mlpa.core.completions.logger").bind.return_value
+    req = _override_req(extra_body={"preset": "@preset/secret", "reasoning": {}})
+
+    _build_litellm_body(req, stream=False)
+
+    log.bind.assert_called_once_with(
+        overrides=["extra_body"], extra_body_keys=["preset", "provider", "reasoning"]
+    )

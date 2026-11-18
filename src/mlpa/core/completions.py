@@ -43,10 +43,59 @@ from mlpa.core.utils import (
     raise_and_log,
 )
 
+# Fields a dev client may send exactly as it would to LiteLLM directly.
+# extra_body is LiteLLM's standard passthrough to the provider (OpenRouter
+# provider/reasoning/preset, Together chat_template_kwargs, ...).
+CLIENT_OVERRIDE_FIELDS = frozenset({"extra_body", "reasoning_effort"})
+# A request extra_body replaces the deployment's, so these are re-applied to
+# OpenRouter overrides so an override can never weaken the LiteLLM config.
+OPENROUTER_FORCED_PROVIDER_SETTINGS = {"zdr": True, "data_collection": "deny"}
+
+
+def _apply_client_overrides(req: AuthorizedChatRequest, body: dict) -> None:
+    supplied = sorted(
+        field
+        for field in CLIENT_OVERRIDE_FIELDS & req.model_fields_set
+        if getattr(req, field) is not None
+    )
+    if not supplied:
+        return
+
+    log = logger.bind(model=req.model, service_type=req.service_type)
+    reason = None
+    if not env.ALLOW_CLIENT_REQUEST_OVERRIDES:
+        reason = "flag_off"
+    elif not req.service_type.endswith("-dev"):
+        reason = "non_dev_service_type"
+    elif req.extra_body is not None and not isinstance(req.extra_body, dict):
+        reason = "invalid_value"
+    if reason:
+        log.bind(overrides=supplied, reason=reason).info(
+            "Client request overrides dropped"
+        )
+        return
+
+    if req.reasoning_effort is not None:
+        body["reasoning_effort"] = req.reasoning_effort
+    if isinstance(req.extra_body, dict):
+        extra_body = dict(req.extra_body)
+        if req.model.startswith("openrouter/"):
+            provider = extra_body.get("provider")
+            extra_body["provider"] = {
+                **(provider if isinstance(provider, dict) else {}),
+                **OPENROUTER_FORCED_PROVIDER_SETTINGS,
+            }
+        body["extra_body"] = extra_body
+    # Key names only: values can carry prompts (e.g. a system message in a preset).
+    log.bind(
+        overrides=supplied, extra_body_keys=sorted(body.get("extra_body", {}))
+    ).info("Client request overrides applied")
+
 
 def _build_litellm_body(req: AuthorizedChatRequest, *, stream: bool) -> dict:
     body = req.model_dump(
         exclude={
+            *CLIENT_OVERRIDE_FIELDS,
             "max_completion_tokens",
             "service_type",
             "purpose",
@@ -57,6 +106,7 @@ def _build_litellm_body(req: AuthorizedChatRequest, *, stream: bool) -> dict:
     )
     body["max_tokens"] = req.max_completion_tokens
     body["stream"] = stream
+    _apply_client_overrides(req, body)
     if stream:
         body["stream_options"] = {"include_usage": True}
     # tags would be litellm-native but spend-by-tag reporting is Enterprise-only
