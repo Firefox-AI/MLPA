@@ -13,6 +13,7 @@ from starlette.responses import StreamingResponse
 from mlpa.core.classes import AuthorizedChatRequest
 from mlpa.core.completions import (
     _build_litellm_body,
+    client_override_log_fields,
     get_completion,
     stream_completion,
 )
@@ -2335,8 +2336,111 @@ def test_override_logging_records_keys_not_values(mocker):
     _build_litellm_body(req, stream=False)
 
     log.bind.assert_called_once_with(
-        overrides=["extra_body"], extra_body_keys=["preset", "provider", "reasoning"]
+        overrides=["extra_body"],
+        extra_body_keys=["preset", "provider", "reasoning"],
+        provider=PRIVACY,
     )
+
+
+@pytest.mark.usefixtures("overrides_enabled")
+def test_client_override_log_fields_lists_client_key_paths():
+    req = _override_req(
+        extra_body={
+            "provider": {"max_price": {"completion": 1}, "sort": "price"},
+            "preset": "@preset/fp8-cheap",
+            "reasoning": {},
+        },
+        reasoning_effort="low",
+    )
+
+    assert client_override_log_fields(req) == {
+        "client_overrides": "preset,provider.max_price,provider.sort,reasoning,"
+        "reasoning_effort"
+    }
+
+
+@pytest.mark.parametrize(
+    "allow_overrides,service_type,extra_body",
+    [
+        (False, "ai-dev", {"provider": {"sort": "price"}}),
+        (True, "ai", {"provider": {"sort": "price"}}),
+        (True, "ai-dev", ["not", "an", "object"]),
+        (True, "ai-dev", None),
+    ],
+)
+def test_client_override_log_fields_empty_when_nothing_forwarded(
+    mocker, allow_overrides, service_type, extra_body
+):
+    mocker.patch.object(env, "ALLOW_CLIENT_REQUEST_OVERRIDES", allow_overrides)
+    kw = {} if extra_body is None else {"extra_body": extra_body}
+
+    assert client_override_log_fields(_override_req(service_type, **kw)) == {}
+
+
+NO_ENDPOINTS_ERROR = {
+    "error": {
+        "message": "No endpoints found that can handle the requested parameters.",
+        "code": 404,
+    }
+}
+
+
+def _request_records(records):
+    """Records emitted while serving the request (those carrying request fields)."""
+    return [item.record for item in records if "user" in item.record["extra"]]
+
+
+@pytest.mark.parametrize("stream", [False, True])
+@pytest.mark.usefixtures("overrides_enabled")
+async def test_upstream_error_logs_are_tagged_with_client_overrides(
+    httpx_mock: HTTPXMock, mock_request, stream
+):
+    """An OpenRouter "no endpoints" error caused by a client max_price must be
+    distinguishable from a problem with the deployed default settings."""
+    httpx_mock.add_response(
+        method="POST",
+        url=LITELLM_COMPLETIONS_URL,
+        status_code=404,
+        json=NO_ENDPOINTS_ERROR,
+    )
+    req = _override_req(extra_body={"provider": {"max_price": {"completion": 0.0001}}})
+
+    with _capture_logs() as records:
+        if stream:
+            [chunk async for chunk in stream_completion(mock_request, req)]
+        else:
+            with pytest.raises(HTTPException):
+                await get_completion(mock_request, req)
+
+    request_records = _request_records(records)
+    assert any(r["level"].no >= 30 for r in request_records)
+    for record in request_records:
+        assert record["extra"]["client_overrides"] == "provider.max_price"
+
+
+@pytest.mark.parametrize("stream", [False, True])
+async def test_upstream_error_logs_untagged_for_default_settings(
+    httpx_mock: HTTPXMock, mock_request, stream
+):
+    httpx_mock.add_response(
+        method="POST",
+        url=LITELLM_COMPLETIONS_URL,
+        status_code=404,
+        json=NO_ENDPOINTS_ERROR,
+    )
+    req = _override_req()
+
+    with _capture_logs() as records:
+        if stream:
+            [chunk async for chunk in stream_completion(mock_request, req)]
+        else:
+            with pytest.raises(HTTPException):
+                await get_completion(mock_request, req)
+
+    request_records = _request_records(records)
+    assert request_records
+    for record in request_records:
+        assert "client_overrides" not in record["extra"]
 
 
 @pytest.mark.usefixtures("overrides_enabled")
