@@ -171,7 +171,7 @@ async def test_get_search_budget_limit_exceeded_records_rejection(mocker, metric
 
     assert exc_info.value.status_code == 429
     assert exc_info.value.detail == {"error": ERROR_CODE_BUDGET_LIMIT_EXCEEDED}
-    assert 0 < int(exc_info.value.headers["Retry-After"]) <= 90000
+    assert 0 < int(exc_info.value.headers["Retry-After"]) <= 91200
     metrics_spy.assert_only(
         {
             "search_request_rejections",

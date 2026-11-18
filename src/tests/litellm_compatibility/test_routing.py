@@ -140,7 +140,7 @@ class TestBudgetErrorClassification:
         )
         assert response.status_code == 429, response.text
         assert response.json()["detail"]["error"] == ERROR_CODE_BUDGET_LIMIT_EXCEEDED
-        assert 0 < int(response.headers["Retry-After"]) <= 90000
+        assert 0 < int(response.headers["Retry-After"]) <= 91200
 
 
 class TestRedisCache:

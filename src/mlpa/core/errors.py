@@ -1,6 +1,6 @@
 import json
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
 from mlpa.core.config import (
@@ -88,17 +88,28 @@ _RATE_LIMIT_REJECTION: dict[int, tuple[int, PrometheusRejectionReason, str, str]
 }
 
 
+# LiteLLM's budget reset job runs about every 10 min, so the reset lands a few
+# minutes after midnight. Without the buffer a client retrying at 00:00 gets
+# another 429 and is told to wait a full day.
+_BUDGET_RESET_BUFFER_S = 20 * 60
+
+
 def seconds_until_budget_reset(now: datetime | None = None) -> str:
-    """Seconds until next midnight in LiteLLM's timezone, when 1d budgets reset.
+    """Seconds until midnight + buffer in LiteLLM's timezone, when 1d budgets reset.
 
     Note: 7d budgets reset on their own schedule, so they get told
     "tomorrow" too and a retry just gets a fresh 429.
     """
     tz = ZoneInfo(env.LITELLM_TIMEZONE)
     now = (now or datetime.now(tz)).astimezone(tz)
-    midnight = datetime.combine(now.date() + timedelta(days=1), datetime.min.time(), tz)
-    # timestamp() diff, not datetime diff: same-tzinfo subtraction ignores DST.
-    return str(max(int(midnight.timestamp() - now.timestamp()), 1))
+    # timestamp() math, not datetime diff: same-tzinfo subtraction ignores DST.
+    now_ts = now.timestamp()
+    day = now.date()
+    reset_ts = datetime.combine(day, time(), tz).timestamp() + _BUDGET_RESET_BUFFER_S
+    if now_ts >= reset_ts:
+        next_day = datetime.combine(day + timedelta(days=1), time(), tz)
+        reset_ts = next_day.timestamp() + _BUDGET_RESET_BUFFER_S
+    return str(max(int(reset_ts - now_ts), 1))
 
 
 _LITELLM_GLOBAL_BUDGET_ERROR = "ExceededBudget: User=default_user_id over budget"

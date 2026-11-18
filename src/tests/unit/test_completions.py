@@ -579,7 +579,7 @@ async def test_get_completion_budget_limit_exceeded_429(mocker, metrics_spy):
 
     assert exc_info.value.status_code == 429
     assert exc_info.value.detail == {"error": 1}
-    assert 0 < int(exc_info.value.headers["Retry-After"]) <= 90000
+    assert 0 < int(exc_info.value.headers["Retry-After"]) <= 91200
 
     metrics_spy.assert_only(
         _expect_metrics(
@@ -630,7 +630,7 @@ async def test_get_completion_budget_limit_exceeded_400(mocker, metrics_spy):
 
     assert exc_info.value.status_code == 429
     assert exc_info.value.detail == {"error": 1}
-    assert 0 < int(exc_info.value.headers["Retry-After"]) <= 90000
+    assert 0 < int(exc_info.value.headers["Retry-After"]) <= 91200
 
     metrics_spy.assert_only(
         _expect_metrics(

@@ -157,7 +157,7 @@ def test_classify_guest_key_budget(user, message, error_code, retry_after):
     assert match.error_code == error_code
     assert match.http_status == 429
     if retry_after is None:  # budget: seconds until midnight in LITELLM_TIMEZONE
-        assert 0 < int(match.retry_after) <= 90000
+        assert 0 < int(match.retry_after) <= 91200
     else:
         assert match.retry_after == retry_after
 
@@ -168,14 +168,19 @@ _ET = ZoneInfo("US/Eastern")
 @pytest.mark.parametrize(
     ("now", "expected"),
     [
-        (datetime(2026, 11, 17, 23, 59, 30, tzinfo=_ET), "30"),
-        (datetime(2026, 11, 17, 0, 0, 0, tzinfo=_ET), "86400"),
-        # 13:00 UTC = 08:00 EST → 16h to midnight ET
-        (datetime(2026, 11, 17, 13, 0, 0, tzinfo=timezone.utc), "57600"),
+        # reset target is 00:20 ET (midnight + 20 min buffer)
+        (datetime(2026, 11, 17, 23, 59, 30, tzinfo=_ET), "1230"),
+        # inside the buffer: wait for today's 00:20, not tomorrow's
+        (datetime(2026, 11, 17, 0, 0, 0, tzinfo=_ET), "1200"),
+        (datetime(2026, 11, 17, 0, 19, 59, tzinfo=_ET), "1"),
+        # buffer over → next day's 00:20
+        (datetime(2026, 11, 17, 0, 20, 0, tzinfo=_ET), "86400"),
+        # 13:00 UTC = 08:00 EST → 16h20m
+        (datetime(2026, 11, 17, 13, 0, 0, tzinfo=timezone.utc), "58800"),
         # DST ends 2026-11-01: that day is 25h long
-        (datetime(2026, 11, 1, 0, 0, 0, tzinfo=_ET), "90000"),
+        (datetime(2026, 11, 1, 0, 20, 0, tzinfo=_ET), "90000"),
         # DST starts 2026-03-08: that day is 23h long
-        (datetime(2026, 3, 8, 0, 0, 0, tzinfo=_ET), "82800"),
+        (datetime(2026, 3, 8, 0, 20, 0, tzinfo=_ET), "82800"),
     ],
 )
 def test_seconds_until_budget_reset(mocker, now, expected):
