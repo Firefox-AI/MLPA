@@ -44,7 +44,19 @@ FX_USER_AGENT_RE = r".*?Firefox/(\d+\.\d+)"
 
 
 def clamp_model(model: str) -> str:
-    return model if model in env.valid_model_labels else "invalid"
+    if model in env.valid_model_labels:
+        return model
+    # Wildcard routes take "<prefix><org>/<model>", e.g. "together/qwen/qwen3.5-9b".
+    # is_valid_model_name is checked here too because rejection paths (invalid
+    # name, oversized body) record metrics with the raw, unvalidated model.
+    if not is_valid_model_name(model):
+        return "invalid"
+    for prefix in env.WILDCARD_MODEL_PREFIXES:
+        if model.startswith(prefix):
+            org, _, name = model[len(prefix) :].partition("/")
+            if org and name and "/" not in name:
+                return model
+    return "invalid"
 
 
 # "/" and "_" are required for real, configured model names like
