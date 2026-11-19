@@ -436,6 +436,27 @@ def test_guests_are_sent_on_the_guest_key_with_the_guest_budget(
     assert user["Authorization"] == "Bearer tk-service"
 
 
+def test_a_guest_names_its_budget_though_authorize_hands_over_its_key(
+    monkeypatch, ai_and_guest
+):
+    """authorize puts the guest key in litellm_virtual_key, where a custom key goes."""
+    monkeypatch.setattr(config_module, "USE_OTARI", True)
+
+    headers = resolve_litellm_virtual_auth_headers("ai-guest", "tk-guest")
+
+    assert headers["Authorization"] == "Bearer tk-guest"
+    assert headers["otari-end-user-budget"] == "end-user-budget-ai-guest"
+
+
+def test_a_custom_key_names_no_budget(monkeypatch, ai_and_guest):
+    monkeypatch.setattr(config_module, "USE_OTARI", True)
+
+    headers = resolve_litellm_virtual_auth_headers("ai", "tk-loadtest")
+
+    assert headers["Authorization"] == "Bearer tk-loadtest"
+    assert "otari-end-user-budget" not in headers
+
+
 def test_guests_never_fall_back_to_the_service_key(monkeypatch, ai_and_guest):
     monkeypatch.setattr(config_module, "USE_OTARI", True)
     monkeypatch.setattr(env, "OTARI_GUEST_SERVICE_KEY", "")

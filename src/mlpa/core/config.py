@@ -1043,7 +1043,9 @@ def resolve_litellm_virtual_auth_headers(
         "Content-Type": "application/json",
         "Authorization": f"Bearer {key}",
     }
-    if USE_OTARI and key != custom_virtual_key:
+    # MLPA's own key for the service type, not a client's custom one. Guests carry
+    # theirs in litellm_virtual_key too, so comparing with that would skip them.
+    if USE_OTARI and key == env.service_type_virtual_keys.get(service_type):
         config = env.service_type_config.get(service_type)
         if config is not None:
             headers[OTARI_HEADER_END_USER_BUDGET] = config["budget_id"]
