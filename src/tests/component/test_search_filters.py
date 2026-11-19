@@ -57,6 +57,37 @@ def test_search_filters_reach_litellm(mocked_client_integration, mocker, filters
     }
 
 
+def test_search_filters_reach_otari_as_provider_options(
+    mocked_client_integration, mocker
+):
+    """Otari ignores body fields it doesn't name, and takes Exa's own under
+    provider_options."""
+    mocker.patch("mlpa.core.search.USE_OTARI", True)
+    upstream_url = f"{LITELLM_SEARCH_URL}/exa-search"
+    upstream = mocker.AsyncMock()
+    upstream.post.return_value = httpx.Response(
+        200,
+        json={"results": []},
+        request=httpx.Request("POST", upstream_url),
+    )
+    mocker.patch("mlpa.core.search.get_http_client", return_value=upstream)
+
+    response = mocked_client_integration.post(
+        "/v1/search",
+        headers=HEADERS,
+        json={"query": "browser news", "max_results": 5, **FILTERS},
+    )
+
+    assert response.status_code == 200
+    body = upstream.post.call_args.kwargs["json"]
+    assert body.pop("user").endswith(":search")
+    assert body == {
+        "query": "browser news",
+        "max_results": 5,
+        "provider_options": FILTERS,
+    }
+
+
 @pytest.mark.parametrize(
     "field,value",
     [

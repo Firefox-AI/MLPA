@@ -9,10 +9,15 @@ from starlette.requests import ClientDisconnect
 from mlpa.core.classes import AuthorizedSearchRequest
 from mlpa.core.config import (
     LITELLM_SEARCH_URL,
+    USE_OTARI,
     VirtualKeyConfigurationError,
     resolve_litellm_virtual_auth_headers,
 )
-from mlpa.core.errors import classify_upstream_error
+from mlpa.core.errors import (
+    USER_BLOCKED_DETAIL,
+    classify_upstream_error,
+    is_otari_user_blocked,
+)
 from mlpa.core.http_client import get_http_client
 from mlpa.core.logger import logger
 from mlpa.core.metrics import (
@@ -28,6 +33,10 @@ from mlpa.core.request_timings import measure
 from mlpa.core.sanitization import sanitize_request_body, sanitize_response_body
 from mlpa.core.services.services import redis_service
 from mlpa.core.utils import raise_and_log
+
+# Exa's own filters, which Otari takes under provider_options and would
+# otherwise drop, since it ignores fields its search body doesn't name.
+EXA_FILTERS = ("includeDomains", "excludeDomains", "startPublishedDate", "category")
 
 
 async def get_search(
@@ -54,6 +63,10 @@ async def _get_search(
                 exclude_none=True,
             )
         )
+        if USE_OTARI:
+            filters = {key: body.pop(key) for key in EXA_FILTERS if key in body}
+            if filters:
+                body["provider_options"] = filters
     result = PrometheusResult.ERROR
     availability_reason = AvailabilityReason.UPSTREAM_ERROR
     usage = None
@@ -74,10 +87,13 @@ async def _get_search(
         try:
             response.raise_for_status()
         except httpx.HTTPStatusError as e:
+            if is_otari_user_blocked(e.response.headers):
+                raise HTTPException(status_code=403, detail=USER_BLOCKED_DETAIL)
             match = classify_upstream_error(
                 error_text=e.response.text,
                 status_code=e.response.status_code,
                 user=authorized_search_request.user,
+                headers=e.response.headers,
             )
             record_exa_error(
                 endpoint=SEARCH_ENDPOINT,
@@ -85,6 +101,7 @@ async def _get_search(
                 status_code=e.response.status_code,
                 error_text=e.response.text,
                 rejected=match is not None,
+                headers=e.response.headers,
             )
             if match is not None:
                 if match.log_message:

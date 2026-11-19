@@ -111,6 +111,13 @@ in `litellm_docker_compose.yaml`; the manual workflow overrides only that image.
 Both use the same compatibility tests and configuration. The workflow does not
 deploy the candidate or enable its custom handlers in the test configuration.
 
+**Test Otari image** does the same for Otari: it runs `src/tests/otari_compatibility`
+against the image you supply instead of the one pinned in `otari_docker_compose.yaml`:
+
+```bash
+gh workflow run test-otari-image.yml --repo Firefox-AI/MLPA -f 'image=mzdotai/otari:<version>'
+```
+
 ## Auth benchmarks
 
 `src/tests/bench/` times each auth path with [pytest-benchmark](https://pytest-benchmark.readthedocs.io/). FxA, Google, Apple and Postgres are replaced with in-memory fakes, but the real crypto runs (RS256 FxA tokens, HS256 MLPA access tokens, App Attest ECDSA assertions). The suite covers:
