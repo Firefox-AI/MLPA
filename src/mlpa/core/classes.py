@@ -34,10 +34,10 @@ class ChatRequest(BaseModel):
     parallel_tool_calls: Optional[bool] = None
     logprobs: Optional[bool] = None
     top_logprobs: Optional[int] = None
+    reasoning_effort: Optional[str] = None
     # exa search params
     text: Optional[bool] = None
     # Forwarded to LiteLLM as-is only when overrides are enabled for -dev service types.
-    reasoning_effort: JsonValue = None
     extra_body: JsonValue = None
 
 
