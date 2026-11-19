@@ -2352,18 +2352,6 @@ def test_overrides_dropped_for_every_non_dev_service_type(mocker, service_type):
         service_type,
         extra_body={"provider": {"sort": "price"}},
         reasoning_effort="high",
-
-
-def test_build_litellm_body_sends_an_app_attest_user_as_it_is(monkeypatch):
-    """A standard-base64 App Attest key id often contains "/", which Otari takes
-    as it is in a request's `user`, the same id LiteLLM had."""
-    monkeypatch.setattr("mlpa.core.completions.USE_OTARI", True)
-    req = AuthorizedChatRequest(
-        user="q8Zr+0b/Yw3kT1Lx9vH2mP4nA6sD8fG0jK2lQ5wE7rU=:s2s",
-        service_type="s2s",
-        model="test-model",
-        messages=[{"role": "user", "content": "hi"}],
-        max_completion_tokens=150,
     )
 
     body = _build_litellm_body(req, stream=False)
@@ -2632,6 +2620,20 @@ async def test_override_flags_interaction(
     # The client's object is never mutated, so retries/logging see what was sent.
     assert req.extra_body == MATRIX_EXTRA_BODY
 
+
+def test_build_litellm_body_sends_an_app_attest_user_as_it_is(monkeypatch):
+    """A standard-base64 App Attest key id often contains "/", which Otari takes
+    as it is in a request's `user`, the same id LiteLLM had."""
+    monkeypatch.setattr("mlpa.core.completions.USE_OTARI", True)
+    req = AuthorizedChatRequest(
+        user="q8Zr+0b/Yw3kT1Lx9vH2mP4nA6sD8fG0jK2lQ5wE7rU=:s2s",
+        service_type="s2s",
+        model="test-model",
+        messages=[{"role": "user", "content": "hi"}],
+        max_completion_tokens=150,
+    )
+
+    body = _build_litellm_body(req, stream=False)
 
     assert body["user"] == "q8Zr+0b/Yw3kT1Lx9vH2mP4nA6sD8fG0jK2lQ5wE7rU=:s2s"
 
