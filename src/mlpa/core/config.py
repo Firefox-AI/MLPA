@@ -141,14 +141,18 @@ class Env(BaseSettings):
     GATEWAY_BACKEND: Literal["litellm", "otari"] = "litellm"
     OTARI_API_BASE: str = "http://localhost:8000"
     # MLPA's Otari service key: the secret Otari's config.yml declares for it
-    # (MLPA_SERVICE_KEY in scripts/otari_config.py's output). It serves requests
-    # and manages MLPA's end users; MLPA needs no other Otari credential.
+    # (MLPA_SERVICE_KEY in otari_config.yaml). It serves requests and manages
+    # MLPA's end users; MLPA needs no other Otari credential.
     OTARI_SERVICE_KEY: str = ""
     # MLPA's Otari key for guests (`*-guest` service types), the counterpart of
     # MLPA_GUEST_VIRTUAL_KEY. Declared with the same owner as OTARI_SERVICE_KEY,
     # so the service key still manages guests, with its own ceiling as the guest
     # spend cap and only the guest budgets to assign. Unset, guests get 503.
     OTARI_GUEST_SERVICE_KEY: str = ""
+    # MLPA's Otari key for widget-generation, the counterpart of
+    # MLPA_WIDGET_GENERATION_VIRTUAL_KEY: the same owner, its own ceiling, and only
+    # widget-generation's budget to assign. Unset, widget-generation gets 503.
+    OTARI_WIDGET_GENERATION_SERVICE_KEY: str = ""
     # The Otari user that owns the service key and every end user, and the key's name.
     OTARI_OWNER_USER: str = "mlpa"
     # End users known to exist in Otari, remembered so the signup cap is checked
@@ -625,15 +629,24 @@ class Env(BaseSettings):
             "search-dev": self.MLPA_VIRTUAL_KEY,
         }
         if self.GATEWAY_BACKEND == "otari":
-            # MLPA's Otari service key serves every service type but the guests',
-            # which its guest key serves: never the other's, as under LiteLLM.
             return {
-                service_type: self.OTARI_GUEST_SERVICE_KEY
-                if service_type.endswith("-guest")
-                else self.OTARI_SERVICE_KEY
+                service_type: getattr(self, self.otari_key_setting(service_type))
                 for service_type in keys
             }
         return keys
+
+    @staticmethod
+    def otari_key_setting(service_type: str) -> str:
+        """The setting holding MLPA's Otari key for a service type.
+
+        Each of MLPA's LiteLLM keys has an Otari counterpart with the same owner, so
+        a service type never falls back to another key, as under LiteLLM.
+        """
+        if service_type.endswith("-guest"):
+            return "OTARI_GUEST_SERVICE_KEY"
+        if service_type == "widget-generation":
+            return "OTARI_WIDGET_GENERATION_SERVICE_KEY"
+        return "OTARI_SERVICE_KEY"
 
     @cached_property
     def valid_service_types(self) -> list[str]:

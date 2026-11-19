@@ -37,7 +37,6 @@ from mlpa.core.config import (
     LITELLM_READINESS_URL,
     OTARI_API_ROOT,
     env,
-    is_guest_service_type,
 )
 from mlpa.core.logger import logger
 
@@ -134,7 +133,10 @@ class OtariService:
         response.raise_for_status()
         return response.json()
 
-    async def get_user(self, user_id: str) -> dict[str, Any] | None:
+    async def get_user(
+        self, user_id: str, *, fresh: bool = False
+    ) -> dict[str, Any] | None:
+        # Every call reads Otari, so each one is already fresh.
         user = await self._end_user("GET", user_id)
         if user is None:
             return None
@@ -178,24 +180,17 @@ class OtariService:
 
     @staticmethod
     def _keys_and_service_types() -> list[tuple[str, str, list[str]]]:
-        """Each of MLPA's Otari keys, by setting name, with the service types it serves."""
-        service_types = list(env.service_type_config)
-        keys = [
-            (
-                "OTARI_SERVICE_KEY",
-                env.OTARI_SERVICE_KEY,
-                [st for st in service_types if not is_guest_service_type(st)],
+        """Each of MLPA's Otari keys that is set, by setting name, with the service types it serves."""
+        by_setting: dict[str, list[str]] = {}
+        for service_type in env.service_type_config:
+            by_setting.setdefault(env.otari_key_setting(service_type), []).append(
+                service_type
             )
+        return [
+            (name, getattr(env, name), service_types)
+            for name, service_types in by_setting.items()
+            if name == "OTARI_SERVICE_KEY" or getattr(env, name)
         ]
-        if env.OTARI_GUEST_SERVICE_KEY:
-            keys.append(
-                (
-                    "OTARI_GUEST_SERVICE_KEY",
-                    env.OTARI_GUEST_SERVICE_KEY,
-                    [st for st in service_types if is_guest_service_type(st)],
-                )
-            )
-        return keys
 
     async def count_users_by_service_type(self) -> dict:
         """Users per service type, counted as the users on each service type's budget.
@@ -225,6 +220,10 @@ class OtariService:
         """
         if not env.OTARI_GUEST_SERVICE_KEY:
             logger.info("OTARI_GUEST_SERVICE_KEY is unset: guest requests get 503")
+        if not env.OTARI_WIDGET_GENERATION_SERVICE_KEY:
+            logger.info(
+                "OTARI_WIDGET_GENERATION_SERVICE_KEY is unset: widget-generation gets 503"
+            )
         for name, key, service_types in self._keys_and_service_types():
             try:
                 budgets = await self._end_user_budgets(key)

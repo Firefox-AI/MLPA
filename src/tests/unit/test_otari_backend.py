@@ -266,6 +266,7 @@ async def test_users_are_listed_from_the_keys_end_users(otari, httpx_mock):
 
 def test_requests_name_the_service_types_budget(monkeypatch, ai_only):
     monkeypatch.setattr(config_module, "USE_OTARI", True)
+    monkeypatch.setattr(env, "GATEWAY_BACKEND", "otari")
     monkeypatch.setattr(env, "OTARI_SERVICE_KEY", "sk-1")
 
     headers = resolve_litellm_virtual_auth_headers(service_type="ai")
@@ -443,6 +444,50 @@ def test_guests_never_fall_back_to_the_service_key(monkeypatch, ai_and_guest):
         VirtualKeyConfigurationError, match="Guest access is not configured"
     ):
         resolve_litellm_virtual_auth_headers(service_type="ai-guest")
+
+
+def test_each_service_type_has_the_otari_counterpart_of_its_litellm_key(monkeypatch):
+    """Two service types share an Otari key exactly when they share a LiteLLM key."""
+    monkeypatch.setattr(env, "GATEWAY_BACKEND", "litellm")
+    monkeypatch.setattr(env, "MLPA_VIRTUAL_KEY", "sk-signed-in")
+    monkeypatch.setattr(env, "MLPA_GUEST_VIRTUAL_KEY", "sk-guest")
+    monkeypatch.setattr(env, "MLPA_WIDGET_GENERATION_VIRTUAL_KEY", "sk-widget")
+    litellm = dict(env.service_type_virtual_keys)
+    env.__dict__.pop("service_type_virtual_keys")
+    monkeypatch.setattr(env, "GATEWAY_BACKEND", "otari")
+    monkeypatch.setattr(env, "OTARI_SERVICE_KEY", "tk-service")
+    monkeypatch.setattr(env, "OTARI_GUEST_SERVICE_KEY", "tk-guest")
+    monkeypatch.setattr(env, "OTARI_WIDGET_GENERATION_SERVICE_KEY", "tk-widget")
+    otari = env.service_type_virtual_keys
+
+    assert set(otari) == set(litellm)
+    for a in litellm:
+        for b in litellm:
+            assert (otari[a] == otari[b]) == (litellm[a] == litellm[b]), (a, b)
+
+
+def test_widget_generation_is_sent_on_its_own_key_with_its_budget(monkeypatch):
+    monkeypatch.setattr(config_module, "USE_OTARI", True)
+    monkeypatch.setattr(env, "GATEWAY_BACKEND", "otari")
+    monkeypatch.setattr(env, "OTARI_SERVICE_KEY", "tk-service")
+    monkeypatch.setattr(env, "OTARI_WIDGET_GENERATION_SERVICE_KEY", "tk-widget")
+
+    headers = resolve_litellm_virtual_auth_headers(service_type="widget-generation")
+
+    assert headers["Authorization"] == "Bearer tk-widget"
+    assert headers["otari-end-user-budget"] == "end-user-budget-widget-generation"
+
+
+def test_widget_generation_never_falls_back_to_the_service_key(monkeypatch):
+    monkeypatch.setattr(config_module, "USE_OTARI", True)
+    monkeypatch.setattr(env, "GATEWAY_BACKEND", "otari")
+    monkeypatch.setattr(env, "OTARI_SERVICE_KEY", "tk-service")
+    monkeypatch.setattr(env, "OTARI_WIDGET_GENERATION_SERVICE_KEY", "")
+
+    with pytest.raises(
+        VirtualKeyConfigurationError, match="Service access is not configured"
+    ):
+        resolve_litellm_virtual_auth_headers(service_type="widget-generation")
 
 
 async def test_guests_are_counted_from_the_guest_keys_budgets(

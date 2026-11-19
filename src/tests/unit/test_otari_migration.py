@@ -262,3 +262,24 @@ async def test_a_guest_is_written_with_the_guest_key(client, httpx_mock, monkeyp
     assert get.headers["Authorization"] != "Bearer tk-guest"
     assert put.headers["Authorization"] == "Bearer tk-guest"
     assert patch.headers["Authorization"] == "Bearer tk-guest"
+
+
+async def test_widget_generation_is_written_with_its_own_key(
+    client, httpx_mock, monkeypatch
+):
+    monkeypatch.setattr(env, "OTARI_WIDGET_GENERATION_SERVICE_KEY", "tk-widget")
+    url = httpx.URL(
+        f"{OTARI_API_ROOT}/end-users", params={"external_id": "w:widget-generation"}
+    )
+    httpx_mock.add_response(method="GET", url=url, json=[])
+    httpx_mock.add_response(method="PUT", url=url, status_code=201, json={})
+
+    target = Target(
+        "w:widget-generation", "end-user-budget-widget-generation", blocked=False
+    )
+    outcome = await migrate_end_user(client, target, apply=True)
+
+    assert outcome.result == "created"
+    get, put = httpx_mock.get_requests()
+    assert get.headers["Authorization"] != "Bearer tk-widget"
+    assert put.headers["Authorization"] == "Bearer tk-widget"

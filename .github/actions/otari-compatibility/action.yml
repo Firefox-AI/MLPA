@@ -37,6 +37,7 @@ runs:
           echo "MLPA_ADMIN_KEY=sk-mlpa-admin-ci"
           echo "OTARI_SERVICE_KEY=tk-YXPI1CW0aDO2jB9R9nmBouDos1jKmqEMidv6iBnSZ8vqhJ2sDlgLbTawowd8BJZz"
           echo "OTARI_GUEST_SERVICE_KEY=tk-ob35KujLWClpnYti4XPdwQrZhFr4UEfCAmIS7kAnm4vfaslmgQX-p9eDrD1Klzz4"
+          echo "OTARI_WIDGET_GENERATION_SERVICE_KEY=tk-tPWBvQnL-exIl6E-0xslOZhGK2OKvBAwsRr5_n5rn83_mlEwAueHygWS7dl89Ygp"
           echo "MLPA_GUEST_ENABLED=true"
           echo "MLPA_GUEST_TOKEN_SIGNING_SECRET=mlpa-guest-ci-secret"
           echo "DB_USERNAME=otari"
