@@ -46,7 +46,7 @@ from mlpa.core.utils import (
 # Fields a dev client may send exactly as it would to LiteLLM directly.
 # extra_body is LiteLLM's standard passthrough to the provider (OpenRouter
 # provider/reasoning/preset, Together chat_template_kwargs, ...).
-CLIENT_OVERRIDE_FIELDS = frozenset({"extra_body", "reasoning_effort"})
+CLIENT_OVERRIDE_FIELDS = frozenset({"extra_body"})
 # A request extra_body replaces the deployment's, so these are re-applied to
 # OpenRouter overrides while OPENROUTER_FORCED_PROVIDER_ZDR_SETTINGS is on.
 OPENROUTER_FORCED_PROVIDER_SETTINGS = {"zdr": True, "data_collection": "deny"}
@@ -76,11 +76,11 @@ def client_override_log_fields(req: AuthorizedChatRequest) -> dict[str, str]:
     Bound alongside ``log_fields`` so upstream errors (e.g. OpenRouter finding no
     provider for a client max_price) are attributable to the client's settings
     rather than the deployed LiteLLM config. Lists the key paths the client sent,
-    e.g. ``provider.max_price,provider.sort,reasoning_effort``.
+    e.g. ``provider.max_price,provider.sort``.
     """
     if _override_drop_reason(req) or not _supplied_overrides(req):
         return {}
-    paths = ["reasoning_effort"] if req.reasoning_effort is not None else []
+    paths = []
     if isinstance(req.extra_body, dict):
         for key, value in req.extra_body.items():
             if isinstance(value, dict) and value:
@@ -102,8 +102,6 @@ def _apply_client_overrides(req: AuthorizedChatRequest, body: dict) -> None:
         )
         return
 
-    if req.reasoning_effort is not None:
-        body["reasoning_effort"] = req.reasoning_effort
     provider_sent = None
     if isinstance(req.extra_body, dict):
         extra_body = dict(req.extra_body)
