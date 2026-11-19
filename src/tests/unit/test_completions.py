@@ -2097,7 +2097,7 @@ async def test_stream_cleanup_finishes_without_client_disconnect(
             await task
 
 
-# AIPLAT-1683: dev clients may send extra_body / reasoning_effort exactly as they
+# AIPLAT-1683: dev clients may send extra_body exactly as they
 # would to LiteLLM; MLPA forwards them verbatim apart from forced privacy.
 PRIVACY = {"zdr": True, "data_collection": "deny"}
 
@@ -2162,12 +2162,6 @@ async def _upstream_body(httpx_mock: HTTPXMock, req: AuthorizedChatRequest) -> d
             {"extra_body": {"chat_template_kwargs": {"enable_thinking": True}}},
             {"extra_body": {"chat_template_kwargs": {"enable_thinking": True}}},
             id="together-thinking-on",
-        ),
-        pytest.param(
-            "gemini-3.1-flash-lite",
-            {"reasoning_effort": "none"},
-            {"reasoning_effort": "none"},
-            id="standard-reasoning-effort",
         ),
         pytest.param(
             "openrouter/qwen/qwen3.8-27b",
@@ -2269,9 +2263,7 @@ async def test_use_case_overrides_forwarded_verbatim(
 ):
     body = await _upstream_body(httpx_mock, _override_req(model=model, **overrides))
 
-    assert {k: body[k] for k in ("extra_body", "reasoning_effort") if k in body} == (
-        expected
-    )
+    assert {k: body[k] for k in ("extra_body",) if k in body} == expected
 
 
 @pytest.mark.parametrize("provider", [{"zdr": False, "data_collection": "allow"}, "x"])
@@ -2287,12 +2279,9 @@ def test_openrouter_override_cannot_weaken_privacy(provider):
 
 @pytest.mark.usefixtures("overrides_enabled")
 def test_override_rejects_non_object_extra_body():
-    body = _build_litellm_body(
-        _override_req(extra_body=["x"], reasoning_effort="low"), stream=False
-    )
+    body = _build_litellm_body(_override_req(extra_body=["x"]), stream=False)
 
     assert "extra_body" not in body
-    assert "reasoning_effort" not in body
 
 
 NON_DEV_SERVICE_TYPES = sorted(
@@ -2307,15 +2296,13 @@ def test_overrides_dropped_for_every_non_dev_service_type(mocker, service_type):
     req = _override_req(
         service_type,
         extra_body={"provider": {"sort": "price"}},
-        reasoning_effort="high",
     )
 
     body = _build_litellm_body(req, stream=False)
 
     assert "extra_body" not in body
-    assert "reasoning_effort" not in body
     log.bind.assert_called_once_with(
-        overrides=["extra_body", "reasoning_effort"], reason="non_dev_service_type"
+        overrides=["extra_body"], reason="non_dev_service_type"
     )
 
 
@@ -2325,13 +2312,11 @@ async def test_use_case_same_request_is_ignored_when_flag_off(httpx_mock: HTTPXM
             "preset": "@preset/fp8-cheap",
             "provider": {"max_price": {"completion": 0.0001}},
         },
-        reasoning_effort="high",
     )
 
     body = await _upstream_body(httpx_mock, req)
 
     assert "extra_body" not in body
-    assert "reasoning_effort" not in body
 
 
 @pytest.mark.usefixtures("overrides_enabled")
@@ -2356,12 +2341,10 @@ def test_client_override_log_fields_lists_client_key_paths():
             "preset": "@preset/fp8-cheap",
             "reasoning": {},
         },
-        reasoning_effort="low",
     )
 
     assert client_override_log_fields(req) == {
-        "client_overrides": "preset,provider.max_price,provider.sort,reasoning,"
-        "reasoning_effort"
+        "client_overrides": "preset,provider.max_price,provider.sort,reasoning"
     }
 
 
@@ -2468,9 +2451,9 @@ def test_openrouter_zdr_forcing_defaults_on():
 # Two settings control what a client may send through to LiteLLM:
 #
 #   ALLOW_CLIENT_REQUEST_OVERRIDES           default False
-#       Forward the client's extra_body and reasoning_effort to LiteLLM as-is.
+#       Forward the client's extra_body to LiteLLM as-is.
 #       Only ever applies to -dev service types (which require
-#       x-dev-authorization); for any other service type both fields are dropped.
+#       x-dev-authorization); for any other service type it is dropped.
 #
 #   OPENROUTER_FORCED_PROVIDER_ZDR_SETTINGS  default True
 #       For openrouter/* models, overwrite extra_body.provider.zdr = true and
@@ -2485,19 +2468,18 @@ def test_openrouter_zdr_forcing_defaults_on():
 #   client extra_body = {"provider": {"zdr": false, "data_collection": "allow",
 #                                     "sort": "price"},
 #                        "reasoning": {"enabled": true}}
-#   client reasoning_effort = "low"
 #
 # What reaches LiteLLM:
 #
-#   | ALLOW_CLIENT_ | OPENROUTER_FORCED_ | service | model       | extra_body sent      | reasoning_ |
-#   | REQUEST_      | PROVIDER_ZDR_      | type    |             | to LiteLLM           | effort     |
-#   | OVERRIDES     | SETTINGS           |         |             |                      |            |
-#   |---------------|--------------------|---------|-------------|----------------------|------------|
-#   | False         | any                | any     | any         | none (config default)| none       |
-#   | True          | any                | ai      | any         | none (config default)| none       |
-#   | True          | True               | ai-dev  | openrouter/ | MATRIX_FORCED        | "low"      |
-#   | True          | False              | ai-dev  | openrouter/ | MATRIX_EXTRA_BODY    | "low"      |
-#   | True          | any                | ai-dev  | together/   | MATRIX_EXTRA_BODY    | "low"      |
+#   | ALLOW_CLIENT_ | OPENROUTER_FORCED_ | service | model       | extra_body sent      |
+#   | REQUEST_      | PROVIDER_ZDR_      | type    |             | to LiteLLM           |
+#   | OVERRIDES     | SETTINGS           |         |             |                      |
+#   |---------------|--------------------|---------|-------------|----------------------|
+#   | False         | any                | any     | any         | none (config default)|
+#   | True          | any                | ai      | any         | none (config default)|
+#   | True          | True               | ai-dev  | openrouter/ | MATRIX_FORCED        |
+#   | True          | False              | ai-dev  | openrouter/ | MATRIX_EXTRA_BODY    |
+#   | True          | any                | ai-dev  | together/   | MATRIX_EXTRA_BODY    |
 #
 #   MATRIX_FORCED     = client body with zdr=true, data_collection="deny" forced
 #                       and the client's other provider keys (sort) kept.
@@ -2566,12 +2548,10 @@ async def test_override_flags_interaction(
         service_type,
         model,
         extra_body=MATRIX_EXTRA_BODY,
-        reasoning_effort="low",
     )
 
     body = await _upstream_body(httpx_mock, req)
 
     assert body.get("extra_body") == expected
-    assert body.get("reasoning_effort") == ("low" if expected else None)
     # The client's object is never mutated, so retries/logging see what was sent.
     assert req.extra_body == MATRIX_EXTRA_BODY
