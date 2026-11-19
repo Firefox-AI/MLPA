@@ -1665,15 +1665,16 @@ def test_build_litellm_body_handles_unpaired_surrogate():
     assert encoded.decode("utf-8")
 
 
-def test_build_litellm_body_includes_purpose_and_country_in_spend_logs_metadata():
-    """`purpose` and `client_country` are dropped from the top-level body (not
-    OpenAI chat params) but surfaced under metadata.spend_logs_metadata so they
-    land on LiteLLM_SpendLogs.metadata for cost/usage analysis."""
+def test_build_litellm_body_includes_spend_logs_metadata():
+    """`purpose`, `client_country` and `chat_id` are dropped from the top-level
+    body (not OpenAI chat params) but surfaced under metadata.spend_logs_metadata
+    so they land on LiteLLM_SpendLogs.metadata for cost/usage analysis."""
     req = AuthorizedChatRequest(
         user="test-user-123:memories",
         service_type="memories",
         purpose="memory-generation",
         client_country="DE",
+        chat_id="b6f1c8e2-1c2d-4e5f-8a9b-0c1d2e3f4a5b",
         model="test-model",
         messages=[{"role": "user", "content": "hi"}],
         max_completion_tokens=150,
@@ -1682,11 +1683,16 @@ def test_build_litellm_body_includes_purpose_and_country_in_spend_logs_metadata(
     body = _build_litellm_body(req, stream=False)
 
     assert body["metadata"] == {
-        "spend_logs_metadata": {"purpose": "memory-generation", "country_code": "DE"}
+        "spend_logs_metadata": {
+            "purpose": "memory-generation",
+            "country_code": "DE",
+            "chat_id": "b6f1c8e2-1c2d-4e5f-8a9b-0c1d2e3f4a5b",
+        }
     }
     assert "purpose" not in body
     assert "service_type" not in body
     assert "client_country" not in body
+    assert "chat_id" not in body
 
 
 def test_build_litellm_body_includes_empty_purpose_and_country_when_unset():

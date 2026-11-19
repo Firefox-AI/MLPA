@@ -134,7 +134,8 @@ class AuthorizedRequestLogMixin(BaseModel):
 
 
 class AuthorizedChatRequest(ChatRequest, AuthorizedRequestLogMixin):
-    pass
+    # From the optional `chat-id` header (Smart Window conversation id). Mostly absent.
+    chat_id: str | None = None
 
 
 class SearchRequest(BaseModel):
