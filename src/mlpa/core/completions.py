@@ -136,6 +136,7 @@ def _build_litellm_body(req: AuthorizedChatRequest, *, stream: bool) -> dict:
             "purpose",
             "client_country",
             "litellm_virtual_key",
+            "chat_id",
         },
         exclude_none=True,
     )
@@ -153,6 +154,8 @@ def _build_litellm_body(req: AuthorizedChatRequest, *, stream: bool) -> dict:
             "country_code": req.client_country,
         }
     }
+    if req.chat_id:
+        body["metadata"]["spend_logs_metadata"]["chat_id"] = req.chat_id
     return sanitize_request_body(body)
 
 
