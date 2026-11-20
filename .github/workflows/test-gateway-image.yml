@@ -4,9 +4,21 @@ on:
   workflow_dispatch:
     inputs:
       image:
-        description: "Full gateway image reference in Artifact Registry (commit tag or digest)"
-        required: true
+        description: "Full gateway image reference (tag or digest); leave blank to test latest"
+        required: false
         type: string
+      update_default:
+        description: "Open an update PR after tests pass (ignored on branches other than main)"
+        required: false
+        type: boolean
+        default: true
+
+concurrency:
+  group: test-and-promote-gateway
+  cancel-in-progress: false
+
+env:
+  GATEWAY_REPOSITORY: us-docker.pkg.dev/moz-fx-llm-proxy-prod-b0b8/llm-proxy-prod/litellm-gateway
 
 jobs:
   litellm-compatibility-tests:
@@ -15,7 +27,24 @@ jobs:
     permissions:
       contents: read
       id-token: write
+    outputs:
+      image: ${{ steps.image.outputs.digest }}
     steps:
+      - name: Validate request
+        env:
+          INPUT_IMAGE: ${{ inputs.image }}
+        run: |
+          if [[ "$GITHUB_REF" != refs/heads/main ]]; then
+            echo "Testing only: default-image update PRs can only be created from main." >> "$GITHUB_STEP_SUMMARY"
+          fi
+          image="${INPUT_IMAGE:-$GATEWAY_REPOSITORY:latest}"
+          suffix="${image#"$GATEWAY_REPOSITORY"}"
+          if [[ "$image" != "$GATEWAY_REPOSITORY"* || ! "$suffix" =~ ^(:[a-zA-Z0-9_][a-zA-Z0-9_.-]{0,127}|@sha256:[0-9a-f]{64})$ ]]; then
+            echo "Choose a tag or digest from the gateway repository."
+            exit 1
+          fi
+          echo "CANDIDATE_IMAGE=$image" >> "$GITHUB_ENV"
+
       - name: Check out repository
         uses: actions/checkout@v4
 
@@ -35,7 +64,66 @@ jobs:
           username: oauth2accesstoken
           password: ${{ steps.gcp-auth.outputs.access_token }}
 
+      - name: Resolve candidate to an immutable digest
+        id: image
+        run: |
+          docker pull --platform linux/amd64 "$CANDIDATE_IMAGE"
+          image=$(docker image inspect "$CANDIDATE_IMAGE" --format '{{index .RepoDigests 0}}')
+          suffix="${image#"$GATEWAY_REPOSITORY"}"
+          [[ "$image" == "$GATEWAY_REPOSITORY"* && "$suffix" =~ ^@sha256:[0-9a-f]{64}$ ]]
+          echo "digest=$image" >> "$GITHUB_OUTPUT"
+          # shellcheck disable=SC2016
+          printf 'Selected image: `%s`\n\nTesting digest: `%s`\n' "$CANDIDATE_IMAGE" "$image" >> "$GITHUB_STEP_SUMMARY"
+
       - name: Run LiteLLM compatibility tests
         uses: ./.github/actions/litellm-compatibility
         with:
-          image: ${{ inputs.image }}
+          image: ${{ steps.image.outputs.digest }}
+
+  propose-default:
+    needs: litellm-compatibility-tests
+    if: inputs.update_default && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.sha }}
+
+      - name: Update only the tested image
+        env:
+          TESTED_IMAGE: ${{ needs.litellm-compatibility-tests.outputs.image }}
+        run: python scripts/update_gateway_image.py "$TESTED_IMAGE"
+
+      - name: Open default-image update PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TESTED_IMAGE: ${{ needs.litellm-compatibility-tests.outputs.image }}
+        run: |
+          if git diff --quiet -- litellm_docker_compose.yaml; then
+            echo "The default already uses the tested image." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          branch="chore/gateway-image-${GITHUB_RUN_ID}-${GITHUB_RUN_ATTEMPT}"
+          git switch -c "$branch"
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add litellm_docker_compose.yaml
+          git commit -m 'chore: update tested gateway image'
+          git push origin "$branch"
+          body="$RUNNER_TEMP/gateway-pr.md"
+          cat > "$body" <<EOF
+          Update MLPA's Compose default to the exact gateway digest that passed compatibility tests.
+
+          Image: \`$TESTED_IMAGE\`
+          Test run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID
+          Tested MLPA revision: \`$GITHUB_SHA\`
+
+          This updates local development and CI defaults, not the deployed gateway in dataservices-infra.
+          Select "Approve workflows to run" on this PR, then review the completed checks before merging.
+          EOF
+          gh pr create --base main --head "$branch" --draft \
+            --title 'chore: update tested gateway image' --body-file "$body" \
+            | tee -a "$GITHUB_STEP_SUMMARY"

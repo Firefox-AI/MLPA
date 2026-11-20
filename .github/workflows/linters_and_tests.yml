@@ -54,6 +54,9 @@ jobs:
       - name: Run unit tests
         run: uv run pytest src/tests/unit -v --junit-xml=unit-results.xml
 
+      - name: Check gateway image update script
+        run: python -m unittest discover -s scripts -p test_update_gateway_image.py -v
+
       - name: Summarize failures
         if: always()
         run: uv run python scripts/ci_failure_summary.py unit-results.xml
@@ -92,9 +95,40 @@ jobs:
   # (test_litellm_contract's old job, AIPLAT-910, folded in here).
   litellm-compatibility-tests:
     runs-on: ubuntu-latest
+    environment: build
+    permissions:
+      contents: read
+      id-token: write
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+
+      - name: Check whether the Compose image needs registry authentication
+        id: registry
+        run: |
+          image=$(docker compose -f litellm_docker_compose.yaml config --format json \
+            | python -c 'import json, sys; print(json.load(sys.stdin)["services"]["litellm"]["image"])')
+          if [[ "$image" == us-docker.pkg.dev/* ]]; then
+            echo "required=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Authenticate to Google Cloud
+        if: steps.registry.outputs.required == 'true'
+        id: gcp-auth
+        uses: google-github-actions/auth@v2
+        with:
+          token_format: access_token
+          create_credentials_file: false
+          service_account: artifact-writer@moz-fx-llm-proxy-prod-b0b8.iam.gserviceaccount.com
+          workload_identity_provider: projects/324168772199/locations/global/workloadIdentityPools/github-actions/providers/github-actions
+
+      - name: Login to Google Artifact Registry
+        if: steps.registry.outputs.required == 'true'
+        uses: docker/login-action@v3
+        with:
+          registry: us-docker.pkg.dev
+          username: oauth2accesstoken
+          password: ${{ steps.gcp-auth.outputs.access_token }}
 
       - name: Run LiteLLM compatibility tests
         uses: ./.github/actions/litellm-compatibility

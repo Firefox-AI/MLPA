@@ -36,5 +36,7 @@ updates:
     cooldown:
       default-days: 14
     ignore:
+      # Gateway digest changes go through the manual compatibility/promotion workflow.
+      - dependency-name: "us-docker.pkg.dev/moz-fx-llm-proxy-prod-b0b8/llm-proxy-prod/litellm-gateway"
       - dependency-name: "*"
         update-types: ["version-update:semver-patch"]

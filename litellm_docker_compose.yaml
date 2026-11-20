@@ -1,8 +1,8 @@
 # The `litellm:` image tag below is the LiteLLM version
 # src/tests/litellm_compatibility (AIPLAT-910, AIPLAT-1337) runs against
-# locally and in CI. Dependabot bumps it automatically
-# (.github/dependabot.yml, "docker-compose" ecosystem) -- review the diff
-# on that PR like any other version bump.
+# locally and in CI. Dependabot manages upstream image updates; the manual
+# test-gateway-image workflow proposes tested gateway digests. Review image
+# update PRs before merging; they do not change the deployed gateway.
 services:
   postgres:
     image: postgres:18

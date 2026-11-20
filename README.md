@@ -94,22 +94,31 @@ Service account configured to hit VertexAI: `service_account.json` should be in 
 
 After running, Swagger can be viewed at `http://localhost:<PORT>/api/docs`
 
-## Test a gateway image
+## Test and update the gateway image
 
-In GitHub Actions, select **Test gateway image → Run workflow** and supply the full
-published `litellm-gateway` image reference from Artifact Registry. Use a commit
-tag or digest to identify the candidate:
+Run **Test gateway image** in GitHub Actions. Leave `image` blank to select
+`latest`, or enter a full image reference with a tag or digest. The workflow
+resolves it to an immutable SHA-256 digest and tests that exact image.
 
 ```bash
-gh workflow run test-gateway-image.yml --repo Firefox-AI/MLPA \
-  -f 'image=us-docker.pkg.dev/moz-fx-llm-proxy-prod-b0b8/llm-proxy-prod/litellm-gateway:<commit-sha>'
+# Test latest and open a draft update PR if tests pass.
+gh workflow run test-gateway-image.yml --repo Firefox-AI/MLPA --ref main
+
+# Test a specific image without opening a PR.
+gh workflow run test-gateway-image.yml --repo Firefox-AI/MLPA --ref main \
+  -f 'image=<full-image-reference>' -F update_default=false
 ```
 
-The workflow pulls the image and runs `src/tests/litellm_compatibility` with
-PostgreSQL, Redis, and the local Exa stub. Normal CI uses the upstream image pinned
-in `litellm_docker_compose.yaml`; the manual workflow overrides only that image.
-Both use the same compatibility tests and configuration. The workflow does not
-deploy the candidate or enable its custom handlers in the test configuration.
+On `main`, passing tests open a draft PR pinning `litellm_docker_compose.yaml`
+to the tested digest. Set `update_default=false` to test only; branch runs always
+test only. Select **Approve workflows to run** on the PR and review its checks
+before merging.
+
+Merging updates development and CI defaults. Deployments remain controlled by
+`dataservices-infra`. Custom gateway handlers are tested in `litellm-gateway`.
+
+To use the private image locally, obtain registry read access and run
+`gcloud auth configure-docker us-docker.pkg.dev`.
 
 ## Auth benchmarks
 
