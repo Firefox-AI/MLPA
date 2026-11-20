@@ -213,6 +213,7 @@ async def authorize_chat_request(
     use_qa_certificates: Annotated[bool | None, Header()] = None,
     use_play_integrity: Annotated[bool | None, Header()] = None,
     litellm_virtual_key: Annotated[str | None, Header()] = None,
+    chat_id: Annotated[str | None, Header()] = None,
 ) -> AuthorizedChatRequest:
     with measure("context_checks", request):
         client_country = get_client_country(request)
@@ -271,6 +272,8 @@ async def authorize_chat_request(
                 purpose=purpose_value,
                 client_country=client_country,
                 litellm_virtual_key=custom_virtual_key,
+                # Client-supplied, so cap it: Firefox sends a UUID (36 chars).
+                chat_id=(chat_id or "").strip()[:64] or None,
                 **chat_request.model_dump(exclude_unset=True),
             ),
             authorization=authorization,

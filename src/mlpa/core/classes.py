@@ -2,7 +2,7 @@ import enum
 from dataclasses import dataclass
 from typing import Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, JsonValue
 
 from mlpa.core.config import env
 from mlpa.core.consts import TrafficContractMode
@@ -34,8 +34,11 @@ class ChatRequest(BaseModel):
     parallel_tool_calls: Optional[bool] = None
     logprobs: Optional[bool] = None
     top_logprobs: Optional[int] = None
+    reasoning_effort: JsonValue = None
     # exa search params
     text: Optional[bool] = None
+    # Forwarded to LiteLLM as-is only when overrides are enabled for -dev service types.
+    extra_body: JsonValue = None
 
 
 class UserUpdatePayload(BaseModel):
@@ -131,7 +134,8 @@ class AuthorizedRequestLogMixin(BaseModel):
 
 
 class AuthorizedChatRequest(ChatRequest, AuthorizedRequestLogMixin):
-    pass
+    # From the optional `chat-id` header (Smart Window conversation id). Mostly absent.
+    chat_id: str | None = None
 
 
 class SearchRequest(BaseModel):
