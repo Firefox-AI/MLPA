@@ -2,7 +2,12 @@ import hashlib
 
 from mlpa.core.config import env
 from mlpa.core.utils import issue_mlpa_access_token
-from tests.consts import SAMPLE_CHAT_REQUEST, SUCCESSFUL_CHAT_RESPONSE, TEST_USER_ID
+from tests.consts import (
+    SAMPLE_CHAT_REQUEST,
+    SUCCESSFUL_CHAT_RESPONSE,
+    TEST_FXA_TOKEN,
+    TEST_USER_ID,
+)
 
 
 def _mock_decode_payload(request_hash: str) -> dict:
@@ -84,15 +89,28 @@ def test_verify_play_integrity_missing_payload(mocked_client_integration, mocker
     assert response.json()["detail"] == "Invalid Play Integrity token"
 
 
-def test_chat_with_play_integrity_token_success(mocked_client_integration):
+def test_s2s_android_with_play_integrity_token_success(mocked_client_integration):
     access_token = issue_mlpa_access_token(TEST_USER_ID)
     response = mocked_client_integration.post(
         "/v1/chat/completions",
         headers={
             "authorization": f"Bearer {access_token}",
             "use-play-integrity": "true",
-            "service-type": "ai",
-            "purpose": "chat",
+            "service-type": "s2s-android",
+        },
+        json=SAMPLE_CHAT_REQUEST.model_dump(exclude_unset=True),
+    )
+
+    assert response.status_code == 200
+    assert response.json() == SUCCESSFUL_CHAT_RESPONSE
+
+
+def test_s2s_android_with_fxa_success(mocked_client_integration):
+    response = mocked_client_integration.post(
+        "/v1/chat/completions",
+        headers={
+            "authorization": f"Bearer {TEST_FXA_TOKEN}",
+            "service-type": "s2s-android",
         },
         json=SAMPLE_CHAT_REQUEST.model_dump(exclude_unset=True),
     )
