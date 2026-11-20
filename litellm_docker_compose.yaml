@@ -70,7 +70,7 @@ services:
   # Fake Exa that always errors, so src/tests/litellm_compatibility can check
   # LiteLLM still passes Exa's error tag through to MLPA.
   exa_stub:
-    image: python:3.12-alpine
+    image: python:3.14-alpine
     container_name: exa_stub
     volumes:
       - ./src/tests/litellm_compatibility/exa_stub.py:/app/exa_stub.py:ro
