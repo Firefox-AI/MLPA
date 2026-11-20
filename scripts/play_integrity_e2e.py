@@ -13,7 +13,7 @@ import httpx
 from mlpa.core.config import env
 
 DEFAULT_BASE_URL = f"http://0.0.0.0:{env.PORT or 8080}"
-DEFAULT_SERVICE_TYPE = "ai"
+DEFAULT_SERVICE_TYPE = "s2s-android"
 
 
 def _print_json(payload: dict) -> None:

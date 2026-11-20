@@ -1,3 +1,4 @@
+from enum import Enum
 from functools import cached_property
 from typing import Annotated, Any, TypedDict
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -14,6 +15,15 @@ class TrafficContractConfig(TypedDict):
 
 class VirtualKeyConfigurationError(ValueError):
     """No LiteLLM virtual key is configured for this service type."""
+
+
+class AuthType(Enum):
+    """Authentication methods allowed by service type configuration."""
+
+    FXA = 1
+    APP_ATTEST = 2
+    PLAY_INTEGRITY = 3
+    GUEST = 4
 
 
 class Env(BaseSettings):
@@ -229,27 +239,6 @@ class Env(BaseSettings):
     USER_FEATURE_BUDGET_WIDGET_GENERATION_RPM_LIMIT: int = 10
     USER_FEATURE_BUDGET_WIDGET_GENERATION_TPM_LIMIT: int = 2000
 
-    # Dev tier
-    USER_FEATURE_BUDGET_AI_DEV_BUDGET_ID: str = "end-user-budget-ai-dev"
-    USER_FEATURE_BUDGET_AI_DEV_BUDGET_DURATION: str = "1d"
-    USER_FEATURE_BUDGET_AI_DEV_MAX_BUDGET: float = 1.0
-    USER_FEATURE_BUDGET_AI_DEV_RPM_LIMIT: int = 200
-    USER_FEATURE_BUDGET_AI_DEV_TPM_LIMIT: int = 10000
-
-    USER_FEATURE_BUDGET_CONVO_STARTERS_DEV_BUDGET_ID: str = (
-        "end-user-budget-convo-starters-dev"
-    )
-    USER_FEATURE_BUDGET_CONVO_STARTERS_DEV_BUDGET_DURATION: str = "1d"
-    USER_FEATURE_BUDGET_CONVO_STARTERS_DEV_MAX_BUDGET: float = 1.0
-    USER_FEATURE_BUDGET_CONVO_STARTERS_DEV_RPM_LIMIT: int = 200
-    USER_FEATURE_BUDGET_CONVO_STARTERS_DEV_TPM_LIMIT: int = 100000
-
-    USER_FEATURE_BUDGET_MEMORIES_DEV_BUDGET_ID: str = "end-user-budget-memories-dev"
-    USER_FEATURE_BUDGET_MEMORIES_DEV_BUDGET_DURATION: str = "1d"
-    USER_FEATURE_BUDGET_MEMORIES_DEV_MAX_BUDGET: float = 1.0
-    USER_FEATURE_BUDGET_MEMORIES_DEV_RPM_LIMIT: int = 50
-    USER_FEATURE_BUDGET_MEMORIES_DEV_TPM_LIMIT: int = 5000
-
     # Guest tier - Clients never send these, MLPA appends "-guest" to the service-type header when the request carries an MLPA guest token.
     USER_FEATURE_BUDGET_AI_GUEST_BUDGET_ID: str = "end-user-budget-ai-guest"
     USER_FEATURE_BUDGET_AI_GUEST_BUDGET_DURATION: str = "1d"
@@ -290,6 +279,27 @@ class Env(BaseSettings):
     USER_FEATURE_BUDGET_AGENT_SEARCH_GUEST_MAX_BUDGET: float = 0.1
     USER_FEATURE_BUDGET_AGENT_SEARCH_GUEST_RPM_LIMIT: int = 10
     USER_FEATURE_BUDGET_AGENT_SEARCH_GUEST_TPM_LIMIT: int = 2000
+
+    # Dev tier
+    USER_FEATURE_BUDGET_AI_DEV_BUDGET_ID: str = "end-user-budget-ai-dev"
+    USER_FEATURE_BUDGET_AI_DEV_BUDGET_DURATION: str = "1d"
+    USER_FEATURE_BUDGET_AI_DEV_MAX_BUDGET: float = 1.0
+    USER_FEATURE_BUDGET_AI_DEV_RPM_LIMIT: int = 200
+    USER_FEATURE_BUDGET_AI_DEV_TPM_LIMIT: int = 10000
+
+    USER_FEATURE_BUDGET_CONVO_STARTERS_DEV_BUDGET_ID: str = (
+        "end-user-budget-convo-starters-dev"
+    )
+    USER_FEATURE_BUDGET_CONVO_STARTERS_DEV_BUDGET_DURATION: str = "1d"
+    USER_FEATURE_BUDGET_CONVO_STARTERS_DEV_MAX_BUDGET: float = 1.0
+    USER_FEATURE_BUDGET_CONVO_STARTERS_DEV_RPM_LIMIT: int = 200
+    USER_FEATURE_BUDGET_CONVO_STARTERS_DEV_TPM_LIMIT: int = 100000
+
+    USER_FEATURE_BUDGET_MEMORIES_DEV_BUDGET_ID: str = "end-user-budget-memories-dev"
+    USER_FEATURE_BUDGET_MEMORIES_DEV_BUDGET_DURATION: str = "1d"
+    USER_FEATURE_BUDGET_MEMORIES_DEV_MAX_BUDGET: float = 1.0
+    USER_FEATURE_BUDGET_MEMORIES_DEV_RPM_LIMIT: int = 50
+    USER_FEATURE_BUDGET_MEMORIES_DEV_TPM_LIMIT: int = 5000
 
     USER_FEATURE_BUDGET_MOCHI_DEV_BUDGET_ID: str = "end-user-budget-mochi-dev"
     USER_FEATURE_BUDGET_MOCHI_DEV_BUDGET_DURATION: str = "1d"
@@ -332,6 +342,10 @@ class Env(BaseSettings):
     WIDGET_GENERATION_TRAFFIC_CONTRACT_RPM_LIMIT: int = 0
     WIDGET_GENERATION_TRAFFIC_CONTRACT_TPM_LIMIT: int = 0
 
+    FEATURE_QUICK_ANSWERS: str = "quick-answers"
+    QUICK_ANSWERS_TRAFFIC_CONTRACT_RPM_LIMIT: int = 0
+    QUICK_ANSWERS_TRAFFIC_CONTRACT_TPM_LIMIT: int = 0
+
     @cached_property
     def service_type_config(self) -> dict[str, dict]:
         """
@@ -342,6 +356,7 @@ class Env(BaseSettings):
         return {
             "ai": {
                 "feature": self.FEATURE_SMART_WINDOW,
+                "auth_types": [AuthType.FXA],
                 "budget_id": self.USER_FEATURE_BUDGET_AI_BUDGET_ID,
                 "budget_duration": self.USER_FEATURE_BUDGET_AI_BUDGET_DURATION,
                 "max_budget": self.USER_FEATURE_BUDGET_AI_MAX_BUDGET,
@@ -350,6 +365,7 @@ class Env(BaseSettings):
             },
             "s2s": {
                 "feature": self.FEATURE_S2S,
+                "auth_types": [AuthType.APP_ATTEST],
                 "budget_id": self.USER_FEATURE_BUDGET_S2S_BUDGET_ID,
                 "budget_duration": self.USER_FEATURE_BUDGET_S2S_BUDGET_DURATION,
                 "max_budget": self.USER_FEATURE_BUDGET_S2S_MAX_BUDGET,
@@ -358,6 +374,7 @@ class Env(BaseSettings):
             },
             "s2s-android": {
                 "feature": self.FEATURE_S2S_ANDROID,
+                "auth_types": [AuthType.PLAY_INTEGRITY, AuthType.FXA],
                 "budget_id": self.USER_FEATURE_BUDGET_S2S_ANDROID_BUDGET_ID,
                 "budget_duration": self.USER_FEATURE_BUDGET_S2S_ANDROID_BUDGET_DURATION,
                 "max_budget": self.USER_FEATURE_BUDGET_S2S_ANDROID_MAX_BUDGET,
@@ -366,6 +383,7 @@ class Env(BaseSettings):
             },
             "memories": {
                 "feature": self.FEATURE_SMART_WINDOW,
+                "auth_types": [AuthType.FXA],
                 "budget_id": self.USER_FEATURE_BUDGET_MEMORIES_BUDGET_ID,
                 "budget_duration": self.USER_FEATURE_BUDGET_MEMORIES_BUDGET_DURATION,
                 "max_budget": self.USER_FEATURE_BUDGET_MEMORIES_MAX_BUDGET,
@@ -374,6 +392,7 @@ class Env(BaseSettings):
             },
             "search": {
                 "feature": self.FEATURE_SMART_WINDOW,
+                "auth_types": [AuthType.FXA],
                 "budget_id": self.USER_FEATURE_BUDGET_SEARCH_BUDGET_ID,
                 "budget_duration": self.USER_FEATURE_BUDGET_SEARCH_BUDGET_DURATION,
                 "max_budget": self.USER_FEATURE_BUDGET_SEARCH_MAX_BUDGET,
@@ -381,7 +400,8 @@ class Env(BaseSettings):
                 "tpm_limit": self.USER_FEATURE_BUDGET_SEARCH_TPM_LIMIT,
             },
             "answer": {
-                "feature": self.FEATURE_SMART_WINDOW,
+                "feature": self.FEATURE_QUICK_ANSWERS,
+                "auth_types": [AuthType.APP_ATTEST],
                 "budget_id": self.USER_FEATURE_BUDGET_ANSWER_BUDGET_ID,
                 "budget_duration": self.USER_FEATURE_BUDGET_ANSWER_BUDGET_DURATION,
                 "max_budget": self.USER_FEATURE_BUDGET_ANSWER_MAX_BUDGET,
@@ -390,6 +410,7 @@ class Env(BaseSettings):
             },
             "sw-answer": {
                 "feature": self.FEATURE_SMART_WINDOW,
+                "auth_types": [AuthType.FXA],
                 "budget_id": self.USER_FEATURE_BUDGET_SW_ANSWER_BUDGET_ID,
                 "max_budget": self.USER_FEATURE_BUDGET_SW_ANSWER_MAX_BUDGET,
                 "rpm_limit": self.USER_FEATURE_BUDGET_SW_ANSWER_RPM_LIMIT,
@@ -397,7 +418,8 @@ class Env(BaseSettings):
                 "budget_duration": self.USER_FEATURE_BUDGET_SW_ANSWER_BUDGET_DURATION,
             },
             "liner-answer": {
-                "feature": self.FEATURE_SMART_WINDOW,
+                "feature": self.FEATURE_QUICK_ANSWERS,
+                "auth_types": [AuthType.APP_ATTEST],
                 "budget_id": self.USER_FEATURE_BUDGET_LINER_ANSWERS_BUDGET_ID,
                 "budget_duration": self.USER_FEATURE_BUDGET_LINER_ANSWERS_BUDGET_DURATION,
                 "max_budget": self.USER_FEATURE_BUDGET_LINER_ANSWERS_MAX_BUDGET,
@@ -406,6 +428,7 @@ class Env(BaseSettings):
             },
             "telemetry": {
                 "feature": self.FEATURE_SMART_WINDOW,
+                "auth_types": [AuthType.FXA],
                 "budget_id": self.USER_FEATURE_BUDGET_TELEMETRY_BUDGET_ID,
                 "budget_duration": self.USER_FEATURE_BUDGET_TELEMETRY_BUDGET_DURATION,
                 "max_budget": self.USER_FEATURE_BUDGET_TELEMETRY_MAX_BUDGET,
@@ -414,6 +437,7 @@ class Env(BaseSettings):
             },
             "convo-starters": {
                 "feature": self.FEATURE_SMART_WINDOW,
+                "auth_types": [AuthType.FXA],
                 "budget_id": self.USER_FEATURE_BUDGET_CONVO_STARTERS_BUDGET_ID,
                 "budget_duration": self.USER_FEATURE_BUDGET_CONVO_STARTERS_BUDGET_DURATION,
                 "max_budget": self.USER_FEATURE_BUDGET_CONVO_STARTERS_MAX_BUDGET,
@@ -422,6 +446,7 @@ class Env(BaseSettings):
             },
             "agent": {
                 "feature": self.FEATURE_SMART_WINDOW,
+                "auth_types": [AuthType.FXA],
                 "budget_id": self.USER_FEATURE_BUDGET_AGENT_BUDGET_ID,
                 "budget_duration": self.USER_FEATURE_BUDGET_AGENT_BUDGET_DURATION,
                 "max_budget": self.USER_FEATURE_BUDGET_AGENT_MAX_BUDGET,
@@ -430,6 +455,7 @@ class Env(BaseSettings):
             },
             "agent-search": {
                 "feature": self.FEATURE_SMART_WINDOW,
+                "auth_types": [AuthType.FXA],
                 "budget_id": self.USER_FEATURE_BUDGET_AGENT_SEARCH_BUDGET_ID,
                 "budget_duration": self.USER_FEATURE_BUDGET_AGENT_SEARCH_BUDGET_DURATION,
                 "max_budget": self.USER_FEATURE_BUDGET_AGENT_SEARCH_MAX_BUDGET,
@@ -438,38 +464,16 @@ class Env(BaseSettings):
             },
             "widget-generation": {
                 "feature": self.FEATURE_WIDGET_GENERATION,
+                "auth_types": [AuthType.FXA],
                 "budget_id": self.USER_FEATURE_BUDGET_WIDGET_GENERATION_BUDGET_ID,
                 "budget_duration": self.USER_FEATURE_BUDGET_WIDGET_GENERATION_BUDGET_DURATION,
                 "max_budget": self.USER_FEATURE_BUDGET_WIDGET_GENERATION_MAX_BUDGET,
                 "rpm_limit": self.USER_FEATURE_BUDGET_WIDGET_GENERATION_RPM_LIMIT,
                 "tpm_limit": self.USER_FEATURE_BUDGET_WIDGET_GENERATION_TPM_LIMIT,
             },
-            "ai-dev": {
-                "feature": self.FEATURE_SMART_WINDOW,
-                "budget_id": self.USER_FEATURE_BUDGET_AI_DEV_BUDGET_ID,
-                "budget_duration": self.USER_FEATURE_BUDGET_AI_DEV_BUDGET_DURATION,
-                "max_budget": self.USER_FEATURE_BUDGET_AI_DEV_MAX_BUDGET,
-                "rpm_limit": self.USER_FEATURE_BUDGET_AI_DEV_RPM_LIMIT,
-                "tpm_limit": self.USER_FEATURE_BUDGET_AI_DEV_TPM_LIMIT,
-            },
-            "convo-starters-dev": {
-                "feature": self.FEATURE_SMART_WINDOW,
-                "budget_id": self.USER_FEATURE_BUDGET_CONVO_STARTERS_DEV_BUDGET_ID,
-                "budget_duration": self.USER_FEATURE_BUDGET_CONVO_STARTERS_DEV_BUDGET_DURATION,
-                "max_budget": self.USER_FEATURE_BUDGET_CONVO_STARTERS_DEV_MAX_BUDGET,
-                "rpm_limit": self.USER_FEATURE_BUDGET_CONVO_STARTERS_DEV_RPM_LIMIT,
-                "tpm_limit": self.USER_FEATURE_BUDGET_CONVO_STARTERS_DEV_TPM_LIMIT,
-            },
-            "memories-dev": {
-                "feature": self.FEATURE_SMART_WINDOW,
-                "budget_id": self.USER_FEATURE_BUDGET_MEMORIES_DEV_BUDGET_ID,
-                "budget_duration": self.USER_FEATURE_BUDGET_MEMORIES_DEV_BUDGET_DURATION,
-                "max_budget": self.USER_FEATURE_BUDGET_MEMORIES_DEV_MAX_BUDGET,
-                "rpm_limit": self.USER_FEATURE_BUDGET_MEMORIES_DEV_RPM_LIMIT,
-                "tpm_limit": self.USER_FEATURE_BUDGET_MEMORIES_DEV_TPM_LIMIT,
-            },
             "ai-guest": {
                 "feature": self.FEATURE_SMART_WINDOW,
+                "auth_types": [AuthType.GUEST],
                 "budget_id": self.USER_FEATURE_BUDGET_AI_GUEST_BUDGET_ID,
                 "budget_duration": self.USER_FEATURE_BUDGET_AI_GUEST_BUDGET_DURATION,
                 "max_budget": self.USER_FEATURE_BUDGET_AI_GUEST_MAX_BUDGET,
@@ -478,6 +482,7 @@ class Env(BaseSettings):
             },
             "convo-starters-guest": {
                 "feature": self.FEATURE_SMART_WINDOW,
+                "auth_types": [AuthType.GUEST],
                 "budget_id": self.USER_FEATURE_BUDGET_CONVO_STARTERS_GUEST_BUDGET_ID,
                 "budget_duration": self.USER_FEATURE_BUDGET_CONVO_STARTERS_GUEST_BUDGET_DURATION,
                 "max_budget": self.USER_FEATURE_BUDGET_CONVO_STARTERS_GUEST_MAX_BUDGET,
@@ -486,6 +491,7 @@ class Env(BaseSettings):
             },
             "memories-guest": {
                 "feature": self.FEATURE_SMART_WINDOW,
+                "auth_types": [AuthType.GUEST],
                 "budget_id": self.USER_FEATURE_BUDGET_MEMORIES_GUEST_BUDGET_ID,
                 "budget_duration": self.USER_FEATURE_BUDGET_MEMORIES_GUEST_BUDGET_DURATION,
                 "max_budget": self.USER_FEATURE_BUDGET_MEMORIES_GUEST_MAX_BUDGET,
@@ -494,6 +500,7 @@ class Env(BaseSettings):
             },
             "search-guest": {
                 "feature": self.FEATURE_SMART_WINDOW,
+                "auth_types": [AuthType.GUEST],
                 "budget_id": self.USER_FEATURE_BUDGET_SEARCH_GUEST_BUDGET_ID,
                 "budget_duration": self.USER_FEATURE_BUDGET_SEARCH_GUEST_BUDGET_DURATION,
                 "max_budget": self.USER_FEATURE_BUDGET_SEARCH_GUEST_MAX_BUDGET,
@@ -502,6 +509,7 @@ class Env(BaseSettings):
             },
             "agent-guest": {
                 "feature": self.FEATURE_SMART_WINDOW,
+                "auth_types": [AuthType.GUEST],
                 "budget_id": self.USER_FEATURE_BUDGET_AGENT_GUEST_BUDGET_ID,
                 "budget_duration": self.USER_FEATURE_BUDGET_AGENT_GUEST_BUDGET_DURATION,
                 "max_budget": self.USER_FEATURE_BUDGET_AGENT_GUEST_MAX_BUDGET,
@@ -510,14 +518,43 @@ class Env(BaseSettings):
             },
             "agent-search-guest": {
                 "feature": self.FEATURE_SMART_WINDOW,
+                "auth_types": [AuthType.GUEST],
                 "budget_id": self.USER_FEATURE_BUDGET_AGENT_SEARCH_GUEST_BUDGET_ID,
                 "budget_duration": self.USER_FEATURE_BUDGET_AGENT_SEARCH_GUEST_BUDGET_DURATION,
                 "max_budget": self.USER_FEATURE_BUDGET_AGENT_SEARCH_GUEST_MAX_BUDGET,
                 "rpm_limit": self.USER_FEATURE_BUDGET_AGENT_SEARCH_GUEST_RPM_LIMIT,
                 "tpm_limit": self.USER_FEATURE_BUDGET_AGENT_SEARCH_GUEST_TPM_LIMIT,
             },
+            "ai-dev": {
+                "feature": self.FEATURE_SMART_WINDOW,
+                "auth_types": [AuthType.FXA],
+                "budget_id": self.USER_FEATURE_BUDGET_AI_DEV_BUDGET_ID,
+                "budget_duration": self.USER_FEATURE_BUDGET_AI_DEV_BUDGET_DURATION,
+                "max_budget": self.USER_FEATURE_BUDGET_AI_DEV_MAX_BUDGET,
+                "rpm_limit": self.USER_FEATURE_BUDGET_AI_DEV_RPM_LIMIT,
+                "tpm_limit": self.USER_FEATURE_BUDGET_AI_DEV_TPM_LIMIT,
+            },
+            "convo-starters-dev": {
+                "feature": self.FEATURE_SMART_WINDOW,
+                "auth_types": [AuthType.FXA],
+                "budget_id": self.USER_FEATURE_BUDGET_CONVO_STARTERS_DEV_BUDGET_ID,
+                "budget_duration": self.USER_FEATURE_BUDGET_CONVO_STARTERS_DEV_BUDGET_DURATION,
+                "max_budget": self.USER_FEATURE_BUDGET_CONVO_STARTERS_DEV_MAX_BUDGET,
+                "rpm_limit": self.USER_FEATURE_BUDGET_CONVO_STARTERS_DEV_RPM_LIMIT,
+                "tpm_limit": self.USER_FEATURE_BUDGET_CONVO_STARTERS_DEV_TPM_LIMIT,
+            },
+            "memories-dev": {
+                "feature": self.FEATURE_SMART_WINDOW,
+                "auth_types": [AuthType.FXA],
+                "budget_id": self.USER_FEATURE_BUDGET_MEMORIES_DEV_BUDGET_ID,
+                "budget_duration": self.USER_FEATURE_BUDGET_MEMORIES_DEV_BUDGET_DURATION,
+                "max_budget": self.USER_FEATURE_BUDGET_MEMORIES_DEV_MAX_BUDGET,
+                "rpm_limit": self.USER_FEATURE_BUDGET_MEMORIES_DEV_RPM_LIMIT,
+                "tpm_limit": self.USER_FEATURE_BUDGET_MEMORIES_DEV_TPM_LIMIT,
+            },
             "mochi-dev": {
                 "feature": self.FEATURE_SMART_WINDOW,
+                "auth_types": [AuthType.FXA],
                 "budget_id": self.USER_FEATURE_BUDGET_MOCHI_DEV_BUDGET_ID,
                 "budget_duration": self.USER_FEATURE_BUDGET_MOCHI_DEV_BUDGET_DURATION,
                 "max_budget": self.USER_FEATURE_BUDGET_MOCHI_DEV_MAX_BUDGET,
@@ -526,6 +563,7 @@ class Env(BaseSettings):
             },
             "search-dev": {
                 "feature": self.FEATURE_SMART_WINDOW,
+                "auth_types": [AuthType.FXA],
                 "budget_id": self.USER_FEATURE_BUDGET_SEARCH_DEV_BUDGET_ID,
                 "budget_duration": self.USER_FEATURE_BUDGET_SEARCH_DEV_BUDGET_DURATION,
                 "max_budget": self.USER_FEATURE_BUDGET_SEARCH_DEV_MAX_BUDGET,
@@ -559,6 +597,10 @@ class Env(BaseSettings):
             self.FEATURE_WIDGET_GENERATION: {
                 "rpm_limit": self.WIDGET_GENERATION_TRAFFIC_CONTRACT_RPM_LIMIT,
                 "tpm_limit": self.WIDGET_GENERATION_TRAFFIC_CONTRACT_TPM_LIMIT,
+            },
+            self.FEATURE_QUICK_ANSWERS: {
+                "rpm_limit": self.QUICK_ANSWERS_TRAFFIC_CONTRACT_RPM_LIMIT,
+                "tpm_limit": self.QUICK_ANSWERS_TRAFFIC_CONTRACT_TPM_LIMIT,
             },
         }
         return {
@@ -750,6 +792,13 @@ class Env(BaseSettings):
             "deepseek-v4.1-flash",
             "deepseek-v4.1-flash-1017",
         }
+
+    def valid_service_type_for_auth(self, service_type: str, auth: AuthType) -> bool:
+        """Return whether a service type allows the given authentication method."""
+        service_config = self.service_type_config.get(service_type)
+        return service_config is not None and auth in service_config.get(
+            "auth_types", ()
+        )
 
     # Logging
     LOG_JSON: bool = False  # Set to True for GKE deployment
@@ -973,6 +1022,7 @@ PRIVACY_FILTER_MASTER_AUTH_HEADERS = {
     "x-pf-api-key": env.PRIVACY_FILTER_MASTER_KEY,
 }
 
+# Error Codes
 ERROR_CODE_BUDGET_LIMIT_EXCEEDED: int = 1
 ERROR_CODE_RATE_LIMIT_EXCEEDED: int = 2
 ERROR_CODE_REQUEST_TOO_LARGE: int = 3
@@ -991,6 +1041,7 @@ ERROR_CODE_MAX_GUESTS_REACHED: int = 12
 
 # Traffic Contract exceeded
 ERROR_CODE_TRAFFIC_CONTRACT_EXCEEDED: int = 13
+
 
 ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
     429: {
