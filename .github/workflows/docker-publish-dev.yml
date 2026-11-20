@@ -49,12 +49,10 @@ jobs:
           SHA_TAG=$IMAGE_REPO:${{ github.sha }}
           PR_TAG=$IMAGE_REPO:pr-${{ inputs.pr_number }}
 
+          # Otari pilot (AIPLAT-1719): never tag latest, dev MLPA runs latest.
           docker build -t $SHA_TAG .
           docker tag $SHA_TAG $PR_TAG
-          docker tag $SHA_TAG $IMAGE_REPO:latest
-          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
-            docker tag $SHA_TAG $IMAGE_REPO:${{ github.ref_name }}
-          fi
+          docker tag $SHA_TAG $IMAGE_REPO:otari_${{ github.run_number }}
 
       - name: Push Container Image to GAR
         run: |
@@ -62,7 +60,5 @@ jobs:
 
           docker push $IMAGE_REPO:${{ github.sha }}
           docker push $IMAGE_REPO:pr-${{ inputs.pr_number }}
-          docker push $IMAGE_REPO:latest
-          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
-            docker push $IMAGE_REPO:${{ github.ref_name }}
-          fi
+          docker push $IMAGE_REPO:otari_${{ github.run_number }}
+          echo "Pushed $IMAGE_REPO:otari_${{ github.run_number }}" >> $GITHUB_STEP_SUMMARY
