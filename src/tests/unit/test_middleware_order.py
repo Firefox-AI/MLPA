@@ -43,7 +43,7 @@ def test_instrumentation_bounds_pre_auth_request_labels(metrics_spy, mocker):
     )
 
     assert response.status_code == 200
-    assert log_context.call_args.kwargs["auth_type"] == "N/A"
+    assert "auth_type" not in log_context.call_args.kwargs
     assert "use_app_attest" not in log_context.call_args.kwargs
     assert (
         metrics_spy.value(
@@ -375,7 +375,7 @@ def test_instrumentation_records_selected_auth_type(
             AuthorizedChatRequest, Depends(authorize_module.authorize_chat_request)
         ],
     ):
-        return {"user": authorized.user}
+        return authorized.log_fields
 
     client_service_type = service_type.removesuffix("-guest")
     headers = {
@@ -392,6 +392,8 @@ def test_instrumentation_records_selected_auth_type(
     )
 
     assert response.status_code == status_code
+    if status_code == 200:
+        assert response.json()["auth_type"] == auth_type
     assert (
         metrics_spy.value(
             "requests_total",

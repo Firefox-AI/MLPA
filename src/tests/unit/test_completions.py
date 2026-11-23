@@ -31,6 +31,7 @@ from mlpa.core.config import (
     LITELLM_HEADER_MODEL_API_BASE,
     LITELLM_HEADER_RESPONSE_COST,
     LITELLM_HEADER_RESPONSE_DURATION_MS,
+    AuthType,
     env,
 )
 from mlpa.core.logger import logger as loguru_logger
@@ -1762,14 +1763,14 @@ async def test_get_completion_empty_message_transport_error_is_diagnosable(mocke
     mock_client.post.side_effect = httpx.RemoteProtocolError("")
     mocker.patch("mlpa.core.completions.get_http_client", return_value=mock_client)
     mocker.patch.object(env, "MLPA_DEBUG", False)
+    authorized = SAMPLE_REQUEST.model_copy(update={"auth_type": AuthType.FXA})
 
     with _capture_logs() as records:
         with pytest.raises(HTTPException) as exc_info:
-            await get_completion(
-                Request({"type": "http", "headers": []}), SAMPLE_REQUEST
-            )
+            await get_completion(Request({"type": "http", "headers": []}), authorized)
 
     assert exc_info.value.status_code == 502
+    assert "auth_type" not in mock_client.post.call_args.kwargs["json"]
 
     proxy_errors = _proxy_error_records(records)
     assert len(proxy_errors) == 1
@@ -1784,6 +1785,7 @@ async def test_get_completion_empty_message_transport_error_is_diagnosable(mocke
     assert rec["extra"]["user"] == SAMPLE_REQUEST.user
     assert rec["extra"]["model"] == SAMPLE_REQUEST.model
     assert rec["extra"]["service_type"] == SAMPLE_REQUEST.service_type
+    assert rec["extra"]["auth_type"] == "FxA"
 
 
 async def test_stream_mid_stream_error_binds_request_fields(
@@ -1806,9 +1808,10 @@ async def test_stream_mid_stream_error_binds_request_fields(
 
     _patch_mock_stream_client(mocker, _failing_aiter_bytes)
     mocker.patch.object(env, "MLPA_DEBUG", False)
+    authorized = SAMPLE_REQUEST.model_copy(update={"auth_type": AuthType.FXA})
 
     with _capture_logs() as records:
-        received = [c async for c in stream_completion(mock_request, SAMPLE_REQUEST)]
+        received = [c async for c in stream_completion(mock_request, authorized)]
 
     assert any(b'"error"' in chunk for chunk in received)
 
@@ -1820,6 +1823,7 @@ async def test_stream_mid_stream_error_binds_request_fields(
     assert rec["extra"]["user"] == SAMPLE_REQUEST.user
     assert rec["extra"]["model"] == SAMPLE_REQUEST.model
     assert rec["extra"]["service_type"] == SAMPLE_REQUEST.service_type
+    assert rec["extra"]["auth_type"] == "FxA"
 
 
 async def test_stream_completion_aclose_from_separate_task_does_not_crash(

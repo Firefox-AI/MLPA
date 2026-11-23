@@ -41,7 +41,6 @@ async def instrument_requests_middleware(request: Request, call_next):
     # Forward non-auth headers to log metadata
     with logger.contextualize(
         service_type=request.headers.get("service-type", "N/A"),
-        auth_type=getattr(request.state, "auth_type", "N/A"),
         session_id=request.headers.get("session-id", "N/A"),
         user_agent=request.headers.get("user-agent", "N/A"),
     ):

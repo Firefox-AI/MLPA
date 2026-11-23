@@ -260,6 +260,7 @@ async def authorize_chat_request(
             build_authorized_request=lambda user, purpose_value: AuthorizedChatRequest(
                 user=user,
                 service_type=service_type.value,
+                auth_type=request.state.auth_type,
                 purpose=purpose_value,
                 client_country=client_country,
                 litellm_virtual_key=custom_virtual_key,
@@ -340,6 +341,7 @@ async def authorize_search_request(
             purpose_value: AuthorizedSearchRequest(
                 user=user,
                 service_type=service_type.value,
+                auth_type=request.state.auth_type,
                 purpose=purpose_value,
                 client_country=client_country,
                 litellm_virtual_key=custom_virtual_key,
