@@ -254,11 +254,13 @@ def build_metrics(registry: CollectorRegistry = REGISTRY) -> PrometheusMetrics:
         ),
         requests_total=Counter(
             "mlpa_requests_total",
-            "Total number of requests handled by the proxy.",
+            "Total number of requests handled by the proxy. "
+            "Auth type is the selected request authorization path, or N/A when none was selected.",
             [
                 "method",
                 "endpoint",
                 "service_type",
+                "auth_type",
                 "purpose",
                 "major_fx_version",
                 "traffic_contract_rpm_mode",

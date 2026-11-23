@@ -2,6 +2,7 @@ import time
 
 from fastapi import Request
 
+from mlpa.core.config import AuthType
 from mlpa.core.consts import TrafficContractKeyType, TrafficContractMode
 from mlpa.core.logger import logger
 from mlpa.core.prometheus_metrics import metrics
@@ -40,9 +41,9 @@ async def instrument_requests_middleware(request: Request, call_next):
     # Forward non-auth headers to log metadata
     with logger.contextualize(
         service_type=request.headers.get("service-type", "N/A"),
+        auth_type=getattr(request.state, "auth_type", "N/A"),
         session_id=request.headers.get("session-id", "N/A"),
         user_agent=request.headers.get("user-agent", "N/A"),
-        use_app_attest=request.headers.get("use-app-attest", "N/A"),
     ):
         try:
             response = await call_next(request)
@@ -55,6 +56,7 @@ async def instrument_requests_middleware(request: Request, call_next):
             service_type = getattr(
                 request.state, "service_type", request.headers.get("service-type", "")
             )
+            auth_type: AuthType | None = getattr(request.state, "auth_type", None)
             purpose = request.headers.get("purpose", "")
             user_agent = request.headers.get("user-agent", "")
             major_fx_version = parse_firefox_major_version_from_user_agent(user_agent)
@@ -65,6 +67,7 @@ async def instrument_requests_middleware(request: Request, call_next):
                 method=method,
                 endpoint=endpoint,
                 service_type=clamp_service_type(service_type),
+                auth_type=auth_type.value if auth_type is not None else "N/A",
                 purpose=clamp_purpose(purpose),
                 major_fx_version=clamp_major_fx_version(major_fx_version),
                 traffic_contract_rpm_mode=_traffic_contract_mode_label(

@@ -16,6 +16,7 @@ from mlpa.core.classes import (
 )
 from mlpa.core.config import (
     ERROR_CODE_INVALID_MODEL_NAME,
+    AuthType,
     VirtualKeyConfigurationError,
     env,
     resolve_litellm_virtual_key,
@@ -135,8 +136,9 @@ async def _authorize_common_request(
 
     purpose_value = _resolve_purpose(service_type.value, purpose)
 
+    # App Attest
     if use_app_attest:
-        # Apple App Attest
+        request.state.auth_type = AuthType.APP_ATTEST
         with measure("auth_check", request):
             body_bytes = await request.body()
             assertionAuth = parse_app_attest_jwt(authorization, "assert")
@@ -149,14 +151,17 @@ async def _authorize_common_request(
         return build_authorized_request(
             f"{assertionAuth.key_id_b64}:{service_type.value}", purpose_value
         )
+    # Play Integrity
     if use_play_integrity:
-        # Google Play integrity
+        request.state.auth_type = AuthType.PLAY_INTEGRITY
         with measure("auth_check", request):
             play_user_id = extract_user_from_play_integrity_jwt(authorization)
         return build_authorized_request(
             f"{play_user_id}:{service_type.value}", purpose_value
         )
+    # Guest
     if is_guest_token(authorization):
+        request.state.auth_type = AuthType.GUEST
         return _authorize_guest(
             request,
             build_authorized_request,
@@ -164,6 +169,9 @@ async def _authorize_common_request(
             service_type,
             purpose_value,
         )
+
+    # FxA
+    request.state.auth_type = AuthType.FXA
     if service_type.value.endswith("-dev"):
         if x_dev_authorization is None:
             raise HTTPException(
@@ -395,6 +403,7 @@ async def authorize_filter_request(
         if not authorization:
             raise HTTPException(status_code=401, detail="Missing authorization header")
 
+    request.state.auth_type = AuthType.FXA
     with measure("auth_check", request):
         fxa_user_id = await fxa_auth(authorization)
     if not fxa_user_id or fxa_user_id.get("error"):
