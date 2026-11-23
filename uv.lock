@@ -830,7 +830,7 @@ requires-dist = [
     { name = "pyattest", specifier = "==1.0.5" },
     { name = "pydantic", specifier = "==2.11.7" },
     { name = "pydantic-settings", specifier = "==2.10.1" },
-    { name = "pyfxa", git = "https://github.com/mozilla/PyFxA-Oxide.git?rev=v0.9.3" },
+    { name = "pyfxa", git = "https://github.com/mozilla/PyFxA-Oxide.git?rev=v0.9.4" },
     { name = "pyhanko", specifier = "==0.16.0" },
     { name = "pyjwt", specifier = "==2.10.1" },
     { name = "python-dotenv", specifier = "==1.1.1" },
@@ -1131,7 +1131,7 @@ wheels = [
 [[package]]
 name = "pyfxa"
 version = "0.9.2"
-source = { git = "https://github.com/mozilla/PyFxA-Oxide.git?rev=v0.9.3#68fff8ad53b577fd768f4ee6186d0e0f4402bbf6" }
+source = { git = "https://github.com/mozilla/PyFxA-Oxide.git?rev=v0.9.4#2d1243807bab40ff3c9196a118fe7056a87adba3" }
 dependencies = [
     { name = "cryptography" },
     { name = "hawkauthlib" },
