@@ -16,6 +16,7 @@ from mlpa.core.classes import (
 )
 from mlpa.core.config import (
     ERROR_CODE_INVALID_MODEL_NAME,
+    ERROR_CODE_WRONG_SERVICE_TYPE_FOR_AUTH,
     AuthType,
     VirtualKeyConfigurationError,
     env,
@@ -96,7 +97,9 @@ def _require_service_type_for_auth(service_type: str, auth_type: AuthType) -> No
     if not env.valid_service_type_for_auth(service_type, auth_type):
         raise HTTPException(
             status_code=400,
-            detail=f"service-type '{service_type}' is not available for this authentication method.",
+            detail={
+                "error": ERROR_CODE_WRONG_SERVICE_TYPE_FOR_AUTH,
+            },
         )
 
 
@@ -110,11 +113,7 @@ def _authorize_guest(
     with measure("auth_check", request):
         guest_id = verify_guest_token(authorization)
     guest_service_type = f"{service_type.value}-guest"
-    if not env.valid_service_type_for_auth(guest_service_type, AuthType.GUEST):
-        raise HTTPException(
-            status_code=400,
-            detail=f"service-type '{service_type.value}' is not available for guests",
-        )
+    _require_service_type_for_auth(guest_service_type, AuthType.GUEST)
     # Read by the metrics middleware, it only sees the raw header otherwise
     request.state.service_type = guest_service_type
     authorized = build_authorized_request(
