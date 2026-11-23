@@ -11,7 +11,7 @@ from mlpa.core.classes import (
     PrivacyFilterRequest,
     SearchRequest,
 )
-from mlpa.core.config import env
+from mlpa.core.config import ERROR_CODE_WRONG_SERVICE_TYPE_FOR_AUTH, env
 
 
 def _make_request(path: str = "/", headers: dict[str, str] | None = None) -> Request:
@@ -78,7 +78,7 @@ async def test_authorize_chat_rejects_mismatched_auth_before_verification(
         )
 
     assert exc_info.value.status_code == 400
-    assert "authentication method" in exc_info.value.detail
+    assert exc_info.value.detail == {"error": ERROR_CODE_WRONG_SERVICE_TYPE_FOR_AUTH}
     verifier.assert_not_called()
 
 
