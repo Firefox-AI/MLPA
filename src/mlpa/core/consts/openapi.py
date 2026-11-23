@@ -9,6 +9,53 @@ from mlpa.core.config import env
 SEARCH_SERVICE_TYPES = ("search", "search-dev", "agent-search")
 SEARCH_SERVICE_TYPES_SET = set(SEARCH_SERVICE_TYPES)
 
+GUEST_DESCRIPTION = """
+Guest tokens for Smart Window users without an account.
+
+**Flow**
+
+1. `GET /verify/v1/guest` with `Accept: application/json` returns a token. If
+   Fastly answers with a challenge instead, open the same URL in a browser tab
+   and read the token from the `/verify/v1/guest/success#access_token=...` redirect.
+2. Send the token as `Authorization: Bearer <token>` to `/v1/chat/completions`
+   or `/v1/search`, with the usual `service-type` (e.g. `ai`). MLPA maps it to
+   the guest pool (`ai` → `ai-guest`) with its own budget.
+3. When the token expires, chat answers 401. Call `POST /verify/v1/guest/refresh`
+   with the expired token and retry with the new one. Refresh is a plain JSON
+   call with no Fastly challenge or browser tab, and keeps the guest id (`sub`),
+   so budget and cap slot stay.
+4. Refresh answers 401 when the token is too old. Go back to step 1, this
+   gives a new guest id.
+
+**Lifetimes** (defaults, each env sets its own in infra)
+
+| Setting | Default | Meaning |
+|---|---|---|
+| `MLPA_GUEST_TOKEN_TTL_SECONDS` | 604800 (7 days) | Token valid for chat until `exp`. |
+| `MLPA_GUEST_REFRESH_IDLE_SECONDS` | 2592000 (30 days) | Token (expired or not) refreshes while its `iat` is younger than this. Each refresh restarts the clock, so an active guest never has to re-issue. |
+
+Read `exp` from the JWT to refresh ahead of time, or just refresh on 401.
+
+**Errors**
+
+| Status | Body | When | Client action |
+|---|---|---|---|
+| 401 | `{"detail": "Invalid guest token"}` | Chat: token expired or bad signature. Refresh: not a guest token or bad signature. | Chat: refresh. Refresh: issue a new token. |
+| 401 | `{"detail": "Guest token too old to refresh"}` | Refresh: `iat` older than the idle timeout. | Issue a new token. |
+| 401 | `{"detail": "Guest access is disabled"}` | Chat while the kill switch is off. | Sign in with FxA. |
+| 404 | `{"detail": "Guest tokens are disabled"}` | Issue or refresh while the kill switch (`MLPA_GUEST_ENABLED`) is off. | Sign in with FxA. |
+| 403 | `{"detail": {"error": 12}}` | Guest cap (`MLPA_MAX_GUESTS`) is full and this guest has no slot: new guest at chat, or refresh after its slot was cleaned up. | Sign in with FxA. |
+| 400 | `{"detail": "service-type 'x' is not available for guests"}` | Service type has no `-guest` pool. | Don't call it as a guest. |
+| 429 | `{"detail": {"error": 1}}` | This guest's own daily budget is used up. | Wait `Retry-After`, or sign in. |
+| 429 | `{"detail": {"error": 11}}` | Shared budget for all guests is used up. | Wait `Retry-After`, or sign in. |
+| 503 | `{"detail": {"error": "Guest access is not configured."}}` | Guest virtual key missing on the server. | Server config issue. |
+
+With `"stream": true` the budget errors arrive inside the stream as `data: {"error": N}`.
+
+Guest cap slots are freed by infra cleanup after a token TTL without activity.
+Refresh keeps the slot active, or claims a new one if it was freed.
+"""
+
 TAGS_METADATA = [
     {"name": "Health", "description": "Health check endpoints."},
     {"name": "Metrics", "description": "Prometheus metrics endpoints."},
@@ -24,7 +71,7 @@ TAGS_METADATA = [
     },
     {
         "name": "Guest",
-        "description": "Guest tokens for Smart Window users without an account.",
+        "description": GUEST_DESCRIPTION,
     },
     {"name": "LiteLLM", "description": "Endpoints for interacting with LiteLLM."},
     {"name": "Mock", "description": "Mock endpoints for testing purposes."},
@@ -43,7 +90,7 @@ Authorize first using App Attest, Play Integrity, FxA, or dev tier.
 
 **Headers:**
 
-- **Authorization** (required): Bearer token — FxA OAuth token, Play Integrity MLPA token, or App Attest JWT.
+- **Authorization** (required): Bearer token — FxA OAuth token, Play Integrity MLPA token, App Attest JWT, or guest token (see the Guest section).
 - **service-type** (required): One of the keys in env.user_feature_budget — used for tracking and budget.
 - **purpose** (required for ai/ai-dev/mochi-dev/memories/memories-dev): One of `chat`, `title-generation`, `convo-starters-sidebar` for AI; `memory-generation` for memories; omit for s2s.
 - **x-dev-authorization** (required for ai-dev/memories-dev/mochi-dev): Experimentation token; also requires FxA in Authorization. Dev service types return 401 without it.
@@ -57,7 +104,7 @@ Web search proxied to Exa via LiteLLM. Authorize the same way as /v1/chat/comple
 
 **Headers:**
 
-- **Authorization** (required): Bearer token — FxA OAuth token, Play Integrity MLPA token, or App Attest JWT.
+- **Authorization** (required): Bearer token — FxA OAuth token, Play Integrity MLPA token, App Attest JWT, or guest token (see the Guest section).
 - **service-type**: `search` by default; use `search-dev` for experiments. Search has its own budget pool and no `purpose` header.
 - **x-dev-authorization** (required for search-dev): Experimentation token; also requires FxA in Authorization.
 

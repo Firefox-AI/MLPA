@@ -376,7 +376,7 @@ def build_metrics(registry: CollectorRegistry = REGISTRY) -> PrometheusMetrics:
         ),
         guest_tokens_issued_total=Counter(
             "mlpa_guest_tokens_issued_total",
-            "Guest tokens issued by GET /verify/v1/guest, by flow (json|redirect).",
+            "Guest tokens issued by GET /verify/v1/guest (json|redirect) and POST /verify/v1/guest/refresh (refresh), by flow.",
             ["flow"],
             registry=registry,
         ),

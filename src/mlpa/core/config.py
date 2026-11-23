@@ -32,8 +32,10 @@ class Env(BaseSettings):
 
     # Guest capacity gate (AIPLAT-1447): same admission as above, own counter
     # (mlpa_user_capacity row 2). Infra deletes guest claims (capacity_id = 2)
-    # older than the token TTL and must then set row 2's current_identities to
-    # the remaining COUNT(*), otherwise slots only free up on MLPA restart.
+    # with COALESCE(last_seen_at, created_at) older than the token TTL, and must
+    # then set row 2's current_identities to the remaining COUNT(*), otherwise
+    # slots only free up on MLPA restart. Refresh bumps last_seen_at, or admits
+    # the guest again when its claim was already cleaned up.
     # Turn MLPA_ENFORCE_GUEST_CAP on only after every pod runs this image, and
     # off before rolling back: older images' reconcile deletes all claims,
     # guest ones included, and never recounts row 2.
@@ -785,6 +787,10 @@ class Env(BaseSettings):
     MLPA_ACCESS_TOKEN_SECRET: str = "mlpa-dev-secret"
     MLPA_ACCESS_TOKEN_TTL_SECONDS: int = 86400
     MLPA_GUEST_TOKEN_TTL_SECONDS: int = 604800
+    # Idle timeout for POST /verify/v1/guest/refresh (AIPLAT-1726): a token,
+    # expired or not, refreshes while its iat is younger than this. After that
+    # the client goes back through GET /verify/v1/guest and its Fastly challenge.
+    MLPA_GUEST_REFRESH_IDLE_SECONDS: int = 2592000
     MLPA_GUEST_TOKEN_SIGNING_SECRET: str = "mlpa-guest-dev-secret"
 
     # Dev / experimentation auth (x-dev-authorization header)
@@ -1115,7 +1121,7 @@ ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
             "Unauthorized - authentication failed or was missing. Either the "
             "Authorization header is absent, the FxA / App Attest / Play Integrity "
             "credentials did not verify, or the x-dev-authorization token is wrong "
-            "for a dev service type."
+            "for a dev service type, or the guest token is expired or invalid."
         ),
         "content": {
             "application/json": {
@@ -1141,6 +1147,15 @@ ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
                     "invalid_dev_authorization": {
                         "summary": "Invalid dev authorization",
                         "value": {"detail": "Invalid x-dev-authorization"},
+                    },
+                    "invalid_guest_token": {
+                        "summary": "Guest token expired or invalid",
+                        "value": {"detail": "Invalid guest token"},
+                        "description": "Refresh with POST /verify/v1/guest/refresh and retry.",
+                    },
+                    "guest_access_disabled": {
+                        "summary": "Guest access disabled",
+                        "value": {"detail": "Guest access is disabled"},
                     },
                 },
             }
