@@ -65,6 +65,7 @@ async def test_authorize_search_request_returns_authorized_search_request(mocker
     assert isinstance(result, AuthorizedSearchRequest)
     assert result.user == "user-456:search"
     assert result.service_type == "search"
+    assert result.log_fields["auth_type"] == "FxA"
     assert result.purpose == ""
     assert result.query == "latest AI developments"
     assert result.max_results == 2
