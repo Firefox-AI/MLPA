@@ -4,7 +4,7 @@ from typing import Optional
 
 from pydantic import BaseModel, Field, JsonValue
 
-from mlpa.core.config import env
+from mlpa.core.config import AuthType, env
 from mlpa.core.consts import TrafficContractMode
 
 
@@ -107,6 +107,7 @@ class AuthorizedRequestLogMixin(BaseModel):
 
     user: str
     service_type: str
+    auth_type: AuthType | None = Field(default=None, exclude=True)
     purpose: str = (
         ""  # From header; empty for service types without defined purposes (e.g. s2s)
     )
@@ -127,6 +128,8 @@ class AuthorizedRequestLogMixin(BaseModel):
             "service_type": self.service_type,
             "purpose": self.purpose or "-",
         }
+        if self.auth_type is not None:
+            fields["auth_type"] = self.auth_type.value
         model = getattr(self, "model", None)
         if model:
             fields["model"] = model

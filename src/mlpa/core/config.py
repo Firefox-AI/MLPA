@@ -1,3 +1,4 @@
+from enum import Enum
 from functools import cached_property
 from typing import Annotated, Any, TypedDict
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
@@ -14,6 +15,15 @@ class TrafficContractConfig(TypedDict):
 
 class VirtualKeyConfigurationError(ValueError):
     """No LiteLLM virtual key is configured for this service type."""
+
+
+class AuthType(Enum):
+    """Authentication methods allowed by service type configuration."""
+
+    FXA = "FxA"
+    APP_ATTEST = "AppAttest"
+    PLAY_INTEGRITY = "PlayIntegrity"
+    GUEST = "Guest"
 
 
 class Env(BaseSettings):
