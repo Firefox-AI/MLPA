@@ -20,10 +20,10 @@ class VirtualKeyConfigurationError(ValueError):
 class AuthType(Enum):
     """Authentication methods allowed by service type configuration."""
 
-    FXA = 1
-    APP_ATTEST = 2
-    PLAY_INTEGRITY = 3
-    GUEST = 4
+    FXA = "FxA"
+    APP_ATTEST = "AppAttest"
+    PLAY_INTEGRITY = "PlayIntegrity"
+    GUEST = "Guest"
 
 
 class Env(BaseSettings):
