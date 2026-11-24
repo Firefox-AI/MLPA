@@ -339,7 +339,7 @@ def test_app_attest_qa_happy_path_shape(smoke_client, smoke_is_remote):
             "authorization": f"Bearer {assertion_token}",
             "use-app-attest": "true",
             "use-qa-certificates": "true",
-            "service-type": "ai",
+            "service-type": "s2s",
         },
     )
     _assert_chat_response(response)
@@ -393,8 +393,7 @@ def test_play_integrity_happy_path_shape(smoke_client, smoke_is_remote, mocker):
         headers={
             "authorization": f"Bearer {token_data['access_token']}",
             "use-play-integrity": "true",
-            "service-type": "ai",
-            "purpose": "chat",
+            "service-type": "s2s-android",
         },
     )
 

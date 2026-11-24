@@ -77,7 +77,7 @@ Without a real FxA token, sign a local MLPA access token with the default dev se
 ```bash
 TOKEN=$(uv run python -c "from mlpa.core.utils import issue_mlpa_access_token as t; print(t('local-test-user'))")
 curl localhost:8080/v1/chat/completions \
-  -H "Authorization: Bearer $TOKEN" -H 'use-play-integrity: true' -H 'service-type: ai' \
+  -H "Authorization: Bearer $TOKEN" -H 'use-play-integrity: true' -H 'service-type: s2s-android' \
   -H 'Content-Type: application/json' \
   -d '{"model":"vertex_ai/mistral-small-2503","messages":[{"role":"user","content":"hi"}]}'
 ```

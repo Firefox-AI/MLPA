@@ -3,7 +3,7 @@ from unittest.mock import patch
 
 import pytest
 
-from mlpa.core.config import Env
+from mlpa.core.config import AuthType, Env
 
 
 def test_user_feature_budget_liner_answer_from_env():
@@ -143,10 +143,11 @@ def test_valid_model_labels_are_explicit_metric_allowlist():
 
 
 def test_service_type_config_values_are_defined():
-    """Every service type must have complete feature, budget, and rate config."""
+    """Every service type must have complete auth, feature, budget, and rate config."""
     env = Env()
     required_keys = {
         "feature",
+        "auth_types",
         "budget_id",
         "budget_duration",
         "max_budget",
@@ -160,6 +161,12 @@ def test_service_type_config_values_are_defined():
         )
         assert isinstance(config["feature"], str)
         assert config["feature"], f"{service_type} feature must be defined"
+        auth_types = config["auth_types"]
+        assert isinstance(auth_types, list)
+        assert auth_types, f"{service_type} must allow at least one auth type"
+        assert all(isinstance(auth_type, AuthType) for auth_type in auth_types), (
+            f"{service_type} auth_types must be a list of AuthType"
+        )
         assert isinstance(config["budget_id"], str)
         assert config["budget_id"], f"{service_type} budget_id must be defined"
         assert isinstance(config["budget_duration"], str)
@@ -172,6 +179,14 @@ def test_service_type_config_values_are_defined():
         assert config["rpm_limit"] >= 0
         assert isinstance(config["tpm_limit"], int)
         assert config["tpm_limit"] >= 0
+
+
+def test_valid_service_type_for_auth_rejects_missing_config():
+    env = Env()
+    assert not env.valid_service_type_for_auth("unknown", AuthType.FXA)
+
+    del env.service_type_config["ai"]["auth_types"]
+    assert not env.valid_service_type_for_auth("ai", AuthType.FXA)
 
 
 def test_traffic_contract_config_defined_for_each_service_type():

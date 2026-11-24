@@ -333,8 +333,7 @@ def submit_completion(
         "authorization": f"Bearer {jwt_token}",
         "use-app-attest": "true",
         "use-qa-certificates": "true",
-        "service-type": "ai",
-        "purpose": "chat",
+        "service-type": "s2s",
     }
     response = httpx.post(url, json=payload, headers=headers, timeout=30.0)
     response.raise_for_status()

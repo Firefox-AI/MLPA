@@ -322,7 +322,8 @@ def test_instrumentation_tracks_valid_firefox_major_version(metrics_spy):
         ("ai", {}, 200, "FxA"),
         ("ai", {"use-app-attest": "false", "use-play-integrity": "off"}, 200, "FxA"),
         ("ai", {"use-app-attest": "invalid"}, 422, "N/A"),
-        ("ai", {"use-app-attest": "true"}, 401, "AppAttest"),
+        ("ai", {"use-app-attest": "true"}, 400, "AppAttest"),
+        ("s2s", {"use-app-attest": "true"}, 401, "AppAttest"),
         (
             "s2s",
             {"use-app-attest": "true", "use-play-integrity": "true"},
