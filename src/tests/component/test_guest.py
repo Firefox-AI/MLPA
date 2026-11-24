@@ -7,6 +7,7 @@ from fastapi import HTTPException
 
 from mlpa.core.config import (
     ERROR_CODE_GUEST_DISABLED,
+    ERROR_CODE_GUEST_TOKEN_TOO_OLD,
     ERROR_CODE_MAX_GUESTS_REACHED,
     env,
 )
@@ -177,7 +178,9 @@ def test_refresh_keeps_guest_id(mocked_client_integration, metrics_spy):
 
 def test_refresh_rejected_past_idle_timeout(mocked_client_integration):
     token = _guest_token(iat_ago=env.MLPA_GUEST_REFRESH_IDLE_SECONDS + 60)
-    assert _refresh(mocked_client_integration, token).status_code == 401
+    response = _refresh(mocked_client_integration, token)
+    assert response.status_code == 401
+    assert response.json() == {"detail": {"error": ERROR_CODE_GUEST_TOKEN_TOO_OLD}}
 
 
 def test_refresh_respects_guest_cap(mocked_client_integration, mocker):

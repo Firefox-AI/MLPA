@@ -10,6 +10,7 @@ from jwt.utils import base64url_encode
 
 from mlpa.core.config import (
     ERROR_CODE_GUEST_DISABLED,
+    ERROR_CODE_GUEST_TOKEN_TOO_OLD,
     ERROR_CODE_MAX_GUESTS_REACHED,
     GUEST_CAPACITY_ID,
     env,
@@ -183,7 +184,7 @@ async def guest_success():
             },
         },
         401: {
-            "description": "Can't refresh. Get a new token from `GET /verify/v1/guest` (new guest id).",
+            "description": 'Can\'t refresh. On `{"error": 15}` sign in with FxA, otherwise get a new token from `GET /verify/v1/guest` (new guest id).',
             "content": {
                 "application/json": {
                     "examples": {
@@ -193,7 +194,9 @@ async def guest_success():
                         },
                         "too_old": {
                             "summary": "iat older than MLPA_GUEST_REFRESH_IDLE_SECONDS",
-                            "value": {"detail": "Guest token too old to refresh"},
+                            "value": {
+                                "detail": {"error": ERROR_CODE_GUEST_TOKEN_TOO_OLD}
+                            },
                         },
                         "guest_disabled": {
                             "summary": "Guest kill switch off (MLPA_GUEST_ENABLED=false), sign in with FxA",
@@ -226,8 +229,10 @@ async def refresh_guest_token(authorization: str = Header("")):
 
     Call it when chat answers 401 for a guest token, then retry the request
     once with the new token. It's a plain JSON call with no Fastly challenge,
-    so there is no browser tab flow. On 401 from refresh, fall back to
-    `GET /verify/v1/guest`. Errors are listed in the Guest section above.
+    so there is no browser tab flow. On 401 `{"error": 16}` or
+    `"Invalid guest token"`, fall back to `GET /verify/v1/guest`. On
+    `{"error": 15}` guests are off, sign in with FxA instead. All errors are
+    listed in the Guest section above.
     """
     if not env.MLPA_GUEST_ENABLED:
         raise HTTPException(
@@ -237,7 +242,9 @@ async def refresh_guest_token(authorization: str = Header("")):
         raise HTTPException(status_code=401, detail="Invalid guest token")
     payload = _decode_guest_token(authorization, verify_exp=False)
     if time.time() - payload["iat"] > env.MLPA_GUEST_REFRESH_IDLE_SECONDS:
-        raise HTTPException(status_code=401, detail="Guest token too old to refresh")
+        raise HTTPException(
+            status_code=401, detail={"error": ERROR_CODE_GUEST_TOKEN_TOO_OLD}
+        )
 
     sub = payload["sub"]
     admitted = True

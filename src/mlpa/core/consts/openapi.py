@@ -14,18 +14,22 @@ Guest tokens for Smart Window users without an account.
 
 **Flow**
 
-1. `GET /verify/v1/guest` with `Accept: application/json` returns a token. If
-   Fastly answers with a challenge instead, open the same URL in a browser tab
-   and read the token from the `/verify/v1/guest/success#access_token=...` redirect.
+1. `GET /verify/v1/guest` with `Accept: application/json` returns
+   `{"access_token": "...", "token_type": "Bearer"}`. If Fastly answers with a
+   challenge instead, open the same URL in a browser tab and read the token
+   from the `/verify/v1/guest/success#access_token=...` redirect.
 2. Send the token as `Authorization: Bearer <token>` to `/v1/chat/completions`
-   or `/v1/search`, with the usual `service-type` (e.g. `ai`). MLPA maps it to
-   the guest pool (`ai` → `ai-guest`) with its own budget.
-3. When the token expires, chat answers 401. Call `POST /verify/v1/guest/refresh`
-   with the expired token and retry with the new one. Refresh is a plain JSON
-   call with no Fastly challenge or browser tab, and keeps the guest id (`sub`),
-   so budget and cap slot stay.
-4. Refresh answers 401 when the token is too old. Go back to step 1, this
-   gives a new guest id.
+   or `/v1/search`, with the usual `service-type`. MLPA maps it to the guest
+   pool (`ai` → `ai-guest`) with its own budget. Guests can use `ai`,
+   `memories`, `convo-starters`, `search`, `agent` and `agent-search`.
+3. When the token expires, chat answers 401 `"Invalid guest token"`. Call
+   `POST /verify/v1/guest/refresh` with the expired token as
+   `Authorization: Bearer <token>`, store the new token and retry the request
+   once. Refresh is a plain JSON call with no Fastly challenge or browser tab.
+   It keeps the guest id (`sub`), so the guest keeps its budget and cap slot.
+4. Refresh answers 401 `{"error": 16}` when the token is too old (see
+   lifetimes below). Go back to step 1, this gives a new guest id with a new
+   budget.
 
 **Lifetimes** (defaults, each env sets its own in infra)
 
@@ -35,25 +39,39 @@ Guest tokens for Smart Window users without an account.
 | `MLPA_GUEST_REFRESH_IDLE_SECONDS` | 2592000 (30 days) | Token (expired or not) refreshes while its `iat` is younger than this. Each refresh restarts the clock, so an active guest never has to re-issue. |
 
 Read `exp` from the JWT to refresh ahead of time, or just refresh on 401.
+Don't hardcode the TTL, it differs per env.
 
-**Errors**
+**Client logic**
 
-| Status | Body | When | Client action |
+Numeric codes are in `detail.error`. Check them first, the string details are
+for humans and can change. "chat" below means both `/v1/chat/completions`
+and `/v1/search`.
+
+| Code | Status | Where | Meaning | Client action |
+|---|---|---|---|---|
+| 12 | 403 | chat, refresh | Guest cap is full and this guest has no slot. | Sign in with FxA. |
+| 15 | 401 / 404 | chat, refresh (401), issue (404) | Guest access is off (kill switch). | Stop guest calls, sign in with FxA. Don't refresh or re-issue. |
+| 16 | 401 | refresh | Token older than the idle timeout. | Issue a new token (step 1). |
+| 14 | 400 | chat | This `service-type` isn't available for guests. | Don't call it as a guest. |
+| 1 | 429 | chat | This guest's own budget is used up. | Wait `Retry-After`, or sign in. |
+| 11 | 429 | chat | Shared budget for all guests is used up. | Wait `Retry-After`, or sign in. |
+| 2 | 429 | chat | Rate limit (RPM/TPM). | Wait `Retry-After` (60s). |
+
+Other errors without a numeric code:
+
+| Status | Body | Where | Client action |
 |---|---|---|---|
-| 401 | `{"detail": "Invalid guest token"}` | Chat: token expired or bad signature. Refresh: not a guest token or bad signature. | Chat: refresh. Refresh: issue a new token. |
-| 401 | `{"detail": "Guest token too old to refresh"}` | Refresh: `iat` older than the idle timeout. | Issue a new token. |
-| 401 | `{"detail": {"error": 15}}` | Chat or refresh while the kill switch is off. | Sign in with FxA. |
-| 404 | `{"detail": {"error": 15}}` | Issue while the kill switch (`MLPA_GUEST_ENABLED`) is off. | Sign in with FxA. |
-| 403 | `{"detail": {"error": 12}}` | Guest cap (`MLPA_MAX_GUESTS`) is full and this guest has no slot: new guest at chat, or refresh after its slot was cleaned up. | Sign in with FxA. |
-| 400 | `{"detail": "service-type 'x' is not available for guests"}` | Service type has no `-guest` pool. | Don't call it as a guest. |
-| 429 | `{"detail": {"error": 1}}` | This guest's own daily budget is used up. | Wait `Retry-After`, or sign in. |
-| 429 | `{"detail": {"error": 11}}` | Shared budget for all guests is used up. | Wait `Retry-After`, or sign in. |
-| 503 | `{"detail": {"error": "Guest access is not configured."}}` | Guest virtual key missing on the server. | Server config issue. |
+| 401 | `{"detail": "Invalid guest token"}` | chat | Token expired or bad signature. Refresh once, then retry. If the retry fails again, issue a new token. |
+| 401 | `{"detail": "Invalid guest token"}` | refresh | Not a guest token or bad signature. Issue a new token. |
+| 503 | `{"detail": {"error": "Guest access is not configured."}}` | chat | Server config issue, not a client bug. Retry later. |
+| 500 | | refresh | Server or DB problem. Retry later, keep the current token. |
 
-With `"stream": true` the budget errors arrive inside the stream as `data: {"error": N}`.
+With `"stream": true` the budget and rate limit errors arrive inside the
+stream as `data: {"error": N}` instead of an HTTP status.
 
 Guest cap slots are freed by infra cleanup after a token TTL without activity.
-Refresh keeps the slot active, or claims a new one if it was freed.
+Refresh keeps the slot active, or claims a new one if it was freed (403 with
+`{"error": 12}` if the cap is full by then).
 """
 
 TAGS_METADATA = [

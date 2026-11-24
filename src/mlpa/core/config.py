@@ -1052,6 +1052,8 @@ ERROR_CODE_WRONG_SERVICE_TYPE_FOR_AUTH: int = 14
 
 # Guest kill switch is off (MLPA_GUEST_ENABLED=false), AIPLAT-1734
 ERROR_CODE_GUEST_DISABLED: int = 15
+# Guest token iat older than MLPA_GUEST_REFRESH_IDLE_SECONDS, AIPLAT-1726
+ERROR_CODE_GUEST_TOKEN_TOO_OLD: int = 16
 
 ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
     429: {
