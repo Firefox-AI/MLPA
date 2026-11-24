@@ -1002,7 +1002,7 @@ ERROR_CODE_MAX_GUESTS_REACHED: int = 12
 # Traffic Contract exceeded
 ERROR_CODE_TRAFFIC_CONTRACT_EXCEEDED: int = 13
 # Guest kill switch is off (MLPA_GUEST_ENABLED=false), AIPLAT-1734
-ERROR_CODE_GUEST_DISABLED: int = 14
+ERROR_CODE_GUEST_DISABLED: int = 15
 
 ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
     429: {
@@ -1128,7 +1128,7 @@ ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
             "Authorization header is absent, the FxA / App Attest / Play Integrity "
             "credentials did not verify, the x-dev-authorization token is wrong "
             "for a dev service type, or a guest token was sent while the guest "
-            "kill switch is off (`detail.error` 14)."
+            "kill switch is off (`detail.error` 15)."
         ),
         "content": {
             "application/json": {
@@ -1145,7 +1145,7 @@ ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
                             ],
                             "description": (
                                 "Human-readable reason the request was not authorized, "
-                                'or `{"error": 14}` when the guest kill switch is off.'
+                                'or `{"error": 15}` when the guest kill switch is off.'
                             ),
                         }
                     },
