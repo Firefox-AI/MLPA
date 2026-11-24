@@ -31,6 +31,8 @@ class Env(BaseSettings):
     APP_ATTEST_PRODUCTION: bool = False
     PORT: int = 8080
 
+    FXA_ENV: str = "prod"
+
     # User signup capacity gate (managed service types only)
     # Controlled by infra (env var), enforced without race conditions in DB.
     MLPA_MAX_SIGNED_IN_USERS: int = 1000000
