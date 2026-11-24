@@ -8,7 +8,7 @@ from fastapi import APIRouter, Header, HTTPException, Query
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from jwt.utils import base64url_encode
 
-from mlpa.core.config import env
+from mlpa.core.config import ERROR_CODE_GUEST_DISABLED, env
 from mlpa.core.logger import logger
 from mlpa.core.prometheus_metrics import metrics
 
@@ -58,7 +58,9 @@ def is_guest_token(authorization: str) -> bool:
 def verify_guest_token(authorization: str) -> str:
     """Guest id (`sub`) from a guest token issued by issue_guest_token."""
     if not env.MLPA_GUEST_ENABLED:
-        raise HTTPException(status_code=401, detail="Guest access is disabled")
+        raise HTTPException(
+            status_code=401, detail={"error": ERROR_CODE_GUEST_DISABLED}
+        )
     token = authorization.removeprefix("Bearer ").strip()
     try:
         payload = jwt.decode(
@@ -98,7 +100,14 @@ NO_STORE_HEADERS = {"Cache-Control": "no-store", "Referrer-Policy": "no-referrer
             "description": "Redirect to `/verify/v1/guest/success#access_token=...&token_type=Bearer[&state=...]`",
             "headers": {"Location": {"schema": {"type": "string"}}},
         },
-        404: {"description": "Guest tokens are disabled (`MLPA_GUEST_ENABLED=false`)."},
+        404: {
+            "description": "Guest tokens are disabled (`MLPA_GUEST_ENABLED=false`).",
+            "content": {
+                "application/json": {
+                    "example": {"detail": {"error": ERROR_CODE_GUEST_DISABLED}}
+                }
+            },
+        },
     },
 )
 async def get_guest_token(
@@ -120,7 +129,9 @@ async def get_guest_token(
     close the tab. Token expiry is in the JWT `exp` claim.
     """
     if not env.MLPA_GUEST_ENABLED:
-        raise HTTPException(status_code=404, detail="Guest tokens are disabled")
+        raise HTTPException(
+            status_code=404, detail={"error": ERROR_CODE_GUEST_DISABLED}
+        )
     params = {"access_token": issue_guest_token(), "token_type": "Bearer"}
     if "application/json" in accept:
         metrics.guest_tokens_issued_total.labels(flow="json").inc()

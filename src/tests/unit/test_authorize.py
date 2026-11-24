@@ -11,7 +11,7 @@ from mlpa.core.classes import (
     PrivacyFilterRequest,
     SearchRequest,
 )
-from mlpa.core.config import env
+from mlpa.core.config import ERROR_CODE_GUEST_DISABLED, env
 
 
 def _make_request(path: str = "/", headers: dict[str, str] | None = None) -> Request:
@@ -281,6 +281,7 @@ async def test_guest_token_rejected_while_guests_disabled(mocker):
             **_guest_chat_kwargs(f"Bearer {issue_guest_token()}")
         )
     assert exc.value.status_code == 401
+    assert exc.value.detail == {"error": ERROR_CODE_GUEST_DISABLED}
 
 
 async def test_guest_token_on_service_type_without_guest_variant(guest_enabled):

@@ -4,7 +4,7 @@ import jwt
 import pytest
 from fastapi import HTTPException
 
-from mlpa.core.config import env
+from mlpa.core.config import ERROR_CODE_GUEST_DISABLED, env
 from mlpa.core.routers.guest.guest import (
     GUEST_TOKEN_HEADERS,
     GUEST_TOKEN_ISSUER,
@@ -25,6 +25,7 @@ def test_guest_token_disabled(mocked_client_integration, mocker):
     )
 
     assert response.status_code == 404
+    assert response.json() == {"detail": {"error": ERROR_CODE_GUEST_DISABLED}}
     assert "location" not in response.headers
 
 

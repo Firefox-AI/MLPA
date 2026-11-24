@@ -1001,6 +1001,8 @@ ERROR_CODE_MAX_GUESTS_REACHED: int = 12
 
 # Traffic Contract exceeded
 ERROR_CODE_TRAFFIC_CONTRACT_EXCEEDED: int = 13
+# Guest kill switch is off (MLPA_GUEST_ENABLED=false), AIPLAT-1734
+ERROR_CODE_GUEST_DISABLED: int = 14
 
 ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
     429: {
@@ -1124,8 +1126,9 @@ ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
         "description": (
             "Unauthorized - authentication failed or was missing. Either the "
             "Authorization header is absent, the FxA / App Attest / Play Integrity "
-            "credentials did not verify, or the x-dev-authorization token is wrong "
-            "for a dev service type."
+            "credentials did not verify, the x-dev-authorization token is wrong "
+            "for a dev service type, or a guest token was sent while the guest "
+            "kill switch is off (`detail.error` 14)."
         ),
         "content": {
             "application/json": {
@@ -1133,8 +1136,17 @@ ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
                     "type": "object",
                     "properties": {
                         "detail": {
-                            "type": "string",
-                            "description": "Human-readable reason the request was not authorized.",
+                            "oneOf": [
+                                {"type": "string"},
+                                {
+                                    "type": "object",
+                                    "properties": {"error": {"type": "integer"}},
+                                },
+                            ],
+                            "description": (
+                                "Human-readable reason the request was not authorized, "
+                                'or `{"error": 14}` when the guest kill switch is off.'
+                            ),
                         }
                     },
                     "required": ["detail"],
@@ -1151,6 +1163,11 @@ ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
                     "invalid_dev_authorization": {
                         "summary": "Invalid dev authorization",
                         "value": {"detail": "Invalid x-dev-authorization"},
+                    },
+                    "guest_disabled": {
+                        "summary": "Guest kill switch off",
+                        "value": {"detail": {"error": ERROR_CODE_GUEST_DISABLED}},
+                        "description": "MLPA_GUEST_ENABLED=false. Don't refresh, sign in with FxA.",
                     },
                 },
             }
