@@ -336,11 +336,33 @@ def test_clamp_exa_error_labels(raw_tag, status_code, expected):
     assert clamp_exa_error_labels(raw_tag, status_code) == expected
 
 
+PROD_FXA_URL = "https://oauth.accounts.firefox.com/v1"
+STAGE_FXA_URL = "https://api-accounts.stage.mozaws.net/v1"
+
+
+@pytest.mark.parametrize(
+    "fxa_env, expected_url",
+    [
+        ("prod", PROD_FXA_URL),
+        ("stage", STAGE_FXA_URL),
+        ("STAGE", STAGE_FXA_URL),
+        ("  stage  ", STAGE_FXA_URL),
+        ("", PROD_FXA_URL),
+        (None, PROD_FXA_URL),
+        ("dev", PROD_FXA_URL),
+    ],
+)
 @pytest.mark.parametrize("debug", [True, False])
-def test_get_fxa_client_always_uses_prod_fxa(mocker, debug):
+def test_get_fxa_client_uses_fxa_env(mocker, fxa_env, expected_url, debug):
+    # MLPA_DEBUG must not affect which FxA server is used; only FXA_ENV does.
     mocker.patch.object(env, "MLPA_DEBUG", debug)
+    mocker.patch.object(env, "FXA_ENV", fxa_env)
     get_fxa_client.cache_clear()
     try:
-        assert get_fxa_client().server_url == "https://oauth.accounts.firefox.com/v1"
+        assert get_fxa_client().server_url == expected_url
     finally:
         get_fxa_client.cache_clear()
+
+
+def test_fxa_env_defaults_to_prod():
+    assert type(env).model_fields["FXA_ENV"].default == "prod"
