@@ -31,7 +31,7 @@ Guest tokens for Smart Window users without an account.
 
 | Setting | Default | Meaning |
 |---|---|---|
-| `MLPA_GUEST_TOKEN_TTL_SECONDS` | 604800 (7 days) | Token valid for chat until `exp`. |
+| `MLPA_GUEST_TOKEN_TTL_SECONDS` | 3600 (60 min) | Token valid for chat until `exp`. |
 | `MLPA_GUEST_REFRESH_IDLE_SECONDS` | 2592000 (30 days) | Token (expired or not) refreshes while its `iat` is younger than this. Each refresh restarts the clock, so an active guest never has to re-issue. |
 
 Read `exp` from the JWT to refresh ahead of time, or just refresh on 401.
@@ -42,8 +42,8 @@ Read `exp` from the JWT to refresh ahead of time, or just refresh on 401.
 |---|---|---|---|
 | 401 | `{"detail": "Invalid guest token"}` | Chat: token expired or bad signature. Refresh: not a guest token or bad signature. | Chat: refresh. Refresh: issue a new token. |
 | 401 | `{"detail": "Guest token too old to refresh"}` | Refresh: `iat` older than the idle timeout. | Issue a new token. |
-| 401 | `{"detail": "Guest access is disabled"}` | Chat while the kill switch is off. | Sign in with FxA. |
-| 404 | `{"detail": "Guest tokens are disabled"}` | Issue or refresh while the kill switch (`MLPA_GUEST_ENABLED`) is off. | Sign in with FxA. |
+| 401 | `{"detail": {"error": 15}}` | Chat or refresh while the kill switch is off. | Sign in with FxA. |
+| 404 | `{"detail": {"error": 15}}` | Issue while the kill switch (`MLPA_GUEST_ENABLED`) is off. | Sign in with FxA. |
 | 403 | `{"detail": {"error": 12}}` | Guest cap (`MLPA_MAX_GUESTS`) is full and this guest has no slot: new guest at chat, or refresh after its slot was cleaned up. | Sign in with FxA. |
 | 400 | `{"detail": "service-type 'x' is not available for guests"}` | Service type has no `-guest` pool. | Don't call it as a guest. |
 | 429 | `{"detail": {"error": 1}}` | This guest's own daily budget is used up. | Wait `Retry-After`, or sign in. |

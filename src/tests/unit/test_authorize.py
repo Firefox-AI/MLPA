@@ -11,7 +11,11 @@ from mlpa.core.classes import (
     PrivacyFilterRequest,
     SearchRequest,
 )
-from mlpa.core.config import env
+from mlpa.core.config import (
+    ERROR_CODE_GUEST_DISABLED,
+    ERROR_CODE_WRONG_SERVICE_TYPE_FOR_AUTH,
+    env,
+)
 
 
 def _make_request(path: str = "/", headers: dict[str, str] | None = None) -> Request:
@@ -47,6 +51,39 @@ async def test_authorize_chat_request_returns_authorized_chat_request(mocker):
     assert result.service_type == "ai"
     assert result.purpose == "chat"
     assert result.messages == [{"role": "user", "content": "hello"}]
+
+
+@pytest.mark.parametrize(
+    ("service_type", "purpose", "auth_flags", "auth_backend"),
+    [
+        ("s2s", None, {}, "fxa_auth"),
+        ("ai-dev", "chat", {"use_app_attest": True}, "parse_app_attest_jwt"),
+        (
+            "ai",
+            "chat",
+            {"use_play_integrity": True},
+            "extract_user_from_play_integrity_jwt",
+        ),
+    ],
+)
+async def test_authorize_chat_rejects_mismatched_auth_before_verification(
+    mocker, service_type, purpose, auth_flags, auth_backend
+):
+    verifier = mocker.patch.object(authorize_module, auth_backend)
+
+    with pytest.raises(HTTPException) as exc_info:
+        await authorize_module.authorize_chat_request(
+            request=_make_request("/v1/chat/completions"),
+            chat_request=ChatRequest(model="mistral-small-2603", messages=[]),
+            authorization="Bearer token",
+            service_type=authorize_module.ServiceType(service_type),
+            purpose=purpose,
+            **auth_flags,
+        )
+
+    assert exc_info.value.status_code == 400
+    assert exc_info.value.detail == {"error": ERROR_CODE_WRONG_SERVICE_TYPE_FOR_AUTH}
+    verifier.assert_not_called()
 
 
 async def test_authorize_search_request_returns_authorized_search_request(mocker):
@@ -281,6 +318,7 @@ async def test_guest_token_rejected_while_guests_disabled(mocker):
             **_guest_chat_kwargs(f"Bearer {issue_guest_token()}")
         )
     assert exc.value.status_code == 401
+    assert exc.value.detail == {"error": ERROR_CODE_GUEST_DISABLED}
 
 
 async def test_guest_token_on_service_type_without_guest_variant(guest_enabled):

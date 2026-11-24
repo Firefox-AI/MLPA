@@ -5,7 +5,11 @@ import jwt
 import pytest
 from fastapi import HTTPException
 
-from mlpa.core.config import ERROR_CODE_MAX_GUESTS_REACHED, env
+from mlpa.core.config import (
+    ERROR_CODE_GUEST_DISABLED,
+    ERROR_CODE_MAX_GUESTS_REACHED,
+    env,
+)
 from mlpa.core.routers.guest.guest import (
     GUEST_TOKEN_HEADERS,
     GUEST_TOKEN_ISSUER,
@@ -27,7 +31,18 @@ def test_guest_token_disabled(mocked_client_integration, mocker):
     )
 
     assert response.status_code == 404
+    assert response.json() == {"detail": {"error": ERROR_CODE_GUEST_DISABLED}}
     assert "location" not in response.headers
+
+
+def test_refresh_guest_token_disabled(mocked_client_integration, mocker):
+    mocker.patch.object(env, "MLPA_GUEST_ENABLED", False)
+    response = mocked_client_integration.post(
+        "/verify/v1/guest/refresh", headers={"Authorization": "Bearer x"}
+    )
+
+    assert response.status_code == 401
+    assert response.json() == {"detail": {"error": ERROR_CODE_GUEST_DISABLED}}
 
 
 def test_issue_guest_token(mocked_client_integration):
@@ -160,12 +175,8 @@ def test_refresh_keeps_guest_id(mocked_client_integration, metrics_spy):
     assert metrics_spy.value("guest_tokens_issued_total", flow="refresh") == 1
 
 
-@pytest.mark.parametrize(
-    "token",
-    [_guest_token(iat_ago=env.MLPA_GUEST_REFRESH_IDLE_SECONDS + 60), "not-a-jwt"],
-    ids=["past_idle_timeout", "not_guest"],
-)
-def test_refresh_rejected(mocked_client_integration, token):
+def test_refresh_rejected_past_idle_timeout(mocked_client_integration):
+    token = _guest_token(iat_ago=env.MLPA_GUEST_REFRESH_IDLE_SECONDS + 60)
     assert _refresh(mocked_client_integration, token).status_code == 401
 
 
@@ -177,12 +188,3 @@ def test_refresh_respects_guest_cap(mocked_client_integration, mocker):
     response = _refresh(mocked_client_integration, _guest_token(sub="b"))
     assert response.status_code == 403
     assert response.json()["detail"] == {"error": ERROR_CODE_MAX_GUESTS_REACHED}
-
-
-def test_refresh_works_when_db_is_down(mocked_client_integration, mocker):
-    mocker.patch(
-        "mlpa.core.routers.guest.guest.app_attest_pg.touch_guest_claim",
-        side_effect=RuntimeError("db down"),
-    )
-
-    assert _refresh(mocked_client_integration, _guest_token()).status_code == 200

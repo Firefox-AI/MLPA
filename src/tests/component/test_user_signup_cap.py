@@ -112,10 +112,10 @@ def test_default_guest_service_types_enforce_shared_guest_cap(
     assert guest_count() == 3
 
 
-def test_managed_cap_rejects_new_identities_and_s2s_bypasses(
+def test_managed_cap_rejects_new_identities_and_allows_uncapped_service_type(
     mocked_client_integration, mocker
 ):
-    """Managed service types (ai/memories) are capped; s2s should bypass the cap."""
+    """Managed service types (ai/memories) are capped while telemetry is uncapped."""
 
     user_ids = ["userA", "userB", "userC", "userA"]
     call_idx = {"i": 0}
@@ -162,7 +162,8 @@ def test_managed_cap_rejects_new_identities_and_s2s_bypasses(
             "/v1/chat/completions",
             headers={
                 "authorization": f"Bearer {TEST_FXA_TOKEN}",
-                "service-type": "s2s",
+                "service-type": "telemetry",
+                "purpose": "chat",
             },
             json=SAMPLE_REQUEST.model_dump(),
         )

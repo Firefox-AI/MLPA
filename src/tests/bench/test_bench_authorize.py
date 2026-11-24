@@ -77,12 +77,12 @@ COMBINATIONS = {
     },
     "play_integrity": lambda: {
         "authorization": f"Bearer {play_access_token()}",
-        "service_type": ServiceType("ai"),
+        "service_type": ServiceType("s2s-android"),
         "use_play_integrity": True,
     },
     "app_attest": lambda: {
         "authorization": _app_attest_header(),
-        "service_type": ServiceType("ai"),
+        "service_type": ServiceType("s2s"),
         "use_app_attest": True,
     },
     "guest": lambda: {
@@ -125,7 +125,6 @@ def test_authorize_chat_request_dispatch(benchmark, loop, monkeypatch, combinati
         result = await authorize_module.authorize_chat_request(
             request=_make_request(),
             chat_request=CHAT_REQUEST,
-            purpose="chat",
             **headers,
         )
         # Guests get "-guest" appended: "{id}:ai-guest"

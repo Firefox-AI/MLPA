@@ -362,12 +362,13 @@ class AppAttestPGService(PGService):
         Returns False when the guest has no claim (cleaned up, or cap off).
         """
         status = await self.pool.execute(
-            f"""
+            """
             UPDATE mlpa_user_capacity_identities
             SET last_seen_at = NOW()
-            WHERE base_identity = $1 AND capacity_id = {GUEST_CAPACITY_ID}
+            WHERE base_identity = $1 AND capacity_id = $2
             """,
             base_identity,
+            GUEST_CAPACITY_ID,
         )
         return status != "UPDATE 0"
 

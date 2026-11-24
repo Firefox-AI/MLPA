@@ -8,7 +8,12 @@ from fastapi import APIRouter, Header, HTTPException, Query
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from jwt.utils import base64url_encode
 
-from mlpa.core.config import ERROR_CODE_MAX_GUESTS_REACHED, GUEST_CAPACITY_ID, env
+from mlpa.core.config import (
+    ERROR_CODE_GUEST_DISABLED,
+    ERROR_CODE_MAX_GUESTS_REACHED,
+    GUEST_CAPACITY_ID,
+    env,
+)
 from mlpa.core.logger import logger
 from mlpa.core.prometheus_metrics import metrics
 from mlpa.core.services.services import app_attest_pg
@@ -76,7 +81,9 @@ def _decode_guest_token(authorization: str, verify_exp: bool = True) -> dict:
 def verify_guest_token(authorization: str) -> str:
     """Guest id (`sub`) from a guest token issued by issue_guest_token."""
     if not env.MLPA_GUEST_ENABLED:
-        raise HTTPException(status_code=401, detail="Guest access is disabled")
+        raise HTTPException(
+            status_code=401, detail={"error": ERROR_CODE_GUEST_DISABLED}
+        )
     return _decode_guest_token(authorization)["sub"]
 
 
@@ -106,7 +113,9 @@ NO_STORE_HEADERS = {"Cache-Control": "no-store", "Referrer-Policy": "no-referrer
         404: {
             "description": "Guest tokens are disabled (`MLPA_GUEST_ENABLED=false`).",
             "content": {
-                "application/json": {"example": {"detail": "Guest tokens are disabled"}}
+                "application/json": {
+                    "example": {"detail": {"error": ERROR_CODE_GUEST_DISABLED}}
+                }
             },
         },
     },
@@ -129,13 +138,15 @@ async def get_guest_token(
     token in the URL fragment. Watch the tab URL for that path, read the fragment, then
     close the tab.
 
-    The token is valid for `MLPA_GUEST_TOKEN_TTL_SECONDS` (default 7 days,
+    The token is valid for `MLPA_GUEST_TOKEN_TTL_SECONDS` (default 60 min,
     set per env in infra), see the JWT `exp` claim. After that, refresh it
     with `POST /verify/v1/guest/refresh` instead of fetching a new one, so
     the guest keeps its id and budget.
     """
     if not env.MLPA_GUEST_ENABLED:
-        raise HTTPException(status_code=404, detail="Guest tokens are disabled")
+        raise HTTPException(
+            status_code=404, detail={"error": ERROR_CODE_GUEST_DISABLED}
+        )
     params = {"access_token": issue_guest_token(), "token_type": "Bearer"}
     if "application/json" in accept:
         metrics.guest_tokens_issued_total.labels(flow="json").inc()
@@ -184,6 +195,10 @@ async def guest_success():
                             "summary": "iat older than MLPA_GUEST_REFRESH_IDLE_SECONDS",
                             "value": {"detail": "Guest token too old to refresh"},
                         },
+                        "guest_disabled": {
+                            "summary": "Guest kill switch off (MLPA_GUEST_ENABLED=false), sign in with FxA",
+                            "value": {"detail": {"error": ERROR_CODE_GUEST_DISABLED}},
+                        },
                     }
                 }
             },
@@ -196,12 +211,6 @@ async def guest_success():
                 }
             },
         },
-        404: {
-            "description": "Guest tokens are disabled (`MLPA_GUEST_ENABLED=false`).",
-            "content": {
-                "application/json": {"example": {"detail": "Guest tokens are disabled"}}
-            },
-        },
     },
 )
 async def refresh_guest_token(authorization: str = Header("")):
@@ -212,7 +221,7 @@ async def refresh_guest_token(authorization: str = Header("")):
     Send the current token as `Authorization: Bearer ...`, expired or not. It
     refreshes while its `iat` is younger than `MLPA_GUEST_REFRESH_IDLE_SECONDS`
     (default 30 days, set per env in infra). The new token gets a fresh `iat`
-    and `exp` (`MLPA_GUEST_TOKEN_TTL_SECONDS`, default 7 days), so each
+    and `exp` (`MLPA_GUEST_TOKEN_TTL_SECONDS`, default 60 min), so each
     refresh restarts the idle clock.
 
     Call it when chat answers 401 for a guest token, then retry the request
@@ -221,7 +230,9 @@ async def refresh_guest_token(authorization: str = Header("")):
     `GET /verify/v1/guest`. Errors are listed in the Guest section above.
     """
     if not env.MLPA_GUEST_ENABLED:
-        raise HTTPException(status_code=404, detail="Guest tokens are disabled")
+        raise HTTPException(
+            status_code=401, detail={"error": ERROR_CODE_GUEST_DISABLED}
+        )
     if not is_guest_token(authorization):
         raise HTTPException(status_code=401, detail="Invalid guest token")
     payload = _decode_guest_token(authorization, verify_exp=False)
@@ -230,16 +241,12 @@ async def refresh_guest_token(authorization: str = Header("")):
 
     sub = payload["sub"]
     admitted = True
-    try:
-        if not await app_attest_pg.touch_guest_claim(sub):
-            # Infra cleanup frees claims idle for a token TTL, but refresh can
-            # bring the guest back later. Claim again so the cap counts it.
-            admitted, _ = await app_attest_pg.admit_managed_base_identity(
-                sub, GUEST_CAPACITY_ID
-            )
-    except Exception as e:
-        # Best-effort: the DB being down shouldn't break refresh.
-        logger.error(f"Guest claim refresh failed: {e}")
+    if not await app_attest_pg.touch_guest_claim(sub):
+        # Infra cleanup frees claims idle for a token TTL, but refresh can
+        # bring the guest back later. Claim again so the cap counts it.
+        admitted, _ = await app_attest_pg.admit_managed_base_identity(
+            sub, GUEST_CAPACITY_ID
+        )
     if not admitted:
         raise HTTPException(
             status_code=403, detail={"error": ERROR_CODE_MAX_GUESTS_REACHED}
