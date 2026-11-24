@@ -16,6 +16,7 @@ from mlpa.core.classes import (
 )
 from mlpa.core.config import (
     ERROR_CODE_INVALID_MODEL_NAME,
+    ERROR_CODE_WRONG_SERVICE_TYPE_FOR_AUTH,
     AuthType,
     VirtualKeyConfigurationError,
     env,
@@ -92,6 +93,16 @@ def _resolve_purpose(service_type_value: str, purpose_header: str | None) -> str
     return ""
 
 
+def _require_service_type_for_auth(service_type: str, auth_type: AuthType) -> None:
+    if not env.valid_service_type_for_auth(service_type, auth_type):
+        raise HTTPException(
+            status_code=400,
+            detail={
+                "error": ERROR_CODE_WRONG_SERVICE_TYPE_FOR_AUTH,
+            },
+        )
+
+
 def _authorize_guest(
     request: Request,
     build_authorized_request: Callable[[str, str], TAuthorizedRequest],
@@ -102,11 +113,7 @@ def _authorize_guest(
     with measure("auth_check", request):
         guest_id = verify_guest_token(authorization)
     guest_service_type = f"{service_type.value}-guest"
-    if guest_service_type not in env.valid_service_types_set:
-        raise HTTPException(
-            status_code=400,
-            detail=f"service-type '{service_type.value}' is not available for guests",
-        )
+    _require_service_type_for_auth(guest_service_type, AuthType.GUEST)
     # Read by the metrics middleware, it only sees the raw header otherwise
     request.state.service_type = guest_service_type
     authorized = build_authorized_request(
@@ -136,9 +143,10 @@ async def _authorize_common_request(
 
     purpose_value = _resolve_purpose(service_type.value, purpose)
 
-    # App Attest
+    # Apple App Attest
     if use_app_attest:
         request.state.auth_type = AuthType.APP_ATTEST
+        _require_service_type_for_auth(service_type.value, AuthType.APP_ATTEST)
         with measure("auth_check", request):
             body_bytes = await request.body()
             assertionAuth = parse_app_attest_jwt(authorization, "assert")
@@ -151,9 +159,11 @@ async def _authorize_common_request(
         return build_authorized_request(
             f"{assertionAuth.key_id_b64}:{service_type.value}", purpose_value
         )
-    # Play Integrity
+
+    # Google Play integrity
     if use_play_integrity:
         request.state.auth_type = AuthType.PLAY_INTEGRITY
+        _require_service_type_for_auth(service_type.value, AuthType.PLAY_INTEGRITY)
         with measure("auth_check", request):
             play_user_id = extract_user_from_play_integrity_jwt(authorization)
         return build_authorized_request(
@@ -172,6 +182,7 @@ async def _authorize_common_request(
 
     # FxA
     request.state.auth_type = AuthType.FXA
+    _require_service_type_for_auth(service_type.value, AuthType.FXA)
     if service_type.value.endswith("-dev"):
         if x_dev_authorization is None:
             raise HTTPException(

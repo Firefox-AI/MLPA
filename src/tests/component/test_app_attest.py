@@ -345,8 +345,7 @@ def test_successful_request_with_mocked_app_attest_auth(mocked_client_integratio
     headers = {
         "authorization": f"Bearer {app_attest_jwt}",
         "use-app-attest": "true",
-        "service-type": "ai",
-        "purpose": "chat",
+        "service-type": "s2s",
     }
     response = mocked_client_integration.post(
         "/v1/chat/completions",
