@@ -12,6 +12,7 @@ from mlpa.core.config import (
     ERROR_CODE_GUEST_DISABLED,
     ERROR_CODE_GUEST_TOKEN_TOO_OLD,
     ERROR_CODE_MAX_GUESTS_REACHED,
+    ERROR_CODE_TOKEN_EXPIRED,
     GUEST_CAPACITY_ID,
     env,
 )
@@ -74,6 +75,8 @@ def _decode_guest_token(authorization: str, verify_exp: bool = True) -> dict:
             issuer=GUEST_TOKEN_ISSUER,
             options={"require": ["exp", "iat", "sub"], "verify_exp": verify_exp},
         )
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail={"error": ERROR_CODE_TOKEN_EXPIRED})
     except jwt.PyJWTError as e:
         logger.error(f"Guest token decode error: {e}")
         raise HTTPException(status_code=401, detail="Invalid guest token")
@@ -227,7 +230,7 @@ async def refresh_guest_token(authorization: str = Header("")):
     and `exp` (`MLPA_GUEST_TOKEN_TTL_SECONDS`, default 60 min), so each
     refresh restarts the idle clock.
 
-    Call it when chat answers 401 for a guest token, then retry the request
+    Call it when chat answers 401 `{"error": 17}` (token expired), then retry the request
     once with the new token. It's a plain JSON call with no Fastly challenge,
     so there is no browser tab flow. On 401 `{"error": 16}` or
     `"Invalid guest token"`, fall back to `GET /verify/v1/guest`. On

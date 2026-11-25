@@ -1060,6 +1060,8 @@ ERROR_CODE_WRONG_SERVICE_TYPE_FOR_AUTH: int = 14
 ERROR_CODE_GUEST_DISABLED: int = 15
 # Guest token expired longer than MLPA_GUEST_REFRESH_IDLE_SECONDS
 ERROR_CODE_GUEST_TOKEN_TOO_OLD: int = 16
+# FxA or guest token is expired, refresh it and retry. Only expiry, not a bad token
+ERROR_CODE_TOKEN_EXPIRED: int = 17
 
 ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
     429: {
@@ -1186,7 +1188,8 @@ ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
             "credentials did not verify, the x-dev-authorization token is wrong "
             "for a dev service type, the guest token is expired or invalid, or a "
             "guest token was sent while the guest kill switch is off "
-            "(`detail.error` 15)."
+            "(`detail.error` 15). An FxA or guest token that is only expired "
+            "returns `detail.error` 17."
         ),
         "content": {
             "application/json": {
@@ -1203,7 +1206,8 @@ ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
                             ],
                             "description": (
                                 "Human-readable reason the request was not authorized, "
-                                'or `{"error": 15}` when the guest kill switch is off.'
+                                'or `{"error": 15}` when the guest kill switch is off, or '
+                                '`{"error": 17}` when the FxA or guest token is expired.'
                             ),
                         }
                     },
@@ -1223,9 +1227,14 @@ ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
                         "value": {"detail": "Invalid x-dev-authorization"},
                     },
                     "invalid_guest_token": {
-                        "summary": "Guest token expired or invalid",
+                        "summary": "Guest token invalid",
                         "value": {"detail": "Invalid guest token"},
-                        "description": "Refresh with POST /verify/v1/guest/refresh and retry.",
+                        "description": "Bad signature or not a guest token. Get a new one with GET /verify/v1/guest.",
+                    },
+                    "token_expired": {
+                        "summary": "FxA or guest token expired",
+                        "value": {"detail": {"error": ERROR_CODE_TOKEN_EXPIRED}},
+                        "description": "Refresh the token (FxA, or POST /verify/v1/guest/refresh for guests) and retry.",
                     },
                     "guest_disabled": {
                         "summary": "Guest kill switch off",

@@ -71,3 +71,59 @@ async def test_fxa_auth_raises_when_verification_fails(mocker, metrics_spy):
 
     assert exc_info.value.status_code == 401
     metrics_spy.assert_only({"validate_fxa_latency"})
+
+
+def _fxa_client_and_token(exp_offset, sign_with_other_key=False):
+    """Real pyfxa client with a local JWKS, and an RS256 FxA-style access token."""
+    import json
+    import time
+
+    import jwt
+    from cryptography.hazmat.primitives.asymmetric import rsa
+    from fxa.oauth import Client
+
+    key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    jwk = json.loads(jwt.algorithms.RSAAlgorithm.to_jwk(key.public_key()))
+    signer = (
+        rsa.generate_private_key(public_exponent=65537, key_size=2048)
+        if sign_with_other_key
+        else key
+    )
+    now = int(time.time())
+    token = jwt.encode(
+        {
+            "sub": "uid",
+            "client_id": "c",
+            "scope": "profile:uid",
+            "iat": now - 7200,
+            "exp": now + exp_offset,
+        },
+        signer,
+        algorithm="RS256",
+        headers={"typ": "at+JWT"},
+    )
+    return Client("c", "s", "https://fxa.invalid/v1", cache=None, jwks=[jwk]), token
+
+
+async def test_fxa_auth_expired_token_returns_error_17(mocker):
+    from mlpa.core.config import ERROR_CODE_TOKEN_EXPIRED
+
+    client, token = _fxa_client_and_token(exp_offset=-60)
+    mocker.patch.object(fxa_module, "client", client)
+
+    with pytest.raises(HTTPException) as exc_info:
+        await fxa_module.fxa_auth(f"Bearer {token}")
+
+    assert exc_info.value.status_code == 401
+    assert exc_info.value.detail == {"error": ERROR_CODE_TOKEN_EXPIRED}
+
+
+async def test_fxa_auth_bad_signature_is_not_error_17(mocker):
+    client, token = _fxa_client_and_token(exp_offset=3600, sign_with_other_key=True)
+    mocker.patch.object(fxa_module, "client", client)
+
+    with pytest.raises(HTTPException) as exc_info:
+        await fxa_module.fxa_auth(f"Bearer {token}")
+
+    assert exc_info.value.status_code == 401
+    assert exc_info.value.detail == "Invalid FxA auth"
