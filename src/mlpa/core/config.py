@@ -834,14 +834,20 @@ class Env(BaseSettings):
         "org.mozilla.firefox_beta",
     }
 
-    # Access token
+    # Play Integrity access token (Android): MLPA issues it after Google
+    # verifies the integrity token. When it expires, the client runs Play
+    # Integrity again.
     MLPA_ACCESS_TOKEN_SECRET: str = "mlpa-dev-secret"
     MLPA_ACCESS_TOKEN_TTL_SECONDS: int = 86400
+    # Guest token (no account) from GET /verify/v1/guest and
+    # POST /verify/v1/guest/refresh. Valid for chat until exp, then the client
+    # refreshes it (see MLPA_GUEST_REFRESH_IDLE_SECONDS).
     MLPA_GUEST_TOKEN_TTL_SECONDS: int = 3600
-    # Idle timeout for POST /verify/v1/guest/refresh (AIPLAT-1726): a token,
-    # expired or not, refreshes while its iat is younger than this. After that
-    # the client goes back through GET /verify/v1/guest and its Fastly challenge.
-    MLPA_GUEST_REFRESH_IDLE_SECONDS: int = 2592000
+    # How long a guest token can stay expired and still be refreshed. Past
+    # that the token is dead and the client goes back through
+    # GET /verify/v1/guest and its Fastly challenge. 2 years is a deliberately
+    # large guess, we don't know the right value yet and may lower it.
+    MLPA_GUEST_REFRESH_IDLE_SECONDS: int = 63072000
     MLPA_GUEST_TOKEN_SIGNING_SECRET: str = "mlpa-guest-dev-secret"
 
     # Dev / experimentation auth (x-dev-authorization header)
@@ -1052,7 +1058,7 @@ ERROR_CODE_WRONG_SERVICE_TYPE_FOR_AUTH: int = 14
 
 # Guest kill switch is off (MLPA_GUEST_ENABLED=false), AIPLAT-1734
 ERROR_CODE_GUEST_DISABLED: int = 15
-# Guest token iat older than MLPA_GUEST_REFRESH_IDLE_SECONDS, AIPLAT-1726
+# Guest token expired longer than MLPA_GUEST_REFRESH_IDLE_SECONDS
 ERROR_CODE_GUEST_TOKEN_TOO_OLD: int = 16
 
 ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {

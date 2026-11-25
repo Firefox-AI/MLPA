@@ -193,7 +193,7 @@ async def guest_success():
                             "value": {"detail": "Invalid guest token"},
                         },
                         "too_old": {
-                            "summary": "iat older than MLPA_GUEST_REFRESH_IDLE_SECONDS",
+                            "summary": "Expired longer than MLPA_GUEST_REFRESH_IDLE_SECONDS",
                             "value": {
                                 "detail": {"error": ERROR_CODE_GUEST_TOKEN_TOO_OLD}
                             },
@@ -222,8 +222,8 @@ async def refresh_guest_token(authorization: str = Header("")):
     guest cap slot stay the same.
 
     Send the current token as `Authorization: Bearer ...`, expired or not. It
-    refreshes while its `iat` is younger than `MLPA_GUEST_REFRESH_IDLE_SECONDS`
-    (default 30 days, set per env in infra). The new token gets a fresh `iat`
+    refreshes until it has been expired for `MLPA_GUEST_REFRESH_IDLE_SECONDS`
+    (default 2 years, set per env in infra). The new token gets a fresh `iat`
     and `exp` (`MLPA_GUEST_TOKEN_TTL_SECONDS`, default 60 min), so each
     refresh restarts the idle clock.
 
@@ -241,7 +241,8 @@ async def refresh_guest_token(authorization: str = Header("")):
     if not is_guest_token(authorization):
         raise HTTPException(status_code=401, detail="Invalid guest token")
     payload = _decode_guest_token(authorization, verify_exp=False)
-    if time.time() - payload["iat"] > env.MLPA_GUEST_REFRESH_IDLE_SECONDS:
+    if time.time() - payload["exp"] > env.MLPA_GUEST_REFRESH_IDLE_SECONDS:
+        metrics.guest_refresh_too_old_total.inc()
         raise HTTPException(
             status_code=401, detail={"error": ERROR_CODE_GUEST_TOKEN_TOO_OLD}
         )

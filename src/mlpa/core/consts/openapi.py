@@ -36,7 +36,7 @@ Guest tokens for Smart Window users without an account.
 | Setting | Default | Meaning |
 |---|---|---|
 | `MLPA_GUEST_TOKEN_TTL_SECONDS` | 3600 (60 min) | Token valid for chat until `exp`. |
-| `MLPA_GUEST_REFRESH_IDLE_SECONDS` | 2592000 (30 days) | Token (expired or not) refreshes while its `iat` is younger than this. Each refresh restarts the clock, so an active guest never has to re-issue. |
+| `MLPA_GUEST_REFRESH_IDLE_SECONDS` | 63072000 (2 years) | How long a token can stay expired and still be refreshed. Each refresh restarts the clock, so an active guest never has to re-issue. |
 
 Read `exp` from the JWT to refresh ahead of time, or just refresh on 401.
 Don't hardcode the TTL, it differs per env.

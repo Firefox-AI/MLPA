@@ -176,11 +176,16 @@ def test_refresh_keeps_guest_id(mocked_client_integration, metrics_spy):
     assert metrics_spy.value("guest_tokens_issued_total", flow="refresh") == 1
 
 
-def test_refresh_rejected_past_idle_timeout(mocked_client_integration):
-    token = _guest_token(iat_ago=env.MLPA_GUEST_REFRESH_IDLE_SECONDS + 60)
+def test_refresh_rejected_past_idle_timeout(mocked_client_integration, metrics_spy):
+    token = _guest_token(
+        iat_ago=env.MLPA_GUEST_TOKEN_TTL_SECONDS
+        + env.MLPA_GUEST_REFRESH_IDLE_SECONDS
+        + 60
+    )
     response = _refresh(mocked_client_integration, token)
     assert response.status_code == 401
     assert response.json() == {"detail": {"error": ERROR_CODE_GUEST_TOKEN_TOO_OLD}}
+    assert metrics_spy.value("guest_refresh_too_old_total") == 1
 
 
 def test_refresh_respects_guest_cap(mocked_client_integration, mocker):
