@@ -157,7 +157,7 @@ class AppAttestPGService(PGService):
         """
         Rebuild user claims from LiteLLM and refresh both current_identities.
 
-        Guest claims are not rebuilt: their created_at drives the infra cleanup,
+        Guest claims are not rebuilt: their last_seen_at/created_at drive the infra cleanup,
         so they stay as they are and only the guest counter is recounted.
         """
         managed_service_types = list(env.MLPA_CAPPED_SERVICE_TYPES)
@@ -355,6 +355,22 @@ class AppAttestPGService(PGService):
                 """,
                 capacity_id,
             )
+
+    async def touch_guest_claim(self, base_identity: str) -> bool:
+        """Bump last_seen_at so infra cleanup keeps a refreshed guest's claim.
+
+        Returns False when the guest has no claim (cleaned up, or cap off).
+        """
+        status = await self.pool.execute(
+            """
+            UPDATE mlpa_user_capacity_identities
+            SET last_seen_at = NOW()
+            WHERE base_identity = $1 AND capacity_id = $2
+            """,
+            base_identity,
+            GUEST_CAPACITY_ID,
+        )
+        return status != "UPDATE 0"
 
     async def refresh_capacity_gauges(self) -> None:
         """Set capacity gauges from mlpa_user_capacity; called on each /metrics scrape.

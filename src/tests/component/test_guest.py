@@ -1,14 +1,21 @@
+import time
 from urllib.parse import parse_qs, urlsplit
 
 import jwt
 import pytest
 from fastapi import HTTPException
 
-from mlpa.core.config import ERROR_CODE_GUEST_DISABLED, env
+from mlpa.core.config import (
+    ERROR_CODE_GUEST_DISABLED,
+    ERROR_CODE_GUEST_TOKEN_TOO_OLD,
+    ERROR_CODE_MAX_GUESTS_REACHED,
+    env,
+)
 from mlpa.core.routers.guest.guest import (
     GUEST_TOKEN_HEADERS,
     GUEST_TOKEN_ISSUER,
     GUEST_TOKEN_PREFIX,
+    verify_guest_token,
 )
 from mlpa.core.utils import extract_user_from_play_integrity_jwt
 
@@ -27,6 +34,16 @@ def test_guest_token_disabled(mocked_client_integration, mocker):
     assert response.status_code == 404
     assert response.json() == {"detail": {"error": ERROR_CODE_GUEST_DISABLED}}
     assert "location" not in response.headers
+
+
+def test_refresh_guest_token_disabled(mocked_client_integration, mocker):
+    mocker.patch.object(env, "MLPA_GUEST_ENABLED", False)
+    response = mocked_client_integration.post(
+        "/verify/v1/guest/refresh", headers={"Authorization": "Bearer x"}
+    )
+
+    assert response.status_code == 401
+    assert response.json() == {"detail": {"error": ERROR_CODE_GUEST_DISABLED}}
 
 
 def test_issue_guest_token(mocked_client_integration):
@@ -123,3 +140,59 @@ def test_guest_observability_metrics(mocked_client_integration, metrics_spy):
     mocked_client_integration.get("/verify/v1/guest", follow_redirects=False)
     assert metrics_spy.value("guest_tokens_issued_total", flow="json") == 1
     assert metrics_spy.value("guest_tokens_issued_total", flow="redirect") == 2
+
+
+def _guest_token(iat_ago=0, sub="guest-sub"):
+    now = int(time.time())
+    return jwt.encode(
+        {
+            "iss": GUEST_TOKEN_ISSUER,
+            "aud": "mlpa",
+            "sub": sub,
+            "iat": now - iat_ago,
+            "exp": now - iat_ago + env.MLPA_GUEST_TOKEN_TTL_SECONDS,
+        },
+        env.MLPA_GUEST_TOKEN_SIGNING_SECRET,
+        algorithm="HS256",
+        headers=GUEST_TOKEN_HEADERS,
+    )
+
+
+def _refresh(client, token):
+    return client.post(
+        "/verify/v1/guest/refresh", headers={"Authorization": f"Bearer {token}"}
+    )
+
+
+def test_refresh_keeps_guest_id(mocked_client_integration, metrics_spy):
+    expired = _guest_token(iat_ago=env.MLPA_GUEST_TOKEN_TTL_SECONDS + 3600)
+
+    response = _refresh(mocked_client_integration, expired)
+
+    assert response.status_code == 200
+    assert (
+        verify_guest_token(f"Bearer {response.json()['access_token']}") == "guest-sub"
+    )
+    assert metrics_spy.value("guest_tokens_issued_total", flow="refresh") == 1
+
+
+def test_refresh_rejected_past_idle_timeout(mocked_client_integration, metrics_spy):
+    token = _guest_token(
+        iat_ago=env.MLPA_GUEST_TOKEN_TTL_SECONDS
+        + env.MLPA_GUEST_REFRESH_IDLE_SECONDS
+        + 60
+    )
+    response = _refresh(mocked_client_integration, token)
+    assert response.status_code == 401
+    assert response.json() == {"detail": {"error": ERROR_CODE_GUEST_TOKEN_TOO_OLD}}
+    assert metrics_spy.value("guest_refresh_too_old_total") == 1
+
+
+def test_refresh_respects_guest_cap(mocked_client_integration, mocker):
+    mocker.patch.object(env, "MLPA_ENFORCE_GUEST_CAP", True)
+    mocker.patch.object(env, "MLPA_MAX_GUESTS", 1)
+
+    assert _refresh(mocked_client_integration, _guest_token(sub="a")).status_code == 200
+    response = _refresh(mocked_client_integration, _guest_token(sub="b"))
+    assert response.status_code == 403
+    assert response.json()["detail"] == {"error": ERROR_CODE_MAX_GUESTS_REACHED}

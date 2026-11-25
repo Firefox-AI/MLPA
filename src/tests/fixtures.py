@@ -50,6 +50,7 @@ def mocked_client_integration(mocker, use_real_get_or_create_user):
     mocker.patch("mlpa.core.routers.health.health.app_attest_pg", mock_app_attest_pg)
     mocker.patch("mlpa.core.routers.user.user.app_attest_pg", mock_app_attest_pg)
     mocker.patch("mlpa.core.utils.app_attest_pg", mock_app_attest_pg)
+    mocker.patch("mlpa.core.routers.guest.guest.app_attest_pg", mock_app_attest_pg)
     mocker.patch("mlpa.run.litellm_pg", mock_litellm_pg)
     mocker.patch("mlpa.core.routers.health.health.litellm_pg", mock_litellm_pg)
     mocker.patch("mlpa.core.utils.litellm_pg", mock_litellm_pg)

@@ -196,6 +196,7 @@ class PrometheusMetrics:
     capacity_enforced: Gauge
     guest_enabled: Gauge
     guest_tokens_issued_total: Counter
+    guest_refresh_too_old_total: Counter
     users_created_total: Counter
 
     # chat completions
@@ -377,8 +378,13 @@ def build_metrics(registry: CollectorRegistry = REGISTRY) -> PrometheusMetrics:
         ),
         guest_tokens_issued_total=Counter(
             "mlpa_guest_tokens_issued_total",
-            "Guest tokens issued by GET /verify/v1/guest, by flow (json|redirect).",
+            "Guest tokens issued by GET /verify/v1/guest (json|redirect) and POST /verify/v1/guest/refresh (refresh), by flow.",
             ["flow"],
+            registry=registry,
+        ),
+        guest_refresh_too_old_total=Counter(
+            "mlpa_guest_refresh_too_old_total",
+            "Guest refreshes rejected because the token was expired longer than MLPA_GUEST_REFRESH_IDLE_SECONDS (error 16).",
             registry=registry,
         ),
         chat_completion_latency=Histogram(

@@ -44,8 +44,10 @@ class Env(BaseSettings):
 
     # Guest capacity gate (AIPLAT-1447): same admission as above, own counter
     # (mlpa_user_capacity row 2). Infra deletes guest claims (capacity_id = 2)
-    # older than the token TTL and must then set row 2's current_identities to
-    # the remaining COUNT(*), otherwise slots only free up on MLPA restart.
+    # with COALESCE(last_seen_at, created_at) older than the token TTL, and must
+    # then set row 2's current_identities to the remaining COUNT(*), otherwise
+    # slots only free up on MLPA restart. Refresh bumps last_seen_at, or admits
+    # the guest again when its claim was already cleaned up.
     # Turn MLPA_ENFORCE_GUEST_CAP on only after every pod runs this image, and
     # off before rolling back: older images' reconcile deletes all claims,
     # guest ones included, and never recounts row 2.
@@ -832,10 +834,20 @@ class Env(BaseSettings):
         "org.mozilla.firefox_beta",
     }
 
-    # Access token
+    # Play Integrity access token (Android): MLPA issues it after Google
+    # verifies the integrity token. When it expires, the client runs Play
+    # Integrity again.
     MLPA_ACCESS_TOKEN_SECRET: str = "mlpa-dev-secret"
     MLPA_ACCESS_TOKEN_TTL_SECONDS: int = 86400
-    MLPA_GUEST_TOKEN_TTL_SECONDS: int = 604800
+    # Guest token (no account) from GET /verify/v1/guest and
+    # POST /verify/v1/guest/refresh. Valid for chat until exp, then the client
+    # refreshes it (see MLPA_GUEST_REFRESH_IDLE_SECONDS).
+    MLPA_GUEST_TOKEN_TTL_SECONDS: int = 3600
+    # How long a guest token can stay expired and still be refreshed. Past
+    # that the token is dead and the client goes back through
+    # GET /verify/v1/guest and its Fastly challenge. 2 years is a deliberately
+    # large guess, we don't know the right value yet and may lower it.
+    MLPA_GUEST_REFRESH_IDLE_SECONDS: int = 63072000
     MLPA_GUEST_TOKEN_SIGNING_SECRET: str = "mlpa-guest-dev-secret"
 
     # Dev / experimentation auth (x-dev-authorization header)
@@ -1046,6 +1058,8 @@ ERROR_CODE_WRONG_SERVICE_TYPE_FOR_AUTH: int = 14
 
 # Guest kill switch is off (MLPA_GUEST_ENABLED=false), AIPLAT-1734
 ERROR_CODE_GUEST_DISABLED: int = 15
+# Guest token expired longer than MLPA_GUEST_REFRESH_IDLE_SECONDS
+ERROR_CODE_GUEST_TOKEN_TOO_OLD: int = 16
 
 ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
     429: {
@@ -1170,8 +1184,9 @@ ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
             "Unauthorized - authentication failed or was missing. Either the "
             "Authorization header is absent, the FxA / App Attest / Play Integrity "
             "credentials did not verify, the x-dev-authorization token is wrong "
-            "for a dev service type, or a guest token was sent while the guest "
-            "kill switch is off (`detail.error` 15)."
+            "for a dev service type, the guest token is expired or invalid, or a "
+            "guest token was sent while the guest kill switch is off "
+            "(`detail.error` 15)."
         ),
         "content": {
             "application/json": {
@@ -1206,6 +1221,11 @@ ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
                     "invalid_dev_authorization": {
                         "summary": "Invalid dev authorization",
                         "value": {"detail": "Invalid x-dev-authorization"},
+                    },
+                    "invalid_guest_token": {
+                        "summary": "Guest token expired or invalid",
+                        "value": {"detail": "Invalid guest token"},
+                        "description": "Refresh with POST /verify/v1/guest/refresh and retry.",
                     },
                     "guest_disabled": {
                         "summary": "Guest kill switch off",

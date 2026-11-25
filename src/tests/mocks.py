@@ -209,6 +209,9 @@ class MockAppAttestPGService:
         if not has_managed_user_rows:
             claims.remove(base_identity)
 
+    async def touch_guest_claim(self, base_identity: str) -> bool:
+        return base_identity in self.guest_capacity_claims
+
     async def refresh_capacity_gauges(self):
         pass
 
