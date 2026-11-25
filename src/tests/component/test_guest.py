@@ -199,27 +199,26 @@ def test_refresh_respects_guest_cap(mocked_client_integration, mocker):
     assert response.json()["detail"] == {"error": ERROR_CODE_MAX_GUESTS_REACHED}
 
 
-def test_expired_guest_token_returns_error_17():
-    expired = _guest_token(iat_ago=env.MLPA_GUEST_TOKEN_TTL_SECONDS + 60)
-    with pytest.raises(HTTPException) as exc_info:
-        verify_guest_token(f"Bearer {expired}")
-    assert exc_info.value.status_code == 401
-    assert exc_info.value.detail == {"error": ERROR_CODE_TOKEN_EXPIRED}
-
-
-def test_bad_signature_guest_token_is_not_error_17():
-    token = _guest_token()
-    with pytest.raises(HTTPException) as exc_info:
-        verify_guest_token(f"Bearer {token[:-4]}AAAA")
-    assert exc_info.value.detail == "Invalid guest token"
-
-
-def test_expired_guest_token_on_chat_returns_error_17(mocked_client_integration):
-    expired = _guest_token(iat_ago=env.MLPA_GUEST_TOKEN_TTL_SECONDS + 60)
+@pytest.mark.parametrize(
+    "make_token, expected_detail",
+    [
+        # only expired -> refresh
+        (
+            lambda: _guest_token(iat_ago=env.MLPA_GUEST_TOKEN_TTL_SECONDS + 60),
+            {"error": ERROR_CODE_TOKEN_EXPIRED},
+        ),
+        # bad signature -> not 17, the client must not refresh it
+        (lambda: _guest_token()[:-4] + "AAAA", "Invalid guest token"),
+    ],
+    ids=["expired", "bad_signature"],
+)
+def test_guest_token_401_on_chat(
+    mocked_client_integration, make_token, expected_detail
+):
     response = mocked_client_integration.post(
         "/v1/chat/completions",
-        headers={"Authorization": f"Bearer {expired}", "service-type": "ai"},
+        headers={"Authorization": f"Bearer {make_token()}", "service-type": "ai"},
         json={"model": "m", "messages": [{"role": "user", "content": "hi"}]},
     )
     assert response.status_code == 401
-    assert response.json() == {"detail": {"error": ERROR_CODE_TOKEN_EXPIRED}}
+    assert response.json() == {"detail": expected_detail}
