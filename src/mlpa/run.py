@@ -26,6 +26,7 @@ from mlpa.core.config import (
     env,
 )
 from mlpa.core.consts.openapi import (
+    APP_DESCRIPTION,
     CHAT_COMPLETION_DESCRIPTION,
     CHAT_COMPLETION_SUCCESS_RESPONSE,
     SEARCH_DESCRIPTION,
@@ -131,7 +132,7 @@ sentry_sdk.init(
 
 app = FastAPI(
     title="MLPA",
-    description="Authenticates and proxies LLM requests through LiteLLM to enact budgets and per-user management.",
+    description=APP_DESCRIPTION,
     version=importlib.metadata.version("mlpa"),
     docs_url="/api/docs",
     openapi_tags=TAGS_METADATA,

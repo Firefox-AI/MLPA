@@ -22,7 +22,7 @@ Guest tokens for Smart Window users without an account.
    or `/v1/search`, with the usual `service-type`. MLPA maps it to the guest
    pool (`ai` → `ai-guest`) with its own budget. Guests can use `ai`,
    `memories`, `convo-starters`, `search`, `agent` and `agent-search`.
-3. When the token expires, chat answers 401 `"Invalid guest token"`. Call
+3. When the token expires, chat answers 401 `{"error": 17}`. Call
    `POST /verify/v1/guest/refresh` with the expired token as
    `Authorization: Bearer <token>`, store the new token and retry the request
    once. Refresh is a plain JSON call with no Fastly challenge or browser tab.
@@ -51,6 +51,7 @@ and `/v1/search`.
 |---|---|---|---|---|
 | 12 | 403 | chat, refresh | Guest cap is full and this guest has no slot. | Sign in with FxA. |
 | 15 | 401 / 404 | chat, refresh (401), issue (404) | Guest access is off (kill switch). | Stop guest calls, sign in with FxA. Don't refresh or re-issue. |
+| 17 | 401 | chat | Token expired. | Refresh (step 3) and retry once. |
 | 16 | 401 | refresh | Token older than the idle timeout. | Issue a new token (step 1). |
 | 14 | 400 | chat | This `service-type` isn't available for guests. | Don't call it as a guest. |
 | 1 | 429 | chat | This guest's own budget is used up. | Wait `Retry-After`, or sign in. |
@@ -61,7 +62,7 @@ Other errors without a numeric code:
 
 | Status | Body | Where | Client action |
 |---|---|---|---|
-| 401 | `{"detail": "Invalid guest token"}` | chat | Token expired or bad signature. Refresh once, then retry. If the retry fails again, issue a new token. |
+| 401 | `{"detail": "Invalid guest token"}` | chat | Bad signature or not a guest token. Issue a new token. |
 | 401 | `{"detail": "Invalid guest token"}` | refresh | Not a guest token or bad signature. Issue a new token. |
 | 503 | `{"detail": {"error": "Guest access is not configured."}}` | chat | Server config issue, not a client bug. Retry later. |
 | 500 | | refresh | Server or DB problem. Retry later, keep the current token. |
@@ -72,6 +73,40 @@ stream as `data: {"error": N}` instead of an HTTP status.
 Guest cap slots are freed by infra cleanup after a token TTL without activity.
 Refresh keeps the slot active, or claims a new one if it was freed (403 with
 `{"error": 12}` if the cap is full by then).
+"""
+
+APP_DESCRIPTION = """
+Authenticates and proxies LLM requests through LiteLLM to enact budgets and
+per-user management.
+
+## Error codes
+
+Errors with a known cause carry a numeric code. Read it from `detail.error`,
+or from the top level `error` (Fastly and the request size check). Check the code first, the string
+details are for humans and can change. With `"stream": true`, errors that
+happen after the stream started arrive inside it as `data: {"error": N}`.
+
+| Code | Status | Source | Meaning | Client action |
+|---|---|---|---|---|
+| 1 | 429 | MLPA | User's own budget is used up. | Wait `Retry-After` (until the budget resets). |
+| 2 | 429 | MLPA | User's rate limit (RPM/TPM). | Wait `Retry-After` (60s). |
+| 3 | 413 | MLPA | Request body or context window too large. | Send a smaller request. |
+| 4 | 403 | MLPA | Signed-in user cap is full, new user rejected. | Don't retry. |
+| 5 | 429 | MLPA | Upstream model provider rate limit. | Wait `Retry-After` (60s). |
+| 6 | 429 | Fastly | WAF rate limit at the edge. | Back off and retry later. |
+| 7 | 406 | Fastly | Reserved for a Fastly block. | Don't retry. |
+| 8 | 400 | MLPA | Unknown model name. | Fix the `model`. |
+| 9 | 400 | MLPA | Malformed request body. | Fix the request. |
+| 10 | 500 | MLPA | Global budget used up. | Wait `Retry-After` (300s). |
+| 11 | 429 | MLPA | Shared budget for all guests is used up. | Wait `Retry-After`, or sign in with FxA. |
+| 12 | 403 | MLPA | Guest cap is full and this guest has no slot. | Sign in with FxA. |
+| 13 | 429 | MLPA | Traffic contract exceeded. | Wait `Retry-After` (next window). |
+| 14 | 400 | MLPA | This `service-type` isn't available for this auth method. | Use another service type or auth method. |
+| 15 | 401 / 404 | MLPA | Guest access is off (kill switch). | Stop guest calls, sign in with FxA. |
+| 16 | 401 | MLPA | Guest token too old to refresh. | Get a new token with `GET /verify/v1/guest`. |
+| 17 | 401 | MLPA | FxA or guest token expired. Only expiry, a bad token keeps its string error. | Refresh the token and retry once. Guests use `POST /verify/v1/guest/refresh`. |
+
+See the Guest section for the full guest flow.
 """
 
 TAGS_METADATA = [
