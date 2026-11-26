@@ -9,6 +9,7 @@ from mlpa.core.config import (
     ERROR_CODE_GUEST_DISABLED,
     ERROR_CODE_GUEST_TOKEN_TOO_OLD,
     ERROR_CODE_MAX_GUESTS_REACHED,
+    ERROR_CODE_TOKEN_EXPIRED,
     env,
 )
 from mlpa.core.routers.guest.guest import (
@@ -32,7 +33,7 @@ def test_guest_token_disabled(mocked_client_integration, mocker):
     )
 
     assert response.status_code == 404
-    assert response.json() == {"detail": {"error": ERROR_CODE_GUEST_DISABLED}}
+    assert response.json() == {"error": ERROR_CODE_GUEST_DISABLED}
     assert "location" not in response.headers
 
 
@@ -43,7 +44,7 @@ def test_refresh_guest_token_disabled(mocked_client_integration, mocker):
     )
 
     assert response.status_code == 401
-    assert response.json() == {"detail": {"error": ERROR_CODE_GUEST_DISABLED}}
+    assert response.json() == {"error": ERROR_CODE_GUEST_DISABLED}
 
 
 def test_issue_guest_token(mocked_client_integration):
@@ -184,7 +185,7 @@ def test_refresh_rejected_past_idle_timeout(mocked_client_integration, metrics_s
     )
     response = _refresh(mocked_client_integration, token)
     assert response.status_code == 401
-    assert response.json() == {"detail": {"error": ERROR_CODE_GUEST_TOKEN_TOO_OLD}}
+    assert response.json() == {"error": ERROR_CODE_GUEST_TOKEN_TOO_OLD}
     assert metrics_spy.value("guest_refresh_too_old_total") == 1
 
 
@@ -195,4 +196,27 @@ def test_refresh_respects_guest_cap(mocked_client_integration, mocker):
     assert _refresh(mocked_client_integration, _guest_token(sub="a")).status_code == 200
     response = _refresh(mocked_client_integration, _guest_token(sub="b"))
     assert response.status_code == 403
-    assert response.json()["detail"] == {"error": ERROR_CODE_MAX_GUESTS_REACHED}
+    assert response.json() == {"error": ERROR_CODE_MAX_GUESTS_REACHED}
+
+
+@pytest.mark.parametrize(
+    "make_token, expected_body",
+    [
+        # only expired -> refresh
+        (
+            lambda: _guest_token(iat_ago=env.MLPA_GUEST_TOKEN_TTL_SECONDS + 60),
+            {"error": ERROR_CODE_TOKEN_EXPIRED},
+        ),
+        # bad signature -> not 17, the client must not refresh it
+        (lambda: _guest_token()[:-4] + "AAAA", {"detail": "Invalid guest token"}),
+    ],
+    ids=["expired", "bad_signature"],
+)
+def test_guest_token_401_on_chat(mocked_client_integration, make_token, expected_body):
+    response = mocked_client_integration.post(
+        "/v1/chat/completions",
+        headers={"Authorization": f"Bearer {make_token()}", "service-type": "ai"},
+        json={"model": "m", "messages": [{"role": "user", "content": "hi"}]},
+    )
+    assert response.status_code == 401
+    assert response.json() == expected_body

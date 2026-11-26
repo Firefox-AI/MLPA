@@ -105,7 +105,7 @@ def test_default_guest_service_types_enforce_shared_guest_cap(
 
     response = complete(tokens[3])
     assert response.status_code == 403
-    assert response.json()["detail"]["error"] == ERROR_CODE_MAX_GUESTS_REACHED
+    assert response.json()["error"] == ERROR_CODE_MAX_GUESTS_REACHED
     # Reusing a guest or using another feature must not consume another slot.
     assert complete(tokens[0]).status_code == 200
     assert complete(tokens[0], "memories").status_code == 200
@@ -179,7 +179,7 @@ def test_managed_cap_rejects_new_identities_and_allows_uncapped_service_type(
             json=SAMPLE_REQUEST.model_dump(),
         )
         assert resp3.status_code == 403
-        assert resp3.json()["detail"]["error"] == 4
+        assert resp3.json()["error"] == 4
 
         metrics_resp = mocked_client_integration.get("/metrics")
         assert metrics_resp.status_code == 200

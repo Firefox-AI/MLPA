@@ -67,7 +67,7 @@ class TestRouting:
         )
 
         assert response.status_code == 400, response.text
-        assert response.json()["detail"]["error"] == ERROR_CODE_INVALID_MODEL_NAME, (
+        assert response.json()["error"] == ERROR_CODE_INVALID_MODEL_NAME, (
             "MLPA did not classify LiteLLM's invalid-model error -- the "
             "upstream message wording likely changed."
         )
@@ -139,7 +139,7 @@ class TestBudgetErrorClassification:
             json=chat_request(),
         )
         assert response.status_code == 429, response.text
-        assert response.json()["detail"]["error"] == ERROR_CODE_BUDGET_LIMIT_EXCEEDED
+        assert response.json()["error"] == ERROR_CODE_BUDGET_LIMIT_EXCEEDED
         assert 0 < int(response.headers["Retry-After"]) <= 91200
 
 

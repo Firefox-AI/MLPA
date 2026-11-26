@@ -86,7 +86,7 @@ def test_filter_returns_503_when_privacy_filter_disabled(
     )
 
     assert response.status_code == 503
-    assert response.json()["detail"] == {"error": "Privacy Filter is disabled."}
+    assert response.json() == {"error": "Privacy Filter is disabled."}
 
 
 def test_filter_rejects_missing_items(mocked_client_integration):

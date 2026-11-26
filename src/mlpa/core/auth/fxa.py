@@ -1,11 +1,12 @@
 import time
 from typing import Annotated
 
+import jwt
 from fastapi import Header, HTTPException
 from fastapi.concurrency import run_in_threadpool
 from fxa._utils import scope_matches
 
-from mlpa.core.config import env
+from mlpa.core.config import ERROR_CODE_TOKEN_EXPIRED, env
 from mlpa.core.logger import logger
 from mlpa.core.prometheus_metrics import PrometheusResult, metrics
 from mlpa.core.utils import get_fxa_client
@@ -43,6 +44,14 @@ async def fxa_auth(authorization: Annotated[str | None, Header()]):
                 )
         except Exception as e:
             logger.error(f"FxA auth error: {e}")
+            # pyfxa wraps an expired JWT in a generic TrustError, raised while
+            # handling the original, so the expiry is only on __context__.
+            if isinstance(e, jwt.ExpiredSignatureError) or isinstance(
+                e.__context__, jwt.ExpiredSignatureError
+            ):
+                raise HTTPException(
+                    status_code=401, detail={"error": ERROR_CODE_TOKEN_EXPIRED}
+                )
             raise HTTPException(status_code=401, detail="Invalid FxA auth")
         result = PrometheusResult.SUCCESS
         verification_source = profile.get("verification_source", "unknown")

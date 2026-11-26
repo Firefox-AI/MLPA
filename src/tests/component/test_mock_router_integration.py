@@ -259,7 +259,7 @@ class TestMockRouterIntegration:
             )
 
         assert response.status_code == 400
-        assert "User not found from JWT token" in response.json()["detail"]["error"]
+        assert "User not found from JWT token" in response.json()["error"]
 
     def test_mock_chat_completions_no_auth_blocked_user(
         self, mocked_client_integration
@@ -295,7 +295,7 @@ class TestMockRouterIntegration:
                 )
 
             assert response.status_code == 403
-            assert "User is blocked" in response.json()["detail"]["error"]
+            assert "User is blocked" in response.json()["error"]
 
     def test_mock_chat_completions_latency_simulation(self, mocked_client_integration):
         """Test that mock endpoints simulate latency correctly."""

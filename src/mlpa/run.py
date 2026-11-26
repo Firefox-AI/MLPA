@@ -8,7 +8,7 @@ import sentry_sdk
 import uvicorn
 from fastapi import Depends, FastAPI, HTTPException, Request, Response
 from fastapi.exception_handlers import http_exception_handler
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 from sentry_sdk.integrations.starlette import StarletteIntegration
@@ -26,6 +26,7 @@ from mlpa.core.config import (
     env,
 )
 from mlpa.core.consts.openapi import (
+    APP_DESCRIPTION,
     CHAT_COMPLETION_DESCRIPTION,
     CHAT_COMPLETION_SUCCESS_RESPONSE,
     SEARCH_DESCRIPTION,
@@ -131,7 +132,7 @@ sentry_sdk.init(
 
 app = FastAPI(
     title="MLPA",
-    description="Authenticates and proxies LLM requests through LiteLLM to enact budgets and per-user management.",
+    description=APP_DESCRIPTION,
     version=importlib.metadata.version("mlpa"),
     docs_url="/api/docs",
     openapi_tags=TAGS_METADATA,
@@ -263,6 +264,12 @@ async def log_and_handle_http_exception(request: Request, exc: HTTPException):
     if exc.status_code != 429:
         logger.error(
             f"HTTPException for {request.method} {request.url.path} -> status={exc.status_code} detail={exc.detail}",
+        )
+    # Error-code bodies go out flat (`{"error": n}`), the same as SSE errors.
+    # OpenAI SDKs and the Android client read the top-level `error` key only.
+    if isinstance(exc.detail, dict) and "error" in exc.detail:
+        return JSONResponse(
+            exc.detail, status_code=exc.status_code, headers=exc.headers
         )
     return await http_exception_handler(request, exc)
 

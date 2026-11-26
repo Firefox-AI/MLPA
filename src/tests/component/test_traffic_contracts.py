@@ -100,7 +100,7 @@ def test_traffic_contract_denial_records_availability_once(
     )
     if hard_deny:
         assert response.status_code == 429
-        assert response.json() == {"detail": {"error": 13}}
+        assert response.json() == {"error": 13}
         assert response.headers["Retry-After"] == (
             "17" if limited_dimension == "tpm" else "42"
         )

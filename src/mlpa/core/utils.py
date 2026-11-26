@@ -350,7 +350,12 @@ _INVALID_ARGUMENT_STATUS_RE = re.compile(r'"status"\s*:\s*"invalid_argument"')
 def is_invalid_model_name_error(error_text: str) -> bool:
     if not error_text:
         return False
-    return "invalid model name passed in" in error_text.lower()
+    text = error_text.lower()
+    # The second one is LiteLLM's router message for a model not in its list.
+    return (
+        "invalid model name passed in" in text
+        or "there are no healthy deployments for this model" in text
+    )
 
 
 def is_invalid_request_error(error_text: str) -> bool:
