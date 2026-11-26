@@ -218,6 +218,14 @@ def test_is_invalid_model_name_error_match():
     assert is_invalid_model_name_error(text) is True
 
 
+def test_is_invalid_model_name_error_router_unknown_model():
+    text = (
+        "litellm.BadRequestError: You passed in model=nope-model. "
+        "There are no healthy deployments for this model"
+    )
+    assert is_invalid_model_name_error(text) is True
+
+
 def test_is_invalid_model_name_error_no_match():
     assert is_invalid_model_name_error("rate limit exceeded") is False
     assert is_invalid_model_name_error("") is False
