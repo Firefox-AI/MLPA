@@ -210,3 +210,19 @@ def test_x_dev_authorization_token_not_configured_with_fxa(mocked_client_integra
         )
     assert response.status_code == 401
     assert "Invalid x-dev-authorization" in str(response.json().get("detail", ""))
+
+
+def test_expired_fxa_token_returns_flat_error_17(mocked_client_integration, mocker):
+    from mlpa.core.config import ERROR_CODE_TOKEN_EXPIRED
+    from tests.unit.test_fxa_auth import _fxa_client_and_token
+
+    client, token = _fxa_client_and_token(exp_offset=-60)
+    mocker.patch("mlpa.core.auth.fxa.client", client)
+
+    response = mocked_client_integration.post(
+        "/v1/chat/completions",
+        headers={"authorization": f"Bearer {token}", "service-type": "ai"},
+        json=SAMPLE_REQUEST.model_dump(),
+    )
+    assert response.status_code == 401
+    assert response.json() == {"error": ERROR_CODE_TOKEN_EXPIRED}
