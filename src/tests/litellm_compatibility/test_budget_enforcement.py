@@ -72,5 +72,5 @@ class TestChatCompletionBudgetEnforcement:
             f"{rpm_limit}-RPM budget and none were rate-limited -- budget "
             "enforcement is not working."
         )
-        assert rejected.json()["detail"]["error"] == 2
+        assert rejected.json()["error"] == 2
         assert rejected.headers.get("Retry-After") == "60"

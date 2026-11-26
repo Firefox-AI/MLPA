@@ -43,8 +43,8 @@ Don't hardcode the TTL, it differs per env.
 
 **Client logic**
 
-Numeric codes are in `detail.error`. Check them first, the string details are
-for humans and can change. "chat" below means both `/v1/chat/completions`
+Numeric codes are in the top level `error` (`{"error": 17}`). Check them
+first, the string messages are for humans and can change. "chat" below means both `/v1/chat/completions`
 and `/v1/search`.
 
 | Code | Status | Where | Meaning | Client action |
@@ -64,7 +64,7 @@ Other errors without a numeric code:
 |---|---|---|---|
 | 401 | `{"detail": "Invalid guest token"}` | chat | Bad signature or not a guest token. Issue a new token. |
 | 401 | `{"detail": "Invalid guest token"}` | refresh | Not a guest token or bad signature. Issue a new token. |
-| 503 | `{"detail": {"error": "Guest access is not configured."}}` | chat | Server config issue, not a client bug. Retry later. |
+| 503 | `{"error": "Guest access is not configured."}` | chat | Server config issue, not a client bug. Retry later. |
 | 500 | | refresh | Server or DB problem. Retry later, keep the current token. |
 
 With `"stream": true` the budget and rate limit errors arrive inside the
@@ -81,9 +81,9 @@ per-user management.
 
 ## Error codes
 
-Errors with a known cause carry a numeric code. Read it from `detail.error`,
-or from the top level `error` (Fastly and the request size check). Check the code first, the string
-details are for humans and can change. With `"stream": true`, errors that
+Errors with a known cause carry a numeric code in the top level `error`
+(`{"error": 1}`), the same for MLPA, Fastly and the request size check. Check
+the code first, the string messages are for humans and can change. With `"stream": true`, errors that
 happen after the stream started arrive inside it as `data: {"error": N}`.
 
 | Code | Status | Source | Meaning | Client action |

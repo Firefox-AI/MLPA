@@ -9,7 +9,7 @@ RPM and TPM contract, and all participating features share a total **basket**.
 By default, over-contract requests continue. With both
 `ENABLE_TRAFFIC_CONTRACT_ENFORCEMENT` and `TRAFFIC_CONTRACT_429_IF_NOT_ALLOWED`
 enabled, an exceeded RPM or TPM contract returns HTTP 429 with
-`ERROR_CODE_TRAFFIC_CONTRACT_EXCEEDED = 13` in `detail.error`. The `Retry-After`
+`ERROR_CODE_TRAFFIC_CONTRACT_EXCEEDED = 13` in the top level `error`. The `Retry-After`
 header gives the seconds until the exceeded counter's next window. Decisions are
 logged and attached to `mlpa_requests_total` as `traffic_contract_rpm_mode` and
 `traffic_contract_tpm_mode`.

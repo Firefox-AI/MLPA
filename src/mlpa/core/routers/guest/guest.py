@@ -117,9 +117,7 @@ NO_STORE_HEADERS = {"Cache-Control": "no-store", "Referrer-Policy": "no-referrer
         404: {
             "description": "Guest tokens are disabled (`MLPA_GUEST_ENABLED=false`).",
             "content": {
-                "application/json": {
-                    "example": {"detail": {"error": ERROR_CODE_GUEST_DISABLED}}
-                }
+                "application/json": {"example": {"error": ERROR_CODE_GUEST_DISABLED}}
             },
         },
     },
@@ -197,13 +195,11 @@ async def guest_success():
                         },
                         "too_old": {
                             "summary": "Expired longer than MLPA_GUEST_REFRESH_IDLE_SECONDS",
-                            "value": {
-                                "detail": {"error": ERROR_CODE_GUEST_TOKEN_TOO_OLD}
-                            },
+                            "value": {"error": ERROR_CODE_GUEST_TOKEN_TOO_OLD},
                         },
                         "guest_disabled": {
                             "summary": "Guest kill switch off (MLPA_GUEST_ENABLED=false), sign in with FxA",
-                            "value": {"detail": {"error": ERROR_CODE_GUEST_DISABLED}},
+                            "value": {"error": ERROR_CODE_GUEST_DISABLED},
                         },
                     }
                 }
@@ -213,7 +209,7 @@ async def guest_success():
             "description": "The guest's cap slot was cleaned up and guest capacity is full (error code 12). Sign in with FxA.",
             "content": {
                 "application/json": {
-                    "example": {"detail": {"error": ERROR_CODE_MAX_GUESTS_REACHED}}
+                    "example": {"error": ERROR_CODE_MAX_GUESTS_REACHED}
                 }
             },
         },

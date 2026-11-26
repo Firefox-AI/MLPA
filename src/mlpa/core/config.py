@@ -1188,8 +1188,8 @@ ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
             "credentials did not verify, the x-dev-authorization token is wrong "
             "for a dev service type, the guest token is expired or invalid, or a "
             "guest token was sent while the guest kill switch is off "
-            "(`detail.error` 15). An FxA or guest token that is only expired "
-            "returns `detail.error` 17."
+            "(`error` 15). An FxA or guest token that is only expired "
+            "returns `error` 17."
         ),
         "content": {
             "application/json": {
@@ -1197,21 +1197,14 @@ ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
                     "type": "object",
                     "properties": {
                         "detail": {
-                            "oneOf": [
-                                {"type": "string"},
-                                {
-                                    "type": "object",
-                                    "properties": {"error": {"type": "integer"}},
-                                },
-                            ],
-                            "description": (
-                                "Human-readable reason the request was not authorized, "
-                                'or `{"error": 15}` when the guest kill switch is off, or '
-                                '`{"error": 17}` when the FxA or guest token is expired.'
-                            ),
-                        }
+                            "type": "string",
+                            "description": "Human-readable reason the request was not authorized.",
+                        },
+                        "error": {
+                            "type": "integer",
+                            "description": "15 when the guest kill switch is off, 17 when the FxA or guest token is expired.",
+                        },
                     },
-                    "required": ["detail"],
                 },
                 "examples": {
                     "missing_authorization_header": {
@@ -1233,12 +1226,12 @@ ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
                     },
                     "token_expired": {
                         "summary": "FxA or guest token expired",
-                        "value": {"detail": {"error": ERROR_CODE_TOKEN_EXPIRED}},
+                        "value": {"error": ERROR_CODE_TOKEN_EXPIRED},
                         "description": "Refresh the token (FxA, or POST /verify/v1/guest/refresh for guests) and retry.",
                     },
                     "guest_disabled": {
                         "summary": "Guest kill switch off",
-                        "value": {"detail": {"error": ERROR_CODE_GUEST_DISABLED}},
+                        "value": {"error": ERROR_CODE_GUEST_DISABLED},
                         "description": "MLPA_GUEST_ENABLED=false. Don't refresh, sign in with FxA.",
                     },
                 },
@@ -1301,7 +1294,7 @@ ERROR_RESPONSES: dict[int | str, dict[str, Any]] = {
 }
 
 # Reusable response docs for admin endpoints, which carry their own auth header
-# (master_key / mlpa_ui_access_key) and return FastAPI's default detail envelope.
+# (master_key / mlpa_ui_access_key).
 ADMIN_UNAUTHORIZED_RESPONSE: dict[int | str, dict[str, Any]] = {
     401: {
         "description": (
@@ -1312,15 +1305,10 @@ ADMIN_UNAUTHORIZED_RESPONSE: dict[int | str, dict[str, Any]] = {
             "application/json": {
                 "schema": {
                     "type": "object",
-                    "properties": {
-                        "detail": {
-                            "type": "object",
-                            "properties": {"error": {"type": "string"}},
-                        }
-                    },
-                    "required": ["detail"],
+                    "properties": {"error": {"type": "string"}},
+                    "required": ["error"],
                 },
-                "example": {"detail": {"error": "Unauthorized"}},
+                "example": {"error": "Unauthorized"},
             }
         },
     },
@@ -1346,34 +1334,23 @@ UNKNOWN_SERVICE_TYPE_RESPONSE: dict[int | str, dict[str, Any]] = {
     422: {
         "description": (
             "Unprocessable Entity. Two things return this status: an unknown "
-            "service type in the payload, where `detail` is an object like "
-            '`{"error": ...}`, and FastAPI body validation, where `detail` is a '
-            'list like `[{"loc", "msg", ...}]`.'
+            'service type in the payload, with a body like `{"error": ...}`, and '
+            'FastAPI body validation, with `detail` as a list like `[{"loc", "msg", ...}]`.'
         ),
         "content": {
             "application/json": {
                 "schema": {
                     "type": "object",
                     "properties": {
-                        "detail": {
-                            "anyOf": [
-                                {
-                                    "type": "object",
-                                    "properties": {"error": {"type": "string"}},
-                                },
-                                {"type": "array", "items": {"type": "object"}},
-                            ]
-                        }
+                        "error": {"type": "string"},
+                        "detail": {"type": "array", "items": {"type": "object"}},
                     },
-                    "required": ["detail"],
                 },
                 "examples": {
                     "unknown_service_type": {
-                        "summary": "Unknown service type (object detail)",
+                        "summary": "Unknown service type",
                         "value": {
-                            "detail": {
-                                "error": "Unknown service type: foo. Valid values: ai, ai-dev, ..."
-                            }
+                            "error": "Unknown service type: foo. Valid values: ai, ai-dev, ..."
                         },
                     },
                     "request_validation": {
@@ -1401,8 +1378,8 @@ PLAY_VERIFY_RESPONSES: dict[int | str, dict[str, Any]] = {
         "description": (
             "Unauthorized - the Play Integrity check did not pass. The token, "
             "package name, request hash, or the app/device verdicts failed "
-            "verification. `detail` is a string for verdict failures, or an object "
-            'like `{"error": ...}` when the upstream Play Integrity API rejects the '
+            'verification. The body is `{"detail": ...}` for verdict failures, or '
+            '`{"error": ...}` when the upstream Play Integrity API rejects the '
             "token."
         ),
         "content": {
@@ -1410,17 +1387,9 @@ PLAY_VERIFY_RESPONSES: dict[int | str, dict[str, Any]] = {
                 "schema": {
                     "type": "object",
                     "properties": {
-                        "detail": {
-                            "anyOf": [
-                                {"type": "string"},
-                                {
-                                    "type": "object",
-                                    "properties": {"error": {"type": "string"}},
-                                },
-                            ]
-                        }
+                        "detail": {"type": "string"},
+                        "error": {"type": "string"},
                     },
-                    "required": ["detail"],
                 },
                 "examples": {
                     "verdict_failed": {
@@ -1428,10 +1397,8 @@ PLAY_VERIFY_RESPONSES: dict[int | str, dict[str, Any]] = {
                         "value": {"detail": "Invalid Play Integrity token"},
                     },
                     "upstream_rejected": {
-                        "summary": "Upstream Play API rejected the token (object detail)",
-                        "value": {
-                            "detail": {"error": "Upstream service returned an error"}
-                        },
+                        "summary": "Upstream Play API rejected the token",
+                        "value": {"error": "Upstream service returned an error"},
                     },
                 },
             }
@@ -1468,17 +1435,10 @@ PLAY_VERIFY_RESPONSES: dict[int | str, dict[str, Any]] = {
             "application/json": {
                 "schema": {
                     "type": "object",
-                    "properties": {
-                        "detail": {
-                            "type": "object",
-                            "properties": {"error": {"type": "string"}},
-                        }
-                    },
-                    "required": ["detail"],
+                    "properties": {"error": {"type": "string"}},
+                    "required": ["error"],
                 },
-                "example": {
-                    "detail": {"error": "Play Integrity validation service unavailable"}
-                },
+                "example": {"error": "Play Integrity validation service unavailable"},
             }
         },
     },
