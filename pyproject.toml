@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "mlpa"
-version = "1.0.55"
+version = "1.0.56"
 description = "Authenticates and proxies LLM requests through LiteLLM to enact budgets and per-user management."
 authors = [
     { name = "Alexander Osipenko", email = "aosipenko@mozilla.com" },
